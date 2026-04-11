@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+.uv/
+.pytest_cache/
+.ruff_cache/
+
+# Environment
+.env
+.env.*
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data (local only, not committed)
+data/
+
+# Tools
+.serena/
+.gstack/
+.claude/
+
+# Docs (tracked separately when ready)
+ARTICLES_OF_INCORPORATION.md
+BYLAWS.md
+FORM_1023_NARRATIVE.md
+DESIGN.md
+TECH_SPEC.md
+civictrace_setup.md
