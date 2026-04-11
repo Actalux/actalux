@@ -119,7 +119,10 @@ def main() -> None:
 
             title = doc.get("title", "unknown")
             ext = doc.get("extension", "")
-            safe_name = sanitize_filename(title + ext)
+            # Avoid double extensions (e.g., "file.pdf" + ".pdf")
+            if ext and not title.lower().endswith(ext.lower()):
+                title = title + ext
+            safe_name = sanitize_filename(title)
             out_path = OUTPUT_DIR / safe_name
             folder_path = doc.get("folder_path", "")
             source_url = f"{BASE_URL}/document/{doc['guid']}"

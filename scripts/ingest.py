@@ -347,8 +347,8 @@ def _ingest_with_dedup(
     file_hash = content_hash(text)
     portal = source_portal or _infer_portal(path.name)
 
-    # Check for existing document
-    existing = find_document_by_source(client, path.name, portal)
+    # Check for existing document (by filename only — portal may differ)
+    existing = find_document_by_source(client, path.name)
 
     if existing:
         if existing.get("content_hash") == file_hash:
