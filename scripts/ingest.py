@@ -31,10 +31,18 @@ from pathlib import Path
 from typing import Any
 
 from actalux.config import load_config
-from actalux.db import get_client, insert_chunks, insert_document, insert_ingest_run
+from actalux.db import (
+    find_document_by_source,
+    get_client,
+    insert_chunks,
+    insert_document,
+    insert_ingest_run,
+    update_document_checked,
+)
 from actalux.errors import ActaluxError, ParseError
 from actalux.ingest.chunker import chunk_document, validate_chunks
 from actalux.ingest.embedder import embed_chunks
+from actalux.ingest.hashing import content_hash
 from actalux.ingest.parser import parse_file
 from actalux.models import Document, IngestRun
 
@@ -213,14 +221,6 @@ def ingest_directory(data_dir: Path) -> None:
     config = load_config()
     client = get_client(config.supabase_url, config.supabase_key)
 
-    # Deduplication: fetch already-ingested source_file names
-    existing_result = client.table("documents").select("source_file").execute()
-    already_ingested: set[str] = {r["source_file"] for r in existing_result.data}
-    if already_ingested:
-        logger.info(
-            "Found %d already-ingested documents, will skip duplicates", len(already_ingested)
-        )
-
     meeting_dirs = sorted(
         [d for d in data_dir.iterdir() if d.is_dir()],
         key=lambda d: d.name,
@@ -239,51 +239,24 @@ def ingest_directory(data_dir: Path) -> None:
     if flat_files:
         logger.info("Found %d files in flat directory %s", len(flat_files), data_dir)
         for doc_file in flat_files:
-            if doc_file.name in already_ingested:
-                logger.info("  SKIP (already ingested): %s", doc_file.name)
-                continue
-
             meeting_date = infer_meeting_date(doc_file.name) or date.today()
             meeting_title = infer_meeting_title(doc_file.name)
 
-            logger.info(
-                "Processing: %s (%s)",
-                meeting_title,
-                meeting_date,
-            )
-
             try:
-                result = ingest_single_file(
+                result = _ingest_with_dedup(
                     client=client,
                     path=doc_file,
                     meeting_date=meeting_date,
                     meeting_title=meeting_title,
                     config=config,
                 )
+                if result["status"] == "skipped":
+                    continue
                 total_docs += 1
                 total_chunks += result["chunks"]
-                logger.info(
-                    "  OK %s: %d chunks ingested",
-                    doc_file.name,
-                    result["chunks"],
-                )
             except ActaluxError as exc:
                 total_failed += 1
                 logger.error("  FAIL %s: %s", doc_file.name, exc)
-
-            # Log each file as its own ingest run
-            run = IngestRun(
-                meeting_date=meeting_date,
-                meeting_title=meeting_title,
-                docs_found=1,
-                docs_ingested=1 if total_failed == 0 else 0,
-                docs_failed=1 if total_failed > 0 else 0,
-                errors=[],
-            )
-            try:
-                insert_ingest_run(client, run)
-            except Exception as exc:
-                logger.error("Failed to log ingest run: %s", exc)
 
     # Process subdirectories (grouped by meeting)
     for meeting_dir in meeting_dirs:
@@ -312,25 +285,18 @@ def ingest_directory(data_dir: Path) -> None:
         errors: list[str] = []
 
         for doc_file in doc_files:
-            if doc_file.name in already_ingested:
-                logger.info("  SKIP (already ingested): %s", doc_file.name)
-                continue
-
             try:
-                result = ingest_single_file(
+                result = _ingest_with_dedup(
                     client=client,
                     path=doc_file,
                     meeting_date=meeting_date or date.today(),
                     meeting_title=meeting_title,
                     config=config,
                 )
+                if result["status"] == "skipped":
+                    continue
                 docs_ingested += 1
                 total_chunks += result["chunks"]
-                logger.info(
-                    "  OK %s: %d chunks ingested",
-                    doc_file.name,
-                    result["chunks"],
-                )
             except ActaluxError as exc:
                 docs_failed += 1
                 errors.append(f"{doc_file.name}: {exc}")
@@ -364,32 +330,108 @@ def ingest_directory(data_dir: Path) -> None:
         sys.exit(1)
 
 
+def _ingest_with_dedup(
+    client: Any,
+    path: Path,
+    meeting_date: date,
+    meeting_title: str,
+    config: Any,
+    source_url: str = "",
+    source_portal: str = "",
+) -> dict[str, Any]:
+    """Parse a file, check for duplicates by content hash, then ingest.
+
+    Returns {"status": "new"|"updated"|"skipped", "chunks": N}.
+    """
+    text = parse_file(path)
+    file_hash = content_hash(text)
+    portal = source_portal or _infer_portal(path.name)
+
+    # Check for existing document
+    existing = find_document_by_source(client, path.name, portal)
+
+    if existing:
+        if existing.get("content_hash") == file_hash:
+            # Content unchanged — just mark as checked
+            update_document_checked(client, existing["id"])
+            logger.info("  SKIP (unchanged): %s", path.name)
+            return {"status": "skipped", "chunks": 0}
+
+        # Content changed — create new version
+        old_version = existing.get("version", 1)
+        logger.info(
+            "  UPDATE %s: content changed (v%d -> v%d)",
+            path.name,
+            old_version,
+            old_version + 1,
+        )
+        result = ingest_single_file(
+            client=client,
+            path=path,
+            text=text,
+            file_hash=file_hash,
+            meeting_date=meeting_date,
+            meeting_title=meeting_title,
+            config=config,
+            source_url=source_url,
+            source_portal=portal,
+            version=old_version + 1,
+        )
+        # Mark old document as replaced by the new one
+        new_id = result["doc_id"]
+        client.table("documents").update({"replaces_id": new_id}).eq("id", existing["id"]).execute()
+        return {"status": "updated", "chunks": result["chunks"]}
+
+    # New document
+    result = ingest_single_file(
+        client=client,
+        path=path,
+        text=text,
+        file_hash=file_hash,
+        meeting_date=meeting_date,
+        meeting_title=meeting_title,
+        config=config,
+        source_url=source_url,
+        source_portal=portal,
+    )
+    logger.info("  OK %s: %d chunks ingested", path.name, result["chunks"])
+    return {"status": "new", "chunks": result["chunks"]}
+
+
 def ingest_single_file(
     client: Any,
     path: Path,
     meeting_date: date,
     meeting_title: str,
     config: Any,
+    text: str = "",
+    file_hash: str = "",
+    source_url: str = "",
+    source_portal: str = "",
+    version: int = 1,
 ) -> dict[str, int]:
     """Parse, chunk, embed, validate, and store a single document.
 
-    Returns {"chunks": N} with the number of chunks stored.
+    Returns {"doc_id": N, "chunks": N}.
     """
-    # 1. Parse
-    text = parse_file(path)
+    if not text:
+        text = parse_file(path)
+    if not file_hash:
+        file_hash = content_hash(text)
 
-    # 2. Store the document
     doc = Document(
         meeting_date=meeting_date,
         meeting_title=meeting_title,
         document_type=infer_document_type(path.name),
-        source_url="",  # will be set when we have URLs
+        source_url=source_url,
         source_file=path.name,
         content=text,
+        content_hash=file_hash,
+        source_portal=source_portal or _infer_portal(path.name),
+        version=version,
     )
     doc_id = insert_document(client, doc)
 
-    # 3. Chunk
     chunks = chunk_document(
         document_id=doc_id,
         text=text,
@@ -397,7 +439,6 @@ def ingest_single_file(
         overlap_sentences=config.chunk_overlap_sentences,
     )
 
-    # 4. Validate (citation integrity: each chunk must be a substring of source)
     valid_chunks = validate_chunks(chunks, text)
     if len(valid_chunks) < len(chunks):
         logger.warning(
@@ -410,27 +451,107 @@ def ingest_single_file(
     if not valid_chunks:
         raise ParseError(f"All chunks failed validation for {path.name}")
 
-    # 5. Embed
     embedded_chunks = embed_chunks(valid_chunks, model_name=config.embedding_model)
-
-    # 6. Store chunks
     insert_chunks(client, embedded_chunks)
 
-    return {"chunks": len(embedded_chunks)}
+    return {"doc_id": doc_id, "chunks": len(embedded_chunks)}
+
+
+def _infer_portal(filename: str) -> str:
+    """Guess source portal from filename patterns."""
+    if re.search(r"Meeting Minutes", filename, re.IGNORECASE):
+        return "diligent"
+    if re.search(r"Budget\.html$", filename, re.IGNORECASE):
+        return "claytonschools"
+    if re.search(r"Board of Education.*\.txt$", filename, re.IGNORECASE):
+        return "youtube"
+    if filename.lower().endswith(".txt") and re.search(r"board", filename, re.IGNORECASE):
+        return "youtube"
+    return "manual"
+
+
+def ingest_from_manifest(manifest_path: Path) -> None:
+    """Ingest documents listed in a crawler manifest JSON file.
+
+    Each entry has: source_file, source_url, source_portal,
+    and optionally meeting_date and meeting_title.
+    The file is expected to exist in data/documents/.
+    """
+    import json
+
+    config = load_config()
+    client = get_client(config.supabase_url, config.supabase_key)
+
+    manifest = json.loads(manifest_path.read_text())
+    data_dir = manifest_path.parent
+
+    total_new = 0
+    total_updated = 0
+    total_skipped = 0
+    total_failed = 0
+
+    for entry in manifest:
+        source_file = entry["source_file"]
+        file_path = data_dir / source_file
+        if not file_path.exists():
+            logger.error("File not found: %s", file_path)
+            total_failed += 1
+            continue
+
+        meeting_date = (
+            date.fromisoformat(entry["meeting_date"])
+            if entry.get("meeting_date")
+            else infer_meeting_date(source_file) or date.today()
+        )
+        meeting_title = entry.get("meeting_title", infer_meeting_title(source_file))
+
+        try:
+            result = _ingest_with_dedup(
+                client=client,
+                path=file_path,
+                meeting_date=meeting_date,
+                meeting_title=meeting_title,
+                config=config,
+                source_url=entry.get("source_url", ""),
+                source_portal=entry.get("source_portal", ""),
+            )
+            if result["status"] == "new":
+                total_new += 1
+            elif result["status"] == "updated":
+                total_updated += 1
+            else:
+                total_skipped += 1
+        except ActaluxError as exc:
+            total_failed += 1
+            logger.error("FAIL %s: %s", source_file, exc)
+
+    logger.info(
+        "Manifest ingestion complete: %d new, %d updated, %d skipped, %d failed",
+        total_new,
+        total_updated,
+        total_skipped,
+        total_failed,
+    )
 
 
 def main() -> None:
     if len(sys.argv) < 2:
-        print("Usage: python scripts/ingest.py <data_directory>")
-        print("Example: python scripts/ingest.py data/documents/")
+        print("Usage:")
+        print("  python scripts/ingest.py <data_directory>")
+        print("  python scripts/ingest.py --manifest <manifest.json>")
         sys.exit(1)
 
-    data_dir = Path(sys.argv[1])
-    if not data_dir.is_dir():
-        print(f"Error: {data_dir} is not a directory")
-        sys.exit(1)
-
-    ingest_directory(data_dir)
+    if sys.argv[1] == "--manifest":
+        if len(sys.argv) < 3:
+            print("Usage: python scripts/ingest.py --manifest <manifest.json>")
+            sys.exit(1)
+        ingest_from_manifest(Path(sys.argv[2]))
+    else:
+        data_dir = Path(sys.argv[1])
+        if not data_dir.is_dir():
+            print(f"Error: {data_dir} is not a directory")
+            sys.exit(1)
+        ingest_directory(data_dir)
 
 
 if __name__ == "__main__":
