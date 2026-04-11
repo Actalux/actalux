@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Search{% endblock %}
+{% block content %}
+<h1>Clayton School District Records</h1>
+<p style="color: var(--muted); margin-bottom: 1.5rem;">
+    Search official board meeting documents. Every result is a direct quote with a verified source.
+</p>
+
+<form class="search-form" hx-post="/search" hx-target="#results" hx-indicator="#loading">
+    <input type="text" name="q" placeholder="Search meeting records..." autofocus>
+    <button type="submit">Search</button>
+</form>
+
+<div class="filters">
+    <input type="date" name="date_from" form="search-form" placeholder="From">
+    <input type="date" name="date_to" form="search-form" placeholder="To">
+    <select name="doc_type" form="search-form">
+        <option value="">All document types</option>
+        <option value="minutes">Minutes</option>
+        <option value="agenda">Agenda</option>
+        <option value="packet">Board packet</option>
+        <option value="resolution">Resolution</option>
+    </select>
+</div>
+
+<span id="loading" class="htmx-indicator">Searching...</span>
+
+<div id="results"></div>
+{% endblock %}

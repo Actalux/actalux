@@ -98,3 +98,79 @@ CREATE TABLE IF NOT EXISTS transcripts (
     reviewed BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- ============================================================
+-- RPC functions for hybrid search
+-- ============================================================
+
+-- Semantic search: returns chunks ranked by cosine similarity
+CREATE OR REPLACE FUNCTION semantic_search(
+    query_embedding VECTOR(384),
+    match_threshold FLOAT DEFAULT 0.35,
+    match_count INT DEFAULT 50,
+    filter_date_from DATE DEFAULT NULL,
+    filter_date_to DATE DEFAULT NULL,
+    filter_doc_type TEXT DEFAULT NULL
+)
+RETURNS TABLE (
+    chunk_id INT,
+    document_id INT,
+    content TEXT,
+    section TEXT,
+    speaker TEXT,
+    similarity FLOAT
+)
+LANGUAGE sql STABLE
+AS $$
+    SELECT
+        c.id AS chunk_id,
+        c.document_id,
+        c.content,
+        c.section,
+        c.speaker,
+        1 - (c.embedding <=> query_embedding) AS similarity
+    FROM chunks c
+    JOIN documents d ON d.id = c.document_id
+    WHERE c.embedding IS NOT NULL
+      AND 1 - (c.embedding <=> query_embedding) >= match_threshold
+      AND (filter_date_from IS NULL OR d.meeting_date >= filter_date_from)
+      AND (filter_date_to IS NULL OR d.meeting_date <= filter_date_to)
+      AND (filter_doc_type IS NULL OR d.document_type = filter_doc_type)
+    ORDER BY c.embedding <=> query_embedding
+    LIMIT match_count;
+$$;
+
+-- Keyword search: returns chunks ranked by full-text relevance
+CREATE OR REPLACE FUNCTION keyword_search(
+    search_query TEXT,
+    match_count INT DEFAULT 50,
+    filter_date_from DATE DEFAULT NULL,
+    filter_date_to DATE DEFAULT NULL,
+    filter_doc_type TEXT DEFAULT NULL
+)
+RETURNS TABLE (
+    chunk_id INT,
+    document_id INT,
+    content TEXT,
+    section TEXT,
+    speaker TEXT,
+    rank FLOAT
+)
+LANGUAGE sql STABLE
+AS $$
+    SELECT
+        c.id AS chunk_id,
+        c.document_id,
+        c.content,
+        c.section,
+        c.speaker,
+        ts_rank(to_tsvector('english', c.content), websearch_to_tsquery('english', search_query)) AS rank
+    FROM chunks c
+    JOIN documents d ON d.id = c.document_id
+    WHERE to_tsvector('english', c.content) @@ websearch_to_tsquery('english', search_query)
+      AND (filter_date_from IS NULL OR d.meeting_date >= filter_date_from)
+      AND (filter_date_to IS NULL OR d.meeting_date <= filter_date_to)
+      AND (filter_doc_type IS NULL OR d.document_type = filter_doc_type)
+    ORDER BY rank DESC
+    LIMIT match_count;
+$$;

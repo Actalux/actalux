@@ -52,7 +52,7 @@ def download_document(client: httpx.Client, doc_guid: str) -> tuple[str, bytes]:
 
 def sanitize_filename(name: str) -> str:
     """Make a filename safe for the filesystem."""
-    return re.sub(r'[<>:"/\\|?*]', '_', name).strip()
+    return re.sub(r'[<>:"/\\|?*]', "_", name).strip()
 
 
 def main() -> None:

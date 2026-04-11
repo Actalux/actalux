@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Source: {{ chunk.hash_id | default('#') }}{% endblock %}
+{% block content %}
+<div style="margin-bottom: 1rem;">
+    <a href="/" style="color: var(--accent); text-decoration: none; font-size: 0.85rem;">Back to search</a>
+</div>
+
+<h1>Citation Context</h1>
+
+{% if document %}
+<div class="meta" style="font-size: 0.85rem; color: var(--muted); margin-bottom: 1.5rem;">
+    <span>{{ document.meeting_title }}</span>
+    {% if document.meeting_date %}<span>{{ document.meeting_date }}</span>{% endif %}
+    <a href="/document/{{ document.id }}" style="color: var(--accent);">Full document</a>
+</div>
+{% endif %}
+
+<p style="font-size: 0.85rem; color: var(--muted); margin-bottom: 1rem;">
+    The highlighted passage is the cited quote. Surrounding text provides context.
+</p>
+
+{% for ctx in context %}
+<div class="context-chunk {% if ctx.id == chunk.id %}current{% endif %}" style="margin-bottom: 0.5rem; padding: 0.75rem;">
+    {% if ctx.id == chunk.id %}
+    <span class="hash-id" style="display: block; margin-bottom: 0.25rem;">
+        #q{{ '%04x' % ctx.id }}
+        {% if ctx.section %}&middot; {{ ctx.section }}{% endif %}
+        {% if ctx.speaker %}&middot; {{ ctx.speaker }}{% endif %}
+    </span>
+    {% endif %}
+    <div class="content" style="font-size: 0.95rem;">{{ ctx.content }}</div>
+</div>
+{% endfor %}
+{% endblock %}

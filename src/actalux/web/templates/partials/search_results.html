@@ -1,0 +1,27 @@
+{% if results %}
+<p style="font-size: 0.85rem; color: var(--muted); margin-bottom: 1rem;">
+    {{ results|length }} result{{ 's' if results|length != 1 }} for "{{ query }}"
+</p>
+{% for r in results %}
+<div class="result-card">
+    <div class="meta">
+        <span class="hash-id">{{ r.hash_id }}</span>
+        {% if r.meeting_date %}<span>{{ r.meeting_date }}</span>{% endif %}
+        {% if r.meeting_title %}<span>{{ r.meeting_title }}</span>{% endif %}
+        {% if r.document_type %}<span class="badge">{{ r.document_type }}</span>{% endif %}
+        {% if r.section %}<span>{{ r.section }}</span>{% endif %}
+    </div>
+    <div class="content">{{ r.content }}</div>
+    <div style="margin-top: 0.5rem;">
+        <a href="/chunk/{{ r.chunk_id }}/source" class="source-link">View in context</a>
+        &middot;
+        <a href="/document/{{ r.document_id }}" class="source-link">Full document</a>
+    </div>
+</div>
+{% endfor %}
+{% elif query %}
+<div class="empty-state">
+    <p>No matching quotes found for "{{ query }}".</p>
+    <p>Try different keywords or browse <a href="/topic/budget">budget topics</a>.</p>
+</div>
+{% endif %}

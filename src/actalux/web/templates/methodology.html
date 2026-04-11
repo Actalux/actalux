@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Methodology{% endblock %}
+{% block content %}
+<h1>How Actalux Works</h1>
+
+<h2>What we publish</h2>
+<p>Actalux indexes official Clayton School District documents: board meeting agendas, minutes, board packets, and resolutions. Every search result is a verbatim quote from an official document.</p>
+
+<h2>Document processing</h2>
+<p>Documents are converted from their original format (PDF or HTML) to plain text. The text is split into passages of approximately 200 words, preserving section boundaries and sentence integrity. No text is paraphrased or rewritten.</p>
+
+<h2>How search works</h2>
+<p>Search uses two methods simultaneously:</p>
+<ul style="margin: 0.5rem 0 0.5rem 1.5rem;">
+    <li><strong>Keyword matching</strong> finds passages containing your exact search terms.</li>
+    <li><strong>Semantic search</strong> finds passages with similar meaning, even if the exact words differ.</li>
+</ul>
+<p>Results from both methods are combined using reciprocal rank fusion, which weights passages that appear in both result sets higher than those appearing in only one.</p>
+
+<h2>Citation integrity</h2>
+<p>At ingestion time, every passage is verified to be an exact substring of its source document. Passages that fail this check are rejected. Each displayed passage includes a short hash ID (e.g., #q003f) that serves as a stable, shareable reference.</p>
+
+<h2>What we do not do</h2>
+<ul style="margin: 0.5rem 0 0.5rem 1.5rem;">
+    <li>We do not editorialize, summarize without citation, or express opinions.</li>
+    <li>We do not publish closed session content.</li>
+    <li>We do not publish content about individual personnel, teachers, or students.</li>
+    <li>We do not infer intent or make causal claims unless explicitly stated in the source document.</li>
+</ul>
+
+<h2>Corrections</h2>
+<p>If you find an error, use the "Report an error" form on any page. Include the quote ID so we can locate the passage. We review every report.</p>
+
+<h2>Open source</h2>
+<p>The full source code is available at <a href="https://github.com/Actalux/actalux">github.com/Actalux/actalux</a>. Actalux is a 501(c)(3) nonprofit organization.</p>
+{% endblock %}
