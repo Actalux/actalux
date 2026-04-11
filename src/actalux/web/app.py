@@ -7,6 +7,7 @@ Endpoints:
   GET  /chunk/{id}/source — citation context (chunk + neighbors)
   GET  /methodology     — how the system works
   POST /report-error    — submit a correction
+  POST /summarize       — citation-backed LLM summary
 """
 
 from __future__ import annotations
@@ -23,10 +24,11 @@ from fastapi.templating import Jinja2Templates
 
 from actalux.config import Config, load_config
 from actalux.db import get_chunk_with_context, get_client, get_document, insert_correction
-from actalux.errors import SearchError
+from actalux.errors import SearchError, SummaryError
 from actalux.ingest.embedder import load_model
 from actalux.models import Correction
 from actalux.search.hybrid import SearchFilters, hybrid_search
+from actalux.search.summarize import generate_summary
 
 logger = logging.getLogger(__name__)
 
@@ -234,7 +236,81 @@ async def report_error(
     return templates.TemplateResponse(request, "partials/error_submitted.html")
 
 
+@app.post("/summarize", response_class=HTMLResponse)
+async def summarize(
+    request: Request,
+    q: str = Form(""),
+    date_from: str = Form(""),
+    date_to: str = Form(""),
+    doc_type: str = Form(""),
+) -> HTMLResponse:
+    """Generate a citation-backed LLM summary for a search query.
+
+    Called via HTMX after search results render. Returns a partial
+    with the summary text and inline citation links.
+    """
+    cfg = _get_config()
+    if not q.strip() or not cfg.anthropic_api_key:
+        return templates.TemplateResponse(
+            request,
+            "partials/summary.html",
+            {"summary": None},
+        )
+
+    filters = SearchFilters(
+        date_from=date.fromisoformat(date_from) if date_from else None,
+        date_to=date.fromisoformat(date_to) if date_to else None,
+        document_type=doc_type or None,
+    )
+
+    client = _get_db()
+    try:
+        query_embedding = _embed_query(q)
+        results = hybrid_search(client, q, query_embedding, filters, max_results=10)
+        enriched = _enrich_results(client, results)
+        summary = generate_summary(q, enriched, cfg.anthropic_api_key)
+    except (SearchError, SummaryError):
+        logger.exception("Summary generation failed for: %s", q)
+        return templates.TemplateResponse(
+            request,
+            "partials/summary.html",
+            {"summary": None},
+        )
+
+    # Convert citation IDs to clickable links
+    summary_html = _render_citation_links(summary.text, enriched)
+
+    return templates.TemplateResponse(
+        request,
+        "partials/summary.html",
+        {"summary": summary, "summary_html": summary_html},
+    )
+
+
 # --- Helpers ---
+
+
+def _render_citation_links(text: str, results: list[dict[str, Any]]) -> str:
+    """Replace [#qXXXX] citations with HTML links to chunk source pages."""
+    import re
+
+    # Build a lookup from hash_id to chunk_id
+    id_map: dict[str, int] = {}
+    for r in results:
+        id_map[r["hash_id"]] = r["chunk_id"]
+
+    def replace_citation(match: re.Match[str]) -> str:
+        hash_id = match.group(1)
+        chunk_id = id_map.get(hash_id)
+        if chunk_id is not None:
+            return (
+                f'<a href="/chunk/{chunk_id}/source" class="source-link" '
+                f'style="font-family: monospace; font-size: 0.8rem;">'
+                f"[{hash_id}]</a>"
+            )
+        return match.group(0)
+
+    return re.sub(r"\[(#q[0-9a-f]{4,5})\]", replace_citation, text)
 
 
 def _enrich_results(client: Any, results: list[Any]) -> list[dict[str, Any]]:

@@ -32,17 +32,28 @@ def get_client(url: str, key: str) -> Client:
 
 def insert_document(client: Client, doc: Document) -> int:
     """Insert a document and return its ID."""
-    data = {
+    data: dict[str, Any] = {
         "meeting_date": doc.meeting_date.isoformat(),
         "meeting_title": doc.meeting_title,
         "document_type": doc.document_type,
         "source_url": doc.source_url,
         "source_file": doc.source_file,
         "content": doc.content,
+        "content_hash": doc.content_hash,
+        "source_portal": doc.source_portal,
+        "version": doc.version,
     }
+    if doc.replaces_id is not None:
+        data["replaces_id"] = doc.replaces_id
     result = client.table("documents").insert(data).execute()
     doc_id: int = result.data[0]["id"]
-    logger.info("Inserted document %d: %s (%s)", doc_id, doc.meeting_title, doc.document_type)
+    logger.info(
+        "Inserted document %d: %s (%s) v%d",
+        doc_id,
+        doc.meeting_title,
+        doc.document_type,
+        doc.version,
+    )
     return doc_id
 
 
@@ -50,6 +61,42 @@ def get_document(client: Client, doc_id: int) -> dict[str, Any] | None:
     """Fetch a document by ID."""
     result = client.table("documents").select("*").eq("id", doc_id).execute()
     return result.data[0] if result.data else None
+
+
+def find_document_by_source(
+    client: Client, source_file: str, source_portal: str = ""
+) -> dict[str, Any] | None:
+    """Find the latest version of a document by source_file and portal."""
+    query = (
+        client.table("documents")
+        .select("*")
+        .eq("source_file", source_file)
+        .is_("replaces_id", "null")
+    )
+    if source_portal:
+        query = query.eq("source_portal", source_portal)
+    result = query.execute()
+    return result.data[0] if result.data else None
+
+
+def replace_document(client: Client, old_doc_id: int, new_doc: Document) -> int:
+    """Create a new version, mark the old one as replaced.
+
+    Returns the new document's ID.
+    """
+    new_id = insert_document(client, new_doc)
+    # Mark old document as replaced
+    client.table("documents").update({"replaces_id": new_id}).eq("id", old_doc_id).execute()
+    logger.info("Document %d replaced by %d (v%d)", old_doc_id, new_id, new_doc.version)
+    return new_id
+
+
+def update_document_checked(client: Client, doc_id: int) -> None:
+    """Update last_checked_at to now."""
+    from datetime import UTC, datetime
+
+    now = datetime.now(UTC).isoformat()
+    client.table("documents").update({"last_checked_at": now}).eq("id", doc_id).execute()
 
 
 # --- Chunks ---

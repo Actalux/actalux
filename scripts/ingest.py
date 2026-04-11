@@ -45,20 +45,131 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 SUPPORTED_EXTENSIONS = {".pdf", ".html", ".htm", ".md", ".markdown", ".txt"}
-DATE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})")
+ISO_DATE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})")
+# "April 10, 2024" or "Aug 14 2024" (full or abbreviated, with or without comma)
+NATURAL_DATE_RE = re.compile(
+    r"(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?"
+    r"|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
+    r"\s+(\d{1,2}),?\s+(\d{4})",
+    re.IGNORECASE,
+)
+# "10-29-25" or "2-04-26" — M-D-YY with 2-digit year
+SHORT_DATE_RE = re.compile(r"^(\d{1,2})-(\d{1,2})-(\d{2})\b")
+# "jan21" — abbreviated month + day (no separator), e.g., "jan21_board_meeting.txt"
+COMPACT_DATE_RE = re.compile(
+    r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)(\d{1,2})",
+    re.IGNORECASE,
+)
+# "2024-2025" fiscal year anywhere in the filename
+FISCAL_YEAR_RE = re.compile(r"(\d{4})-(\d{4})\s+")
+
+MONTH_NAMES = {
+    "jan": 1,
+    "january": 1,
+    "feb": 2,
+    "february": 2,
+    "mar": 3,
+    "march": 3,
+    "apr": 4,
+    "april": 4,
+    "may": 5,
+    "jun": 6,
+    "june": 6,
+    "jul": 7,
+    "july": 7,
+    "aug": 8,
+    "august": 8,
+    "sep": 9,
+    "september": 9,
+    "oct": 10,
+    "october": 10,
+    "nov": 11,
+    "november": 11,
+    "dec": 12,
+    "december": 12,
+}
+
 DOC_TYPE_PATTERNS = {
     "agenda": re.compile(r"agenda", re.IGNORECASE),
     "minutes": re.compile(r"minutes", re.IGNORECASE),
     "packet": re.compile(r"packet|board.?pack", re.IGNORECASE),
     "resolution": re.compile(r"resolution", re.IGNORECASE),
+    "budget": re.compile(r"budget", re.IGNORECASE),
+    "presentation": re.compile(r"presentation|preliminary.?plan", re.IGNORECASE),
+    "ballot": re.compile(r"ballot", re.IGNORECASE),
 }
 
+# Fallback: if filename doesn't match any pattern but is a .txt file
+# from the transcripts directory, classify as "transcript"
+TRANSCRIPT_EXTENSIONS = {".txt"}
 
-def infer_meeting_date(dir_name: str) -> date | None:
-    """Extract YYYY-MM-DD from directory name."""
-    match = DATE_RE.match(dir_name)
+
+def infer_meeting_date(name: str) -> date | None:
+    """Extract a date from a directory or filename.
+
+    Handles:
+      - ISO prefix: "2024-03-15_board-meeting"
+      - Short date: "10-29-25 Board of Education Meeting.txt" (M-D-YY)
+      - Natural date: "April 10, 2024 Meeting Minutes.pdf"
+      - Compact date: "jan21_board_meeting.txt" (monDD)
+      - Fiscal year: "2024-2025 School District of Clayton Budget.html"
+        (uses July 1 of the start year as the fiscal year start)
+    """
+    # Try ISO date prefix first
+    match = ISO_DATE_RE.match(name)
     if match:
         return date.fromisoformat(match.group(1))
+
+    # Try short date ("M-D-YY" with 2-digit year)
+    match = SHORT_DATE_RE.match(name)
+    if match:
+        month = int(match.group(1))
+        day = int(match.group(2))
+        short_year = int(match.group(3))
+        year = 2000 + short_year if short_year < 50 else 1900 + short_year
+        return date(year, month, day)
+
+    # Try natural date ("Month DD, YYYY")
+    match = NATURAL_DATE_RE.search(name)
+    if match:
+        month = MONTH_NAMES[match.group(1).lower()]
+        day = int(match.group(2))
+        year = int(match.group(3))
+        return date(year, month, day)
+
+    # Try compact month+year ("Feb2025", "April2026" — no day)
+    month_year_match = re.search(
+        r"(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?"
+        r"|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
+        r"(\d{4})",
+        name,
+        re.IGNORECASE,
+    )
+    if month_year_match:
+        month = MONTH_NAMES[month_year_match.group(1).lower()]
+        year = int(month_year_match.group(2))
+        return date(year, month, 1)
+
+    # Try compact date ("jan21" — abbreviated month + day, no year)
+    match = COMPACT_DATE_RE.search(name)
+    if match:
+        month = MONTH_NAMES[match.group(1).lower()]
+        day = int(match.group(2))
+        # Infer year: assume most recent past occurrence
+        from datetime import date as date_type
+
+        today = date_type.today()
+        candidate = date(today.year, month, day)
+        if candidate > today:
+            candidate = date(today.year - 1, month, day)
+        return candidate
+
+    # Try fiscal year ("2024-2025 ..." anywhere in name)
+    match = FISCAL_YEAR_RE.search(name)
+    if match:
+        start_year = int(match.group(1))
+        return date(start_year, 7, 1)
+
     return None
 
 
@@ -67,44 +178,123 @@ def infer_document_type(filename: str) -> str:
     for doc_type, pattern in DOC_TYPE_PATTERNS.items():
         if pattern.search(filename):
             return doc_type
+    # .txt files that match "Board of Education" are transcripts
+    ext = Path(filename).suffix.lower()
+    if ext in TRANSCRIPT_EXTENSIONS and re.search(r"board", filename, re.IGNORECASE):
+        return "transcript"
     return "other"
 
 
-def infer_meeting_title(dir_name: str) -> str:
-    """Create a meeting title from the directory name."""
-    # Remove date prefix and clean up
-    title = DATE_RE.sub("", dir_name).strip("_- ")
-    return title.replace("-", " ").replace("_", " ").title() or "Board Meeting"
+def infer_meeting_title(name: str) -> str:
+    """Create a meeting title from a directory or filename.
+
+    Strips the file extension and date prefix to produce a clean title.
+    """
+    # Remove extension if present
+    title = Path(name).stem
+
+    # Remove ISO date prefix
+    title = ISO_DATE_RE.sub("", title).strip("_- ")
+
+    # Clean up separators
+    title = title.replace("-", " ").replace("_", " ").strip()
+
+    return title or "Board Meeting"
 
 
 def ingest_directory(data_dir: Path) -> None:
-    """Ingest all meeting directories under data_dir."""
+    """Ingest documents from data_dir.
+
+    Supports two layouts:
+      1. Subdirectories per meeting: data/documents/2024-03-15_board-meeting/
+      2. Flat directory: data/documents/April 10, 2024 Meeting Minutes.pdf
+         (date and title are inferred from each filename)
+    """
     config = load_config()
     client = get_client(config.supabase_url, config.supabase_key)
+
+    # Deduplication: fetch already-ingested source_file names
+    existing_result = client.table("documents").select("source_file").execute()
+    already_ingested: set[str] = {r["source_file"] for r in existing_result.data}
+    if already_ingested:
+        logger.info(
+            "Found %d already-ingested documents, will skip duplicates", len(already_ingested)
+        )
 
     meeting_dirs = sorted(
         [d for d in data_dir.iterdir() if d.is_dir()],
         key=lambda d: d.name,
     )
 
-    if not meeting_dirs:
-        # Flat directory with files directly
-        logger.info("No subdirectories found. Treating %s as a single meeting.", data_dir)
-        meeting_dirs = [data_dir]
+    # Check for files directly in data_dir (flat layout)
+    flat_files = sorted(
+        f for f in data_dir.iterdir() if f.is_file() and f.suffix.lower() in SUPPORTED_EXTENSIONS
+    )
 
     total_docs = 0
     total_chunks = 0
     total_failed = 0
 
+    # Process flat files (each file is its own meeting/document)
+    if flat_files:
+        logger.info("Found %d files in flat directory %s", len(flat_files), data_dir)
+        for doc_file in flat_files:
+            if doc_file.name in already_ingested:
+                logger.info("  SKIP (already ingested): %s", doc_file.name)
+                continue
+
+            meeting_date = infer_meeting_date(doc_file.name) or date.today()
+            meeting_title = infer_meeting_title(doc_file.name)
+
+            logger.info(
+                "Processing: %s (%s)",
+                meeting_title,
+                meeting_date,
+            )
+
+            try:
+                result = ingest_single_file(
+                    client=client,
+                    path=doc_file,
+                    meeting_date=meeting_date,
+                    meeting_title=meeting_title,
+                    config=config,
+                )
+                total_docs += 1
+                total_chunks += result["chunks"]
+                logger.info(
+                    "  OK %s: %d chunks ingested",
+                    doc_file.name,
+                    result["chunks"],
+                )
+            except ActaluxError as exc:
+                total_failed += 1
+                logger.error("  FAIL %s: %s", doc_file.name, exc)
+
+            # Log each file as its own ingest run
+            run = IngestRun(
+                meeting_date=meeting_date,
+                meeting_title=meeting_title,
+                docs_found=1,
+                docs_ingested=1 if total_failed == 0 else 0,
+                docs_failed=1 if total_failed > 0 else 0,
+                errors=[],
+            )
+            try:
+                insert_ingest_run(client, run)
+            except Exception as exc:
+                logger.error("Failed to log ingest run: %s", exc)
+
+    # Process subdirectories (grouped by meeting)
     for meeting_dir in meeting_dirs:
         meeting_date = infer_meeting_date(meeting_dir.name)
         meeting_title = infer_meeting_title(meeting_dir.name)
 
-        doc_files = [
+        doc_files = sorted(
             f
             for f in meeting_dir.iterdir()
             if f.is_file() and f.suffix.lower() in SUPPORTED_EXTENSIONS
-        ]
+        )
 
         if not doc_files:
             logger.warning("No supported files in %s, skipping", meeting_dir.name)
@@ -121,7 +311,11 @@ def ingest_directory(data_dir: Path) -> None:
         docs_failed = 0
         errors: list[str] = []
 
-        for doc_file in sorted(doc_files):
+        for doc_file in doc_files:
+            if doc_file.name in already_ingested:
+                logger.info("  SKIP (already ingested): %s", doc_file.name)
+                continue
+
             try:
                 result = ingest_single_file(
                     client=client,
@@ -133,19 +327,18 @@ def ingest_directory(data_dir: Path) -> None:
                 docs_ingested += 1
                 total_chunks += result["chunks"]
                 logger.info(
-                    "  ✓ %s: %d chunks ingested",
+                    "  OK %s: %d chunks ingested",
                     doc_file.name,
                     result["chunks"],
                 )
             except ActaluxError as exc:
                 docs_failed += 1
                 errors.append(f"{doc_file.name}: {exc}")
-                logger.error("  ✗ %s: %s", doc_file.name, exc)
+                logger.error("  FAIL %s: %s", doc_file.name, exc)
 
         total_docs += docs_ingested
         total_failed += docs_failed
 
-        # Log the ingest run
         run = IngestRun(
             meeting_date=meeting_date or date.today(),
             meeting_title=meeting_title,
@@ -167,7 +360,7 @@ def ingest_directory(data_dir: Path) -> None:
     )
 
     if total_failed > 0:
-        logger.warning("⚠ %d documents failed to ingest. Check errors above.", total_failed)
+        logger.warning("%d documents failed to ingest. Check errors above.", total_failed)
         sys.exit(1)
 
 

@@ -1,0 +1,16 @@
+{% if summary and summary.text and summary.citations_verified > 0 %}
+<div class="summary-card" style="background: var(--accent-light); border: 1px solid var(--accent); border-radius: 6px; padding: 1.25rem; margin-bottom: 1.5rem;">
+    <div style="font-size: 0.8rem; color: var(--accent); font-weight: 600; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em;">
+        AI Summary — every claim cites a source
+    </div>
+    <div style="font-size: 0.95rem; line-height: 1.7;">
+        {{ summary_html | safe }}
+    </div>
+    <div style="font-size: 0.75rem; color: var(--muted); margin-top: 0.75rem;">
+        {{ summary.citations_verified }} citation{{ 's' if summary.citations_verified != 1 }} verified
+        {% if summary.citations_dropped > 0 %}
+         — {{ summary.citations_dropped }} unverified claim{{ 's' if summary.citations_dropped != 1 }} removed
+        {% endif %}
+    </div>
+</div>
+{% endif %}

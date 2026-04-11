@@ -1,4 +1,15 @@
 {% if results %}
+<!-- Lazy-load summary via HTMX -->
+<div hx-post="/summarize"
+     hx-trigger="load"
+     hx-vals='{"q": "{{ query }}"}'
+     hx-swap="innerHTML"
+     id="summary-container">
+    <div style="font-size: 0.85rem; color: var(--muted); padding: 0.75rem 0;">
+        Generating summary...
+    </div>
+</div>
+
 <p style="font-size: 0.85rem; color: var(--muted); margin-bottom: 1rem;">
     {{ results|length }} result{{ 's' if results|length != 1 }} for "{{ query }}"
 </p>

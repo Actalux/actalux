@@ -5,5 +5,12 @@ from actalux.search.hybrid import (
     SearchResult,
     hybrid_search,
 )
+from actalux.search.summarize import Summary, generate_summary
 
-__all__ = ["SearchFilters", "SearchResult", "hybrid_search"]
+__all__ = [
+    "SearchFilters",
+    "SearchResult",
+    "Summary",
+    "generate_summary",
+    "hybrid_search",
+]

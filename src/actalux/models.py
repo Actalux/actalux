@@ -12,10 +12,16 @@ class Document:
 
     meeting_date: date
     meeting_title: str
-    document_type: str  # "agenda", "minutes", "packet", "resolution"
+    document_type: str  # "agenda", "minutes", "packet", "resolution", "transcript", etc.
     source_url: str
     source_file: str
     content: str
+    content_hash: str = ""
+    source_portal: str = ""  # "diligent", "claytonschools", "youtube", "manual"
+    version: int = 1
+    replaces_id: int | None = None
+    last_checked_at: datetime | None = None
+    updated_at: datetime | None = None
     id: int | None = None
     created_at: datetime | None = None
 
