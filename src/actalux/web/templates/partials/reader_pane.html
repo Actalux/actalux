@@ -34,3 +34,16 @@
   {% if document.source_url %}<a class="btn" href="{{ document.source_url }}" target="_blank" rel="noopener">View original source</a>{% endif %}
   <a class="btn btn-ghost" href="https://github.com/Actalux/actalux/issues/new?title=Error+report+%23q{{ '%04x' % ctx_chunk.id }}" target="_blank" rel="noopener">Report an error →</a>
 </div>
+
+<script>
+  // Scroll the cited paragraph into view within the reader pane, not the whole window.
+  (function () {
+    var cited = document.querySelector('#reader-col .cited, .doc-page .cited');
+    if (!cited) return;
+    var container = cited.closest('.reader-col');
+    if (container) {
+      var offset = cited.offsetTop - container.offsetTop - 60;
+      container.scrollTo({ top: Math.max(0, offset), behavior: 'auto' });
+    }
+  })();
+</script>

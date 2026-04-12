@@ -24,6 +24,7 @@
        hx-get="/chunk/{{ r.chunk_id }}/source?embed=1"
        hx-target="#reader-col"
        hx-swap="innerHTML"
+       {% if loop.first %}hx-trigger="load, click"{% endif %}
        onclick="document.querySelectorAll('.result-item.active').forEach(function(el){el.classList.remove('active');});this.classList.add('active');">
       <span class="kind">{{ r.document_type or 'Record' }}</span>
       {% if r.meeting_date %}<span class="date">{{ r.meeting_date }}</span>{% endif %}
@@ -38,9 +39,7 @@
   </section>
 
   <section class="reader-col" id="reader-col">
-    <div class="reader-empty">
-      Select a result to read the quote in its source context. For transcripts, the video will be cued to the exact timecode.
-    </div>
+    <div class="reader-empty">Loading source…</div>
   </section>
 
 </div>
