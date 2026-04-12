@@ -1,36 +1,47 @@
 {% extends "base.html" %}
-{% block title %}Methodology{% endblock %}
+{% block title %}How this works{% endblock %}
 {% block content %}
-<h1>How Actalux Works</h1>
 
-<h2>What we publish</h2>
-<p>Actalux indexes official Clayton School District documents: board meeting agendas, minutes, board packets, and resolutions. Every search result is a verbatim quote from an official document.</p>
+<section class="pane-header">
+  <h2>Methodology</h2>
+  <span class="meta">How Actalux works</span>
+</section>
 
-<h2>Document processing</h2>
-<p>Documents are converted from their original format (PDF or HTML) to plain text. The text is split into passages of approximately 200 words, preserving section boundaries and sentence integrity. No text is paraphrased or rewritten.</p>
+<article class="prose">
+  <h1>How Actalux works</h1>
 
-<h2>How search works</h2>
-<p>Search uses two methods simultaneously:</p>
-<ul style="margin: 0.5rem 0 0.5rem 1.5rem;">
-    <li><strong>Keyword matching</strong> finds passages containing your exact search terms.</li>
-    <li><strong>Semantic search</strong> finds passages with similar meaning, even if the exact words differ.</li>
-</ul>
-<p>Results from both methods are combined using reciprocal rank fusion, which weights passages that appear in both result sets higher than those appearing in only one.</p>
+  <h2>What we publish</h2>
+  <p>Actalux indexes public records of the Clayton, Missouri school district: board meeting agendas, minutes, board packets, resolutions, curriculum documents, budgets, strategic plans, and transcripts of public board meetings. We also publish records obtained through Missouri Sunshine Law requests. We do not claim completeness of the record. We publish what we have gathered and can verify against a source.</p>
 
-<h2>Citation integrity</h2>
-<p>At ingestion time, every passage is verified to be an exact substring of its source document. Passages that fail this check are rejected. Each displayed passage includes a short hash ID (e.g., #q003f) that serves as a stable, shareable reference.</p>
+  <h2>Document processing</h2>
+  <p>Documents are converted from their original format (PDF, HTML, or transcript) to plain text. Text is split into passages of approximately 200 words, preserving section boundaries and sentence integrity. No text is paraphrased or rewritten.</p>
 
-<h2>What we do not do</h2>
-<ul style="margin: 0.5rem 0 0.5rem 1.5rem;">
+  <h2>How search works</h2>
+  <p>Search uses two methods in parallel:</p>
+  <ul>
+    <li><strong>Keyword matching</strong> finds passages containing your exact search terms, using PostgreSQL full-text search.</li>
+    <li><strong>Semantic search</strong> finds passages with similar meaning, even when the exact words differ, using a 384-dimensional embedding (bge-small-en-v1.5) and pgvector cosine similarity.</li>
+  </ul>
+  <p>Results from both methods are combined using reciprocal rank fusion (k=60). Passages that appear in both result sets rank higher than those appearing in only one.</p>
+
+  <h2>Citation integrity</h2>
+  <p>At ingestion time, every passage is verified to be an exact substring of its source document. Passages that fail this check are rejected. Each displayed passage includes a short hash ID (e.g., <code style="font-family: var(--mono); font-size: 0.9em;">#q003f</code>) that is a stable, shareable reference.</p>
+  <p>When the system generates a summary of search results, every claim in the summary must cite at least one passage by its hash ID. Unverified claims are removed after generation before the summary is displayed.</p>
+
+  <h2>What we do not do</h2>
+  <ul>
     <li>We do not editorialize, summarize without citation, or express opinions.</li>
     <li>We do not publish closed session content.</li>
     <li>We do not publish content about individual personnel, teachers, or students.</li>
-    <li>We do not infer intent or make causal claims unless explicitly stated in the source document.</li>
-</ul>
+    <li>We do not infer intent or make causal claims unless explicitly stated in a source document.</li>
+    <li>We do not advocate for or against any candidate, ballot measure, or policy position.</li>
+  </ul>
 
-<h2>Corrections</h2>
-<p>If you find an error, use the "Report an error" form on any page. Include the quote ID so we can locate the passage. We review every report.</p>
+  <h2>Corrections</h2>
+  <p>If you find an error, use the "Report an error" link on any page. Include the quote ID so we can locate the passage. Corrections are tracked publicly as GitHub issues; anyone can see what has been reported, investigated, and resolved.</p>
 
-<h2>Open source</h2>
-<p>The full source code is available at <a href="https://github.com/Actalux/actalux">github.com/Actalux/actalux</a>. Actalux is a 501(c)(3) nonprofit organization.</p>
+  <h2>Open source</h2>
+  <p>The full source code is available at <a href="https://github.com/Actalux/actalux" target="_blank" rel="noopener">github.com/Actalux/actalux</a>. Actalux is a Missouri 501(c)(3) nonprofit. We take no paid advertising, track no users, and sell no data.</p>
+</article>
+
 {% endblock %}

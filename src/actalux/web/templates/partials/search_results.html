@@ -1,38 +1,63 @@
-{% if results %}
-<!-- Lazy-load summary via HTMX -->
-<div hx-post="/summarize"
-     hx-trigger="load"
-     hx-vals='{"q": "{{ query }}"}'
-     hx-swap="innerHTML"
-     id="summary-container">
-    <div style="font-size: 0.85rem; color: var(--muted); padding: 0.75rem 0;">
-        Generating summary...
-    </div>
-</div>
+{% if query and results %}
+<div class="split">
 
-<p style="font-size: 0.85rem; color: var(--muted); margin-bottom: 1rem;">
-    {{ results|length }} result{{ 's' if results|length != 1 }} for "{{ query }}"
-</p>
-{% for r in results %}
-<div class="result-card">
-    <div class="meta">
-        <span class="hash-id">{{ r.hash_id }}</span>
-        {% if r.meeting_date %}<span>{{ r.meeting_date }}</span>{% endif %}
+  <section class="results-col" id="results-col">
+    <div class="results-head-row">
+      <div class="query">"{{ query }}"</div>
+      <div class="meta-row">
+        <span>{{ results|length }} result{{ 's' if results|length != 1 }}</span>
+        <span>·</span>
+        <span>hybrid search · RRF</span>
+      </div>
+    </div>
+
+    <div hx-post="/summarize"
+         hx-trigger="load"
+         hx-vals='{"q": {{ query | tojson }} }'
+         hx-swap="innerHTML"
+         id="summary-container">
+    </div>
+
+    {% for r in results %}
+    <a class="result-item{% if loop.first %} active{% endif %}"
+       href="/chunk/{{ r.chunk_id }}/source"
+       hx-get="/chunk/{{ r.chunk_id }}/source?embed=1"
+       hx-target="#reader-col"
+       hx-swap="innerHTML"
+       onclick="document.querySelectorAll('.result-item.active').forEach(function(el){el.classList.remove('active');});this.classList.add('active');">
+      <span class="kind">{{ r.document_type or 'Record' }}</span>
+      {% if r.meeting_date %}<span class="date">{{ r.meeting_date }}</span>{% endif %}
+      <div class="snippet">{{ r.content }}</div>
+      <div class="cite-inline">
         {% if r.meeting_title %}<span>{{ r.meeting_title }}</span>{% endif %}
-        {% if r.document_type %}<span class="badge">{{ r.document_type }}</span>{% endif %}
-        {% if r.section %}<span>{{ r.section }}</span>{% endif %}
+        {% if r.section %}<span>· {{ r.section }}</span>{% endif %}
+        <span class="hash">{{ r.hash_id }}</span>
+      </div>
+    </a>
+    {% endfor %}
+  </section>
+
+  <section class="reader-col" id="reader-col">
+    <div class="reader-empty">
+      Select a result to read the quote in its source context. For transcripts, the video will be cued to the exact timecode.
     </div>
-    <div class="content">{{ r.content }}</div>
-    <div style="margin-top: 0.5rem;">
-        <a href="/chunk/{{ r.chunk_id }}/source" class="source-link">View in context</a>
-        &middot;
-        <a href="/document/{{ r.document_id }}" class="source-link">Full document</a>
-    </div>
+  </section>
+
 </div>
-{% endfor %}
 {% elif query %}
-<div class="empty-state">
-    <p>No matching quotes found for "{{ query }}".</p>
-    <p>Try different keywords or browse <a href="/topic/budget">budget topics</a>.</p>
+<div class="landing">
+  <span class="tagline">No matches</span>
+  <h1>No records found for "{{ query }}".</h1>
+  <p class="lede">
+    Try different keywords, or browse the <a href="/topic/budget">Budget topic page</a>, or use the sidebar to browse by document type.
+  </p>
+</div>
+{% else %}
+<div class="landing">
+  <span class="tagline">Search</span>
+  <h1>Search 215 public documents of the Clayton school district.</h1>
+  <p class="lede">
+    Use the search field in the top bar. Every result is a verbatim quote with its source citation attached. Try "multilingual learner program," "long range facilities master plan," or "curriculum adoption."
+  </p>
 </div>
 {% endif %}

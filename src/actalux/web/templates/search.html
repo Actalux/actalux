@@ -1,16 +1,16 @@
 {% extends "base.html" %}
-{% block title %}Search: {{ query }}{% endblock %}
+{% block title %}{% if query %}Search: {{ query }}{% else %}Search{% endif %}{% endblock %}
 {% block content %}
-<h1>Search Results</h1>
 
-<form class="search-form" hx-post="/search" hx-target="#results" hx-indicator="#loading">
-    <input type="text" name="q" value="{{ query }}" placeholder="Search meeting records...">
-    <button type="submit">Search</button>
-</form>
+<section class="pane-header">
+  <h2>{% if query %}Search results{% else %}Search the archive{% endif %}</h2>
+  <span class="meta">Clayton School District</span>
+</section>
 
-<span id="loading" class="htmx-indicator">Searching...</span>
+<span id="search-indicator" class="htmx-indicator">Searching…</span>
 
-<div id="results">
-    {% include "partials/search_results.html" %}
+<div id="search-results">
+  {% include "partials/search_results.html" %}
 </div>
+
 {% endblock %}

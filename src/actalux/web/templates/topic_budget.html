@@ -1,53 +1,61 @@
 {% extends "base.html" %}
-{% block title %}Budget{% endblock %}
+{% block title %}Budget &amp; Spending{% endblock %}
 {% block content %}
-<h1>Budget &amp; Spending</h1>
-<p style="color: var(--muted); margin-bottom: 2rem;">
-    Quotes from Clayton school board records related to budget, spending, and financial decisions.
-    Every quote is verbatim from an official document.
-</p>
 
-{% for section in sections %}
-{% if section.results %}
-<div class="section-group">
-    <h3>{{ section.query }}</h3>
-    {% for r in section.results %}
-    <div class="result-card">
-        <div class="meta">
-            <span class="hash-id">{{ r.hash_id }}</span>
-            {% if r.meeting_date %}<span>{{ r.meeting_date }}</span>{% endif %}
-            {% if r.meeting_title %}<span>{{ r.meeting_title }}</span>{% endif %}
-            {% if r.document_type %}<span class="badge">{{ r.document_type }}</span>{% endif %}
+<section class="pane-header">
+  <h2>Topic</h2>
+  <span class="meta">Budget &amp; Spending</span>
+</section>
+
+<div class="topic-head">
+  <span class="kicker">Topic · Budget &amp; Spending</span>
+  <h1>What the Clayton school district has said about the budget.</h1>
+  <p class="lede">
+    Every quote on this page is verbatim from a public record. Click any passage to open the source in context. Results are scoped by preset budget-related queries; use the search field for narrower queries.
+  </p>
+</div>
+
+<div class="topic-sections">
+  {% for section in sections %}
+    {% if section.results %}
+    <div class="section-group">
+      <h3>"{{ section.query }}"</h3>
+
+      {% for r in section.results %}
+      <a class="result-item" href="/chunk/{{ r.chunk_id }}/source" style="display: block; border-bottom: 1px solid var(--rule); margin-bottom: 0;">
+        <span class="kind">{{ r.document_type or 'Record' }}</span>
+        {% if r.meeting_date %}<span class="date">{{ r.meeting_date }}</span>{% endif %}
+        <div class="snippet">{{ r.content }}</div>
+        <div class="cite-inline">
+          {% if r.meeting_title %}<span>{{ r.meeting_title }}</span>{% endif %}
+          {% if r.section %}<span>· {{ r.section }}</span>{% endif %}
+          <span class="hash">{{ r.hash_id }}</span>
         </div>
-        <div class="content">{{ r.content }}</div>
-        <div style="margin-top: 0.5rem;">
-            <a href="/chunk/{{ r.chunk_id }}/source" class="source-link">View in context</a>
-            &middot;
-            <a href="/document/{{ r.document_id }}" class="source-link">Full document</a>
-        </div>
+      </a>
+      {% endfor %}
     </div>
-    {% endfor %}
-</div>
-{% endif %}
-{% endfor %}
+    {% endif %}
+  {% endfor %}
 
-{% if not sections %}
-<div class="empty-state">
-    <p>No budget-related records indexed yet. Check back after the next ingestion run.</p>
+  {% if not sections or not sections|selectattr("results")|list %}
+  <div class="landing">
+    <p class="lede">No budget-related records indexed yet. Check back after the next ingestion run, or try the search field above.</p>
+  </div>
+  {% endif %}
 </div>
-{% endif %}
 
 <div class="error-form">
-    <h2>Report an error</h2>
-    <p style="font-size: 0.85rem; color: var(--muted); margin-bottom: 0.5rem;">
-        Found an inaccuracy? Include the quote ID (e.g., #q003f).
-    </p>
-    <form hx-post="/report-error" hx-target="#error-status" hx-swap="innerHTML">
-        <input type="hidden" name="chunk_id" value="0">
-        <textarea name="description" placeholder="Describe the error and include the quote ID..."></textarea>
-        <input type="email" name="email" placeholder="Email (optional)">
-        <button type="submit">Submit</button>
-    </form>
-    <div id="error-status"></div>
+  <h2>Found an error?</h2>
+  <p class="hint">Every passage has a short hash ID (e.g., <code style="font-family: var(--mono); font-size: 12px;">#q003f</code>). Include it so we can locate the quote.</p>
+  <form hx-post="/report-error" hx-target="#error-status" hx-swap="innerHTML">
+    <input type="hidden" name="chunk_id" value="0">
+    <textarea class="textarea" name="description" placeholder="Describe the error and include the quote ID…"></textarea>
+    <div class="form-row">
+      <input class="input" type="email" name="email" placeholder="Email (optional)">
+      <button class="btn btn-primary" type="submit">Submit report</button>
+    </div>
+  </form>
+  <div id="error-status"></div>
 </div>
+
 {% endblock %}

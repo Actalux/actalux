@@ -20,6 +20,7 @@ from typing import Any
 
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from actalux.config import Config, load_config
@@ -36,6 +37,7 @@ TEMPLATE_DIR = Path(__file__).parent / "templates"
 STATIC_DIR = Path(__file__).parent / "static"
 
 app = FastAPI(title="Actalux", version="0.1.0")
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 
 # In-process cache for topic page queries (1-hour TTL)
@@ -98,20 +100,19 @@ async def home(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "home.html")
 
 
-@app.post("/search", response_class=HTMLResponse)
-async def search(
+def _run_search(
     request: Request,
-    q: str = Form(""),
-    date_from: str = Form(""),
-    date_to: str = Form(""),
-    doc_type: str = Form(""),
+    q: str,
+    date_from: str,
+    date_to: str,
+    doc_type: str,
 ) -> HTMLResponse:
-    """Hybrid search endpoint. Returns HTMX partial or full page."""
+    """Shared search handler for GET and POST routes."""
+    is_htmx = bool(request.headers.get("HX-Request"))
     if not q.strip():
+        template = "partials/search_results.html" if is_htmx else "search.html"
         return templates.TemplateResponse(
-            request,
-            "partials/search_results.html",
-            {"results": [], "query": ""},
+            request, template, {"results": [], "query": ""}
         )
 
     filters = SearchFilters(
@@ -128,18 +129,36 @@ async def search(
         logger.exception("Search failed for query: %s", q)
         results = []
 
-    # Fetch meeting metadata for each result
     enriched = _enrich_results(client, results)
-
-    template = "partials/search_results.html"
-    if not request.headers.get("HX-Request"):
-        template = "search.html"
+    template = "partials/search_results.html" if is_htmx else "search.html"
 
     return templates.TemplateResponse(
-        request,
-        template,
-        {"results": enriched, "query": q},
+        request, template, {"results": enriched, "query": q}
     )
+
+
+@app.get("/search", response_class=HTMLResponse)
+async def search_get(
+    request: Request,
+    q: str = "",
+    date_from: str = "",
+    date_to: str = "",
+    doc_type: str = "",
+) -> HTMLResponse:
+    """GET variant for linkable / restorable search URLs."""
+    return _run_search(request, q, date_from, date_to, doc_type)
+
+
+@app.post("/search", response_class=HTMLResponse)
+async def search_post(
+    request: Request,
+    q: str = Form(""),
+    date_from: str = Form(""),
+    date_to: str = Form(""),
+    doc_type: str = Form(""),
+) -> HTMLResponse:
+    """POST from the search form (works with or without HTMX)."""
+    return _run_search(request, q, date_from, date_to, doc_type)
 
 
 @app.get("/topic/budget", response_class=HTMLResponse)
@@ -191,19 +210,23 @@ async def document_view(request: Request, doc_id: int) -> HTMLResponse:
 
 
 @app.get("/chunk/{chunk_id}/source", response_class=HTMLResponse)
-async def chunk_source(request: Request, chunk_id: int) -> HTMLResponse:
-    """Citation context: the chunk plus surrounding chunks."""
+async def chunk_source(request: Request, chunk_id: int, embed: int = 0) -> HTMLResponse:
+    """Citation context: the chunk plus surrounding chunks.
+
+    If `embed=1`, returns a partial suitable for injection into the search
+    reader pane via HTMX. Otherwise returns the full page.
+    """
     client = _get_db()
     context = get_chunk_with_context(client, chunk_id, context_count=2)
     if not context["chunk"]:
         raise HTTPException(status_code=404, detail="Chunk not found")
 
-    # Get the parent document for metadata
     doc = get_document(client, context["chunk"]["document_id"])
+    template = "partials/reader_pane.html" if embed else "chunk_source.html"
 
     return templates.TemplateResponse(
         request,
-        "chunk_source.html",
+        template,
         {"chunk": context["chunk"], "context": context["context"], "document": doc},
     )
 
@@ -303,11 +326,7 @@ def _render_citation_links(text: str, results: list[dict[str, Any]]) -> str:
         hash_id = match.group(1)
         chunk_id = id_map.get(hash_id)
         if chunk_id is not None:
-            return (
-                f'<a href="/chunk/{chunk_id}/source" class="source-link" '
-                f'style="font-family: monospace; font-size: 0.8rem;">'
-                f"[{hash_id}]</a>"
-            )
+            return f'<a href="/chunk/{chunk_id}/source" class="source-link">[{hash_id}]</a>'
         return match.group(0)
 
     return re.sub(r"\[(#q[0-9a-f]{4,5})\]", replace_citation, text)

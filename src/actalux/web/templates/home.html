@@ -1,29 +1,66 @@
 {% extends "base.html" %}
-{% block title %}Search{% endblock %}
+{% block title %}Home{% endblock %}
 {% block content %}
-<h1>Clayton School District Records</h1>
-<p style="color: var(--muted); margin-bottom: 1.5rem;">
-    Search official board meeting documents. Every result is a direct quote with a verified source.
-</p>
 
-<form class="search-form" hx-post="/search" hx-target="#results" hx-indicator="#loading">
-    <input type="text" name="q" placeholder="Search meeting records..." autofocus>
-    <button type="submit">Search</button>
-</form>
+<section class="pane-header">
+  <h2>Home</h2>
+  <span class="meta">Clayton School District · Board of Education</span>
+</section>
 
-<div class="filters">
-    <input type="date" name="date_from" form="search-form" placeholder="From">
-    <input type="date" name="date_to" form="search-form" placeholder="To">
-    <select name="doc_type" form="search-form">
-        <option value="">All document types</option>
-        <option value="minutes">Minutes</option>
-        <option value="agenda">Agenda</option>
-        <option value="packet">Board packet</option>
-        <option value="resolution">Resolution</option>
-    </select>
+<div class="landing">
+  <span class="tagline">What this is</span>
+  <h1>Clayton school board meetings and public documents, made searchable — with every quote traceable to its source.</h1>
+  <p class="lede">
+    Actalux is a nonpartisan, nonprofit archive of the public records of the Clayton, Missouri school district: board meetings, minutes, budgets, curriculum documents, resolutions, and records obtained through Missouri Sunshine Law requests. Every passage on this site is a verbatim quote with its source citation attached. We add nothing to the record. We take nothing away. <a href="/methodology">Read how this works.</a>
+  </p>
+
+  <div class="featured-quote" aria-label="Featured cited passage">
+    <aside class="meta">
+      <span class="label">Start here</span>
+      <span class="value"><a href="/topic/budget">Budget topic →</a></span>
+      <span class="label">Search</span>
+      <span class="value">Try the top bar</span>
+      <span class="label">Browse</span>
+      <span class="value">Use the sidebar</span>
+      <span class="label">Corpus</span>
+      <span class="value">215 documents</span>
+    </aside>
+    <div>
+      <span class="kicker">How to use Actalux</span>
+      <p class="text">
+        Search for any topic the board has discussed. Every result is a <mark>verbatim quote</mark> from a public record, with its source, date, and page attached. Click any result to read the quote in the source document.
+      </p>
+      <p class="attribution">
+        <a href="/topic/budget" style="text-decoration: underline; text-decoration-color: var(--rule-strong); text-underline-offset: 2px;">See the Budget topic page →</a>
+      </p>
+    </div>
+  </div>
+
+  <div class="recent">
+    <div class="recent-head">Featured topic</div>
+    <ul class="recent-list">
+      <li>
+        <span class="date">Topic</span>
+        <span class="type">Budget</span>
+        <a class="title" href="/topic/budget">What the district said about spending, salaries, and the tax levy</a>
+      </li>
+      <li>
+        <span class="date">Search</span>
+        <span class="type">Try it</span>
+        <a class="title" href="/search?q=multilingual+learner+program">multilingual learner program</a>
+      </li>
+      <li>
+        <span class="date">Search</span>
+        <span class="type">Try it</span>
+        <a class="title" href="/search?q=long+range+facilities+master+plan">long range facilities master plan</a>
+      </li>
+      <li>
+        <span class="date">Search</span>
+        <span class="type">Try it</span>
+        <a class="title" href="/search?q=curriculum+adoption">curriculum adoption</a>
+      </li>
+    </ul>
+  </div>
 </div>
 
-<span id="loading" class="htmx-indicator">Searching...</span>
-
-<div id="results"></div>
 {% endblock %}

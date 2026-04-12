@@ -1,20 +1,66 @@
 {% extends "base.html" %}
-{% block title %}{{ document.meeting_title }}{% endblock %}
+{% block title %}{{ document.meeting_title or 'Document' }}{% endblock %}
 {% block content %}
-<div style="margin-bottom: 1rem;">
-    <a href="/" style="color: var(--accent); text-decoration: none; font-size: 0.85rem;">Back to search</a>
-</div>
 
-<h1>{{ document.meeting_title }}</h1>
-<div class="meta" style="font-size: 0.85rem; color: var(--muted); margin-bottom: 1.5rem;">
-    {% if document.meeting_date %}<span>{{ document.meeting_date }}</span>{% endif %}
-    {% if document.document_type %}<span class="badge">{{ document.document_type }}</span>{% endif %}
-    {% if document.source_url %}
-        <a href="{{ document.source_url }}" target="_blank" rel="noopener" style="color: var(--accent);">Original source</a>
+<section class="pane-header">
+  <h2>Document</h2>
+  <span class="meta">{{ document.document_type or 'Record' }}{% if document.source_portal %} · portal: {{ document.source_portal }}{% endif %}</span>
+</section>
+
+<div class="doc-frame">
+
+  <aside class="doc-meta">
+    <span class="label">Title</span>
+    <span class="value">{{ document.meeting_title or 'Untitled' }}</span>
+
+    {% if document.meeting_date %}
+      <span class="label">Date</span>
+      <span class="value">{{ document.meeting_date }}</span>
     {% endif %}
+
+    {% if document.document_type %}
+      <span class="label">Type</span>
+      <span class="value">{{ document.document_type }}</span>
+    {% endif %}
+
+    {% if document.source_portal %}
+      <span class="label">Portal</span>
+      <span class="value">{{ document.source_portal }}</span>
+    {% endif %}
+
+    {% if document.source_url %}
+      <span class="label">Source</span>
+      <span class="value"><a href="{{ document.source_url }}" target="_blank" rel="noopener" style="color: var(--accent); word-break: break-all;">Open original →</a></span>
+    {% endif %}
+
+    {% if document.version %}
+      <span class="label">Version</span>
+      <span class="value">{{ document.version }}</span>
+    {% endif %}
+
+    {% if document.content_hash %}
+      <span class="label">Hash</span>
+      <span class="value" style="font-size: 10px;">{{ document.content_hash[:12] }}…</span>
+    {% endif %}
+  </aside>
+
+  <article class="doc-page">
+    <h1>{{ document.meeting_title or 'Document' }}</h1>
+    <pre>{{ document.content }}</pre>
+  </article>
+
+  <aside class="doc-toc">
+    <span class="label">Actions</span>
+    <a href="/search?q={{ document.meeting_title or '' }}">Find quotes from this doc</a>
+    {% if document.source_url %}<a href="{{ document.source_url }}" target="_blank" rel="noopener">Open source file</a>{% endif %}
+    <a href="https://github.com/Actalux/actalux/issues/new?title=Error+report+doc+{{ document.id }}" target="_blank" rel="noopener">Report an error</a>
+
+    <span class="label" style="margin-top: var(--s-5);">Browse</span>
+    <a href="/">Home</a>
+    <a href="/topic/budget">Budget topic</a>
+    <a href="/methodology">How this works</a>
+  </aside>
+
 </div>
 
-<div class="result-card">
-    <div class="content" style="white-space: pre-wrap;">{{ document.content }}</div>
-</div>
 {% endblock %}
