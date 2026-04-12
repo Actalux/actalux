@@ -169,7 +169,7 @@ async def topic_budget(request: Request) -> HTMLResponse:
         return templates.TemplateResponse(
             request,
             "topic_budget.html",
-            {"sections": cached},
+            {"sections": cached, "active": "topic-budget"},
         )
 
     client = _get_db()
@@ -190,7 +190,7 @@ async def topic_budget(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         request,
         "topic_budget.html",
-        {"sections": sections},
+        {"sections": sections, "active": "topic-budget"},
     )
 
 
@@ -234,7 +234,7 @@ async def chunk_source(request: Request, chunk_id: int, embed: int = 0) -> HTMLR
 @app.get("/methodology", response_class=HTMLResponse)
 async def methodology(request: Request) -> HTMLResponse:
     """How the system works — transparency page."""
-    return templates.TemplateResponse(request, "methodology.html")
+    return templates.TemplateResponse(request, "methodology.html", {"active": "methodology"})
 
 
 @app.post("/report-error", response_class=HTMLResponse)
