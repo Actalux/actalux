@@ -1,0 +1,1040 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Actalux — App Shell Preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Newsreader:ital,opsz,wght@0,6..72,300..700;1,6..72,300..700&family=Geist:wght@300..700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #FAFAF7;
+    --paper-warm: #F4F2EC;
+    --paper-sunk: #EFEDE5;
+    --ink: #0F0F0F;
+    --ink-soft: #2A2A28;
+    --muted: #6B6B68;
+    --muted-soft: #9A988F;
+    --rule: #E5E4DE;
+    --rule-strong: #C9C6BD;
+    --accent: #8B3A2A;            /* deeper oxblood (default) */
+    --accent-alt: #C8553D;         /* vermillion (toggle) */
+    --accent-soft: #EBD6D0;
+    --highlight: #F4E9B0;
+
+    --serif-display: "Fraunces", Georgia, serif;
+    --serif-body: "Newsreader", Georgia, serif;
+    --sans: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+
+    --sidebar-w: 256px;
+    --topbar-h: 56px;
+
+    --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px;
+    --s-5: 24px; --s-6: 32px; --s-7: 48px; --s-8: 64px; --s-9: 96px;
+  }
+
+  [data-accent="vermillion"] { --accent: #C8553D; --accent-soft: #F3DDD6; }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--paper); }
+  body {
+    color: var(--ink);
+    font-family: var(--serif-body);
+    font-size: 16px;
+    line-height: 1.55;
+    font-optical-sizing: auto;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; text-decoration: none; }
+  a:hover { color: var(--accent); }
+
+  /* =====================================================
+     TOP BAR — wordmark + prominent search + about
+     ===================================================== */
+  .topbar {
+    position: sticky; top: 0; z-index: 30;
+    height: var(--topbar-h);
+    background: var(--paper);
+    border-bottom: 1px solid var(--rule);
+    display: flex; align-items: center;
+    padding: 0 var(--s-5);
+    gap: var(--s-5);
+  }
+  .brand {
+    font-family: var(--serif-display);
+    font-weight: 500;
+    font-size: 20px;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    white-space: nowrap;
+    flex: 0 0 calc(var(--sidebar-w) - var(--s-5));
+  }
+  .brand .dot { color: var(--accent); margin-left: 1px; }
+  .brand .tag {
+    font-family: var(--sans);
+    font-weight: 400;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    margin-left: var(--s-3);
+    border-left: 1px solid var(--rule);
+    padding-left: var(--s-3);
+  }
+  .topbar-search {
+    flex: 1;
+    max-width: 680px;
+    display: flex; align-items: center;
+    background: var(--paper-warm);
+    border: 1px solid var(--rule);
+    padding: 0 var(--s-3);
+    height: 36px;
+  }
+  .topbar-search svg { flex: 0 0 16px; color: var(--muted); margin-right: var(--s-3); }
+  .topbar-search input {
+    flex: 1;
+    border: 0; outline: 0; background: transparent;
+    font-family: var(--serif-body);
+    font-size: 15px;
+    color: var(--ink);
+  }
+  .topbar-search input::placeholder { color: var(--muted); font-style: italic; }
+  .topbar-search .kbd {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    padding: 1px 5px;
+  }
+  .topbar-links {
+    margin-left: auto;
+    display: flex; gap: var(--s-4);
+    font-family: var(--sans);
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .topbar-links a:hover { color: var(--ink); }
+
+  /* =====================================================
+     SHELL LAYOUT — sidebar + main
+     ===================================================== */
+  .shell {
+    display: grid;
+    grid-template-columns: var(--sidebar-w) 1fr;
+    min-height: calc(100vh - var(--topbar-h));
+  }
+  .sidebar {
+    border-right: 1px solid var(--rule);
+    padding: var(--s-5) 0;
+    background: var(--paper);
+    position: sticky;
+    top: var(--topbar-h);
+    height: calc(100vh - var(--topbar-h));
+    overflow-y: auto;
+  }
+  .nav-section {
+    padding: 0 var(--s-5);
+    margin-bottom: var(--s-5);
+  }
+  .nav-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    display: block;
+    margin-bottom: var(--s-2);
+  }
+  .nav-item {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 6px 0;
+    font-family: var(--sans);
+    font-size: 14px;
+    color: var(--ink-soft);
+    border-bottom: 1px solid transparent;
+  }
+  .nav-item .count {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .nav-item.active { color: var(--accent); }
+  .nav-item.active .count { color: var(--accent); }
+  .nav-item:hover { color: var(--ink); }
+  .nav-sub {
+    padding-left: var(--s-3);
+    margin-left: var(--s-2);
+    border-left: 1px solid var(--rule);
+    overflow: hidden;
+    max-height: 600px;
+    transition: max-height 180ms ease-out;
+  }
+  .nav-sub.collapsed { max-height: 0; border-left-color: transparent; }
+  .nav-sub .nav-item { font-size: 13px; color: var(--ink-soft); }
+
+  .nav-toggle {
+    all: unset;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 6px 0;
+    font-family: var(--sans);
+    font-size: 14px;
+    color: var(--ink-soft);
+    cursor: pointer;
+    width: 100%;
+  }
+  .nav-toggle:hover { color: var(--ink); }
+  .nav-toggle .left { display: flex; align-items: baseline; gap: var(--s-2); }
+  .nav-toggle .chev {
+    display: inline-block;
+    width: 10px; height: 10px;
+    transition: transform 180ms ease-out;
+    color: var(--muted);
+  }
+  .nav-toggle[aria-expanded="false"] .chev { transform: rotate(-90deg); }
+  .nav-toggle .count {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .sidebar-foot {
+    padding: var(--s-5);
+    border-top: 1px solid var(--rule);
+    margin-top: var(--s-5);
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.8;
+  }
+  .sidebar-foot .value { color: var(--ink); }
+
+  /* main column */
+  .main { min-width: 0; }
+
+  /* =====================================================
+     STATE A — LANDING (visible above fold)
+     ===================================================== */
+  .pane-header {
+    padding: var(--s-5) var(--s-6);
+    border-bottom: 1px solid var(--rule);
+    display: flex; align-items: baseline; justify-content: space-between;
+    background: var(--paper);
+  }
+  .pane-header h2 {
+    font-family: var(--serif-display);
+    font-weight: 400;
+    font-size: 22px;
+    letter-spacing: -0.01em;
+  }
+  .pane-header .meta {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .landing {
+    padding: var(--s-7) var(--s-6);
+    max-width: 920px;
+  }
+  .landing .tagline {
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--accent);
+    margin-bottom: var(--s-3);
+  }
+  .landing h1 {
+    font-family: var(--serif-display);
+    font-weight: 400;
+    font-size: clamp(28px, 3.2vw, 40px);
+    letter-spacing: -0.015em;
+    line-height: 1.1;
+    color: var(--ink);
+    max-width: 720px;
+  }
+  .landing .lede {
+    font-family: var(--serif-body);
+    font-size: 17px;
+    line-height: 1.55;
+    color: var(--ink-soft);
+    max-width: 620px;
+    margin-top: var(--s-4);
+  }
+  .landing .lede a { border-bottom: 1px solid var(--rule-strong); padding-bottom: 1px; }
+  .landing .lede a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* featured-quote beneath lede — smaller than v1, doesn't dominate */
+  .featured-quote {
+    margin-top: var(--s-7);
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: var(--s-5);
+    padding: var(--s-5) 0;
+    border-top: 2px solid var(--ink);
+    border-bottom: 1px solid var(--rule);
+    max-width: 820px;
+  }
+  .featured-quote .meta {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.9;
+  }
+  .featured-quote .meta .label {
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 10px;
+    display: block;
+    margin-top: var(--s-2);
+  }
+  .featured-quote .meta .label:first-child { margin-top: 0; }
+  .featured-quote .meta .value { color: var(--ink); display: block; }
+  .featured-quote .text {
+    font-family: var(--serif-display);
+    font-weight: 400;
+    font-size: clamp(18px, 2vw, 24px);
+    line-height: 1.35;
+    letter-spacing: -0.005em;
+    font-style: italic;
+    color: var(--ink);
+  }
+  .featured-quote .text::before { content: "\201C"; color: var(--accent); margin-right: 2px; }
+  .featured-quote .text::after { content: "\201D"; color: var(--accent); margin-left: 2px; }
+  .featured-quote .text mark {
+    background: var(--accent-soft);
+    color: var(--ink);
+    padding: 0 0.08em;
+  }
+  .featured-quote .kicker {
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--muted);
+    margin-bottom: var(--s-2);
+  }
+  .featured-quote .attribution {
+    margin-top: var(--s-3);
+    font-family: var(--sans);
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .landing .recent {
+    margin-top: var(--s-7);
+  }
+  .recent-head {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    border-bottom: 1px solid var(--rule-strong);
+    padding-bottom: var(--s-2);
+    margin-bottom: var(--s-3);
+  }
+  .recent-list li {
+    list-style: none;
+    padding: var(--s-3) 0;
+    border-bottom: 1px solid var(--rule);
+    display: flex; gap: var(--s-4); align-items: baseline;
+    font-family: var(--serif-body);
+    font-size: 15px;
+  }
+  .recent-list .date {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    flex: 0 0 100px;
+  }
+  .recent-list .type {
+    font-family: var(--sans);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    flex: 0 0 90px;
+  }
+  .recent-list .title { flex: 1; color: var(--ink); }
+  .recent-list .title:hover { color: var(--accent); }
+
+  /* =====================================================
+     STATE B — SEARCH RESULTS (split pane)
+     ===================================================== */
+  .state-divider {
+    padding: var(--s-8) var(--s-6) var(--s-5);
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--accent);
+    border-top: 1px dashed var(--rule-strong);
+    background: var(--paper-sunk);
+  }
+  .state-divider b {
+    font-family: var(--serif-display);
+    font-style: italic;
+    font-weight: 400;
+    font-size: 22px;
+    text-transform: none;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    display: block;
+    margin-top: var(--s-2);
+  }
+
+  .split {
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    border-top: 1px solid var(--rule);
+    min-height: 720px;
+  }
+  .results-col {
+    border-right: 1px solid var(--rule);
+    padding: var(--s-5) 0 0;
+    background: var(--paper);
+  }
+  .results-head-row {
+    padding: 0 var(--s-5) var(--s-4);
+    border-bottom: 1px solid var(--rule);
+  }
+  .results-head-row .query {
+    font-family: var(--serif-display);
+    font-style: italic;
+    font-weight: 400;
+    font-size: 18px;
+    color: var(--ink);
+  }
+  .results-head-row .meta-row {
+    margin-top: var(--s-2);
+    display: flex; gap: var(--s-3);
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .result-item {
+    display: block;
+    padding: var(--s-4) var(--s-5);
+    border-bottom: 1px solid var(--rule);
+    cursor: pointer;
+    position: relative;
+  }
+  .result-item.active {
+    background: var(--paper-warm);
+    border-left: 3px solid var(--accent);
+    padding-left: calc(var(--s-5) - 3px);
+  }
+  .result-item:hover { background: var(--paper-warm); }
+  .result-item .kind {
+    font-family: var(--sans);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+  }
+  .result-item .date {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    margin-left: var(--s-3);
+  }
+  .result-item .snippet {
+    margin-top: var(--s-2);
+    font-family: var(--serif-body);
+    font-size: 15px;
+    line-height: 1.45;
+    color: var(--ink);
+  }
+  .result-item .snippet mark {
+    background: var(--accent-soft);
+    color: var(--ink);
+    padding: 0 2px;
+  }
+  .result-item .cite-inline {
+    margin-top: var(--s-3);
+    font-family: var(--sans);
+    font-size: 12px;
+    color: var(--muted);
+    display: flex; gap: var(--s-3); align-items: baseline;
+  }
+  .result-item .cite-inline .hash { font-family: var(--mono); }
+
+  /* reader pane */
+  .reader-col {
+    padding: var(--s-5) var(--s-6);
+    background: var(--paper);
+    min-width: 0;
+  }
+  .reader-head {
+    padding-bottom: var(--s-4);
+    border-bottom: 1px solid var(--rule);
+    display: flex; justify-content: space-between; align-items: baseline;
+  }
+  .reader-head .kicker {
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--accent);
+  }
+  .reader-head h3 {
+    font-family: var(--serif-display);
+    font-weight: 400;
+    font-size: 24px;
+    letter-spacing: -0.01em;
+    margin-top: var(--s-1);
+    color: var(--ink);
+  }
+  .reader-head .controls {
+    display: flex; gap: var(--s-3);
+    font-family: var(--sans);
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .reader-head .controls a:hover { color: var(--accent); }
+
+  .reader-meta-bar {
+    display: flex; gap: var(--s-4); flex-wrap: wrap;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    padding: var(--s-3) 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .reader-meta-bar .k { color: var(--ink); }
+
+  /* video pane — shown when result is a transcript */
+  .video-pane {
+    margin-top: var(--s-4);
+    background: var(--paper-sunk);
+    border: 1px solid var(--rule);
+  }
+  .video-frame {
+    aspect-ratio: 16 / 9;
+    background: #111;
+    position: relative;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+  }
+  .video-frame .thumb {
+    position: absolute; inset: 0;
+    background: linear-gradient(135deg, #2b2b2b 0%, #1a1a1a 100%);
+  }
+  .video-frame .thumb::before {
+    content: "";
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(circle at 30% 40%, rgba(255,255,255,0.04) 0%, transparent 40%),
+      radial-gradient(circle at 70% 60%, rgba(255,255,255,0.03) 0%, transparent 50%);
+  }
+  .video-frame .play {
+    position: relative;
+    z-index: 1;
+    width: 64px; height: 64px;
+    border-radius: 50%;
+    background: var(--paper);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  }
+  .video-frame .play::after {
+    content: "";
+    display: block;
+    width: 0; height: 0;
+    border-left: 16px solid var(--accent);
+    border-top: 10px solid transparent;
+    border-bottom: 10px solid transparent;
+    margin-left: 3px;
+  }
+  .video-frame .label {
+    position: absolute;
+    top: var(--s-3); left: var(--s-3);
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.85);
+    background: rgba(0,0,0,0.5);
+    padding: 3px 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .video-frame .title-overlay {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    padding: var(--s-5) var(--s-4) var(--s-4);
+    background: linear-gradient(to top, rgba(0,0,0,0.7), transparent);
+    color: #fff;
+    font-family: var(--sans);
+    font-size: 13px;
+  }
+  .video-frame .title-overlay .t { font-weight: 500; }
+  .video-frame .title-overlay .ts {
+    font-family: var(--mono);
+    color: var(--accent-soft);
+    font-size: 11px;
+    margin-top: 2px;
+  }
+
+  /* transcript excerpt with highlighted cited passage */
+  .transcript {
+    padding: var(--s-4);
+    font-family: var(--serif-body);
+    font-size: 15px;
+    line-height: 1.65;
+    max-height: 280px;
+    overflow-y: auto;
+  }
+  .transcript p { margin-bottom: var(--s-3); display: flex; gap: var(--s-3); }
+  .transcript .ts {
+    flex: 0 0 60px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    padding-top: 4px;
+  }
+  .transcript .speaker {
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    display: block;
+    margin-bottom: 2px;
+  }
+  .transcript .body { flex: 1; color: var(--ink-soft); }
+  .transcript .cited {
+    background: var(--highlight);
+    box-shadow: -3px 0 0 var(--accent);
+    padding: 2px 4px 2px 8px;
+    color: var(--ink);
+    display: inline;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+
+  /* document preview when result is a PDF/minutes */
+  .doc-preview {
+    margin-top: var(--s-4);
+    border: 1px solid var(--rule);
+    padding: var(--s-5);
+    background: #FFFFFF;
+    font-family: var(--serif-body);
+    font-size: 15px;
+    line-height: 1.65;
+    max-height: 360px;
+    overflow-y: auto;
+  }
+  .doc-preview h4 {
+    font-family: var(--serif-display);
+    font-weight: 500;
+    font-size: 17px;
+    margin-bottom: var(--s-3);
+  }
+  .doc-preview p { margin-bottom: var(--s-3); }
+  .doc-preview .cited {
+    background: var(--highlight);
+    box-shadow: -3px 0 0 var(--accent);
+    padding: 2px 4px 2px 8px;
+    display: inline;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+
+  .reader-footer {
+    margin-top: var(--s-5);
+    padding-top: var(--s-4);
+    border-top: 1px solid var(--rule);
+    display: flex; gap: var(--s-3); flex-wrap: wrap;
+  }
+  .btn {
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 500;
+    padding: 8px 14px;
+    border: 1px solid var(--ink);
+    background: transparent;
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .btn-primary { background: var(--ink); color: var(--paper); }
+  .btn-primary:hover { background: var(--accent); border-color: var(--accent); }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-ghost { border-color: transparent; color: var(--muted); padding-left: 0; }
+
+  /* ============================================
+     ACCENT TOGGLE (demo-only)
+     ============================================ */
+  .accent-toggle {
+    position: fixed;
+    bottom: var(--s-4);
+    right: var(--s-4);
+    background: var(--paper);
+    border: 1px solid var(--rule-strong);
+    padding: var(--s-2) var(--s-3);
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    display: flex; gap: var(--s-2); align-items: center;
+    z-index: 50;
+  }
+  .accent-toggle button {
+    border: 1px solid var(--rule);
+    background: var(--paper);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 3px 8px;
+    cursor: pointer;
+    color: var(--ink-soft);
+  }
+  .accent-toggle button.on { background: var(--accent); color: var(--paper); border-color: var(--accent); }
+
+  @media (max-width: 960px) {
+    .shell { grid-template-columns: 1fr; }
+    .sidebar { display: none; }
+    .split { grid-template-columns: 1fr; }
+    .results-col { border-right: 0; border-bottom: 1px solid var(--rule); }
+  }
+</style>
+</head>
+<body>
+
+<!-- ====================================================== -->
+<!-- TOP BAR (search moved here, always visible) -->
+<!-- ====================================================== -->
+<header class="topbar">
+  <div class="brand">Actalux<span class="dot">.</span><span class="tag">Clayton MO</span></div>
+
+  <form class="topbar-search" onsubmit="return false;">
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="9" cy="9" r="6.5"/><path d="m14 14 4.5 4.5"/></svg>
+    <input type="search" placeholder="Search 215 documents, 4,149 cited passages..." aria-label="Search archive">
+    <span class="kbd">⌘ K</span>
+  </form>
+
+  <nav class="topbar-links">
+    <a href="#">About</a>
+    <a href="#">Alerts</a>
+    <a href="#">GitHub</a>
+  </nav>
+</header>
+
+<!-- ====================================================== -->
+<!-- APP SHELL — sidebar + main -->
+<!-- ====================================================== -->
+<div class="shell">
+
+  <aside class="sidebar" aria-label="Browse the archive">
+    <div class="nav-section">
+      <span class="nav-label">Browse</span>
+
+      <button class="nav-toggle" aria-expanded="true" data-target="sub-topics">
+        <span class="left">
+          <svg class="chev" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 4l3 3 3-3"/></svg>
+          <span>Topics</span>
+        </span>
+        <span class="count">3</span>
+      </button>
+      <div class="nav-sub" id="sub-topics">
+        <a class="nav-item" href="#"><span>Budget &amp; Spending</span><span class="count">847</span></a>
+        <a class="nav-item active" href="#"><span>Curriculum</span><span class="count">1,204</span></a>
+        <a class="nav-item" href="#"><span>Facilities (LRFMP)</span><span class="count">612</span></a>
+      </div>
+
+      <button class="nav-toggle" aria-expanded="false" data-target="sub-meetings">
+        <span class="left">
+          <svg class="chev" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 4l3 3 3-3"/></svg>
+          <span>Meetings</span>
+        </span>
+        <span class="count">83</span>
+      </button>
+      <div class="nav-sub collapsed" id="sub-meetings">
+        <a class="nav-item" href="#"><span>2025</span><span class="count">14</span></a>
+        <a class="nav-item" href="#"><span>2024</span><span class="count">22</span></a>
+        <a class="nav-item" href="#"><span>2023</span><span class="count">19</span></a>
+        <a class="nav-item" href="#"><span>Earlier</span><span class="count">28</span></a>
+      </div>
+
+      <button class="nav-toggle" aria-expanded="false" data-target="sub-docs">
+        <span class="left">
+          <svg class="chev" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 4l3 3 3-3"/></svg>
+          <span>Documents</span>
+        </span>
+        <span class="count">215</span>
+      </button>
+      <div class="nav-sub collapsed" id="sub-docs">
+        <a class="nav-item" href="#"><span>Minutes</span><span class="count">62</span></a>
+        <a class="nav-item" href="#"><span>Budgets</span><span class="count">18</span></a>
+        <a class="nav-item" href="#"><span>Resolutions</span><span class="count">41</span></a>
+        <a class="nav-item" href="#"><span>Transcripts</span><span class="count">15</span></a>
+        <a class="nav-item" href="#"><span>Curriculum maps</span><span class="count">49</span></a>
+        <a class="nav-item" href="#"><span>Sunshine requests</span><span class="count">7</span></a>
+        <a class="nav-item" href="#"><span>Other</span><span class="count">23</span></a>
+      </div>
+    </div>
+
+    <div class="nav-section">
+      <span class="nav-label">Quick</span>
+      <a class="nav-item" href="#"><span>Latest meeting</span></a>
+      <a class="nav-item" href="#"><span>Report an error</span></a>
+      <a class="nav-item" href="#"><span>Subscribe to alerts</span></a>
+    </div>
+
+    <div class="sidebar-foot">
+      <div><span class="value">215</span> documents</div>
+      <div><span class="value">4,149</span> cited passages</div>
+      <div><span class="value">2020–2025</span> coverage</div>
+      <div style="margin-top: var(--s-2);">501(c)(3) nonprofit · open source</div>
+    </div>
+  </aside>
+
+  <main class="main">
+
+    <!-- ========== STATE A: LANDING ========== -->
+    <section class="pane-header">
+      <h2>Home</h2>
+      <span class="meta">Clayton School District · Board of Education</span>
+    </section>
+
+    <div class="landing">
+      <span class="tagline">What this is</span>
+      <h1>Clayton school board meetings and public documents, made searchable — with every quote traceable to its source.</h1>
+      <p class="lede">
+        Actalux is a nonpartisan, nonprofit archive of the public records of the Clayton, Missouri school district: board meetings, minutes, budgets, curriculum documents, resolutions, and records obtained through Sunshine Law requests. Every passage on this site is a verbatim quote with its source citation attached. We add nothing to the record. We take nothing away. <a href="#">Read our content policy.</a>
+      </p>
+
+      <div class="featured-quote">
+        <aside class="meta">
+          <span class="label">Featured</span>
+          <span class="value">2024-11-13</span>
+          <span class="label">Source</span>
+          <span class="value">Board Minutes</span>
+          <span class="label">Page</span>
+          <span class="value">p. 7</span>
+          <span class="label">Portal</span>
+          <span class="value">Diligent</span>
+        </aside>
+        <div>
+          <div class="kicker">Recently ingested · what the CFO said</div>
+          <p class="text">The operating budget reflects a net increase of <mark>$4.2 million</mark>, driven primarily by negotiated salary and benefit increases and by the expansion of the multilingual learner program.</p>
+          <p class="attribution">— Dr. K. Ferguson, CFO · <a href="#" style="text-decoration: underline; text-decoration-color: var(--rule-strong); text-underline-offset: 2px;">Open in context →</a></p>
+        </div>
+      </div>
+
+      <div class="recent">
+        <div class="recent-head">Recently ingested</div>
+        <ul class="recent-list">
+          <li><span class="date">2026-04-09</span><span class="type">Minutes</span><a class="title" href="#">Board Regular Meeting — April 9, 2026</a></li>
+          <li><span class="date">2026-04-02</span><span class="type">Transcript</span><a class="title" href="#">Board Special Session — Facilities Bond Review</a></li>
+          <li><span class="date">2026-03-26</span><span class="type">Resolution</span><a class="title" href="#">Resolution 2026-07: Curriculum Adoption, K–5 Math</a></li>
+          <li><span class="date">2026-03-20</span><span class="type">Budget</span><a class="title" href="#">FY2027 Preliminary Budget — Staff Presentation Deck</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ========== STATE B: SEARCH RESULTS (split pane) ========== -->
+    <div class="state-divider">
+      Below: what happens when you search
+      <b>Query: "multilingual learner program funding"</b>
+    </div>
+
+    <div class="split">
+      <!-- Results list (left) -->
+      <section class="results-col">
+        <div class="results-head-row">
+          <div class="query">"multilingual learner program funding"</div>
+          <div class="meta-row">
+            <span>12 results</span>
+            <span>·</span>
+            <span>hybrid search · RRF</span>
+            <span>·</span>
+            <span>sim ≥ 0.35</span>
+          </div>
+        </div>
+
+        <a class="result-item active" href="#">
+          <span class="kind">Transcript</span><span class="date">2024-05-14 · 01:22:14</span>
+          <p class="snippet">We're going to continue to see pressure on the property tax levy, and the expansion of the <mark>multilingual learner program</mark> is one of the budget lines…</p>
+          <div class="cite-inline">
+            <span>Board Meeting · May 14, 2024</span>
+            <span class="hash">#q00c7731</span>
+          </div>
+        </a>
+
+        <a class="result-item" href="#">
+          <span class="kind">Minutes</span><span class="date">2024-11-13</span>
+          <p class="snippet">The operating budget reflects a net increase of $4.2 million, driven primarily by negotiated salary and benefit increases and by the expansion of the <mark>multilingual learner program</mark>.</p>
+          <div class="cite-inline">
+            <span>Board Regular Meeting · p. 7</span>
+            <span class="hash">#q003f9ab</span>
+          </div>
+        </a>
+
+        <a class="result-item" href="#">
+          <span class="kind">Budget</span><span class="date">2024-06-20</span>
+          <p class="snippet">Line item 14-310: <mark>Multilingual Learner Program</mark> — projected expenditure $1,284,000 for FY2025, up from $712,000 in FY2024…</p>
+          <div class="cite-inline">
+            <span>FY2025 Adopted Budget · pp. 14–15</span>
+            <span class="hash">#q008b412</span>
+          </div>
+        </a>
+
+        <a class="result-item" href="#">
+          <span class="kind">Strategic</span><span class="date">2023-09-12</span>
+          <p class="snippet">Among the district's equity goals: expanding <mark>multilingual learner</mark> supports to every elementary building by 2026…</p>
+          <div class="cite-inline">
+            <span>Strategic Plan 2023–2028</span>
+            <span class="hash">#q00a221f</span>
+          </div>
+        </a>
+
+        <a class="result-item" href="#">
+          <span class="kind">Transcript</span><span class="date">2024-02-08 · 00:47:02</span>
+          <p class="snippet">Dr. Caldera described the <mark>multilingual learner program</mark> as "the fastest-growing instructional line in the general fund"…</p>
+          <div class="cite-inline">
+            <span>Board Workshop · Feb 8, 2024</span>
+            <span class="hash">#q00ee401</span>
+          </div>
+        </a>
+      </section>
+
+      <!-- Reader pane (right) -->
+      <section class="reader-col">
+        <div class="reader-head">
+          <div>
+            <div class="kicker">Transcript · YouTube auto-caption</div>
+            <h3>Board Meeting — May 14, 2024</h3>
+          </div>
+          <div class="controls">
+            <a href="#">Open full →</a>
+            <a href="#">Cite</a>
+            <a href="#">Share</a>
+          </div>
+        </div>
+
+        <div class="reader-meta-bar">
+          <span class="k">Portal: YouTube</span>
+          <span>Source: @SchoolDistrictofClayton</span>
+          <span>Length: 02:11:48</span>
+          <span>Cue: 01:22:14</span>
+          <span>Speaker: Dr. K. Ferguson (CFO)</span>
+          <span>#q00c7731</span>
+        </div>
+
+        <!-- Embedded YouTube cued to timecode -->
+        <div class="video-pane">
+          <div class="video-frame">
+            <div class="thumb"></div>
+            <span class="label">● Live embed · cued to 01:22:14</span>
+            <div class="play"></div>
+            <div class="title-overlay">
+              <div class="t">Board of Education Meeting · May 14, 2024</div>
+              <div class="ts">youtube.com/watch?v=…&amp;t=4934s</div>
+            </div>
+          </div>
+
+          <!-- Transcript excerpt with cited passage highlighted -->
+          <div class="transcript">
+            <p>
+              <span class="ts">01:21:44</span>
+              <span class="body">
+                <span class="speaker">Mr. Lassiter</span>
+                So if I'm reading this correctly, the net increase on the general fund line is coming mostly from negotiated compensation and the multilingual program expansion. Is that accurate?
+              </span>
+            </p>
+            <p>
+              <span class="ts">01:22:02</span>
+              <span class="body">
+                <span class="speaker">Dr. Ferguson</span>
+                That's correct. <span class="cited">We're going to continue to see pressure on the property tax levy, and the expansion of the multilingual learner program is one of the budget lines growing the fastest.</span> I want the community to understand that the reserve fund is not a slush account. It's a buffer against state funding uncertainty.
+              </span>
+            </p>
+            <p>
+              <span class="ts">01:22:38</span>
+              <span class="body">
+                <span class="speaker">Ms. Oduya</span>
+                Can you speak to the revenue side? What assumptions are baked into the property tax projection?
+              </span>
+            </p>
+          </div>
+        </div>
+
+        <!-- If the result had been a PDF instead, the viewer would show doc-preview -->
+        <!-- Example doc preview (hidden here, visible as second result alternative) -->
+        <details style="margin-top: var(--s-5);">
+          <summary style="font-family: var(--mono); font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; cursor: pointer;">When the result is a document (example)</summary>
+          <div class="doc-preview">
+            <h4>Board of Education — Regular Meeting, November 13, 2024</h4>
+            <p><strong>Budget presentation.</strong> Dr. Ferguson presented the operating budget update. <span class="cited">The operating budget reflects a net increase of $4.2 million, driven primarily by negotiated salary and benefit increases and by the expansion of the multilingual learner program.</span></p>
+            <p>Board discussion followed. Ms. Oduya requested clarification on the projected reserve fund balance at year-end. Dr. Ferguson responded that current estimates place the reserve balance at approximately 28.7 percent, consistent with the district's reserve-target policy.</p>
+          </div>
+        </details>
+
+        <div class="reader-footer">
+          <button class="btn btn-primary">Open full transcript</button>
+          <button class="btn">Cite this passage</button>
+          <button class="btn">Watch on YouTube</button>
+          <button class="btn btn-ghost">Report an error →</button>
+        </div>
+      </section>
+    </div>
+
+  </main>
+</div>
+
+<!-- accent color toggle (oxblood is default, vermillion via data-accent) -->
+<div class="accent-toggle">
+  ACCENT:
+  <button id="btn-ox" class="on" onclick="document.documentElement.removeAttribute('data-accent');this.classList.add('on');document.getElementById('btn-verm').classList.remove('on');">oxblood</button>
+  <button id="btn-verm" onclick="document.documentElement.setAttribute('data-accent','vermillion');this.classList.add('on');document.getElementById('btn-ox').classList.remove('on');">vermillion</button>
+</div>
+
+<script>
+  // Collapsible sidebar sections with localStorage persistence.
+  (function () {
+    const STORAGE_KEY = 'actalux.nav.expanded';
+    const stored = (() => {
+      try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); }
+      catch (e) { return {}; }
+    })();
+
+    const toggles = document.querySelectorAll('.nav-toggle[data-target]');
+    toggles.forEach(btn => {
+      const id = btn.getAttribute('data-target');
+      const sub = document.getElementById(id);
+      if (!sub) return;
+
+      // Apply stored state (fall back to initial markup state).
+      if (Object.prototype.hasOwnProperty.call(stored, id)) {
+        const expanded = stored[id];
+        btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        sub.classList.toggle('collapsed', !expanded);
+      }
+
+      btn.addEventListener('click', () => {
+        const expanded = btn.getAttribute('aria-expanded') === 'true';
+        const next = !expanded;
+        btn.setAttribute('aria-expanded', next ? 'true' : 'false');
+        sub.classList.toggle('collapsed', !next);
+        stored[id] = next;
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(stored)); }
+        catch (e) { /* ignore */ }
+      });
+    });
+  })();
+</script>
+
+</body>
+</html>

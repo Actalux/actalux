@@ -103,3 +103,33 @@ uv run ruff check . && uv run ruff format --check .
 - Conventional commits: feat:, fix:, docs:, refactor:, test:
 - No Co-Authored-By lines
 - Push to Actalux/actalux on GitHub
+
+## Design System
+
+Always read `DESIGN.md` before making any visual or UI decisions. All font
+choices, colors, spacing, layout patterns, and interaction patterns are
+defined there. Do not deviate without explicit user approval.
+
+Key constraints pulled from DESIGN.md:
+
+- **Fonts:** Fraunces (display), Newsreader (body), Geist (UI), IBM Plex
+  Mono (citations). Never use Inter, Roboto, Arial, Helvetica, Poppins,
+  Montserrat, Raleway, or Clash Display.
+- **Accent:** Vermillion `#C8553D`. Used sparingly for highlights, active
+  states, primary CTA hover. Never for body text or decorative fill.
+- **Layout:** App shell — sticky top bar (with always-visible search),
+  sticky 256px left sidebar (collapsible nav sections), main content
+  area. Reader pane opens to the right when a result is clicked, with
+  the source document or YouTube embed cued to the citation.
+- **Cited passage highlight:** `background: #F4E9B0` + 3px vermillion
+  left-border. This is the product's core visual motif. Apply
+  consistently wherever a cited passage appears in source context.
+- **No:** border-radius, icon libraries, gradients, purple, civic-blue,
+  modals for primary flows, skeleton shimmer, scroll-triggered animation.
+- **Content accuracy:** Never claim completeness of the record. Use
+  phrases like "public records" or "documents we have gathered."
+  Sunshine Law records are a first-class source portal (`source_portal =
+  "sunshine"`).
+
+In QA and code review, flag any code that doesn't match DESIGN.md.
+Reference the specific section of DESIGN.md when flagging.
