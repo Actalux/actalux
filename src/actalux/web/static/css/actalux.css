@@ -21,8 +21,8 @@
   --accent: #C8553D;
   --accent-soft: #F3DDD6;
 
-  /* citation highlight */
-  --highlight: #F4E9B0;
+  /* citation highlight — warm marker yellow, must read as "highlighted" against paper */
+  --highlight: #FBE489;
 
   /* semantic (muted institutional tones) */
   --success: #3A7A52;
@@ -504,8 +504,8 @@ img { max-width: 100%; display: block; }
 /* ===== Cited passage (core visual motif) ===== */
 .cited {
   background: var(--highlight);
-  box-shadow: -3px 0 0 var(--accent);
-  padding: 2px 4px 2px 8px;
+  box-shadow: -4px 0 0 var(--accent), inset 0 -1px 0 rgba(200, 85, 61, 0.18);
+  padding: 3px 6px 3px 10px;
   color: var(--ink);
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
