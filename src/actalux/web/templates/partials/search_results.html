@@ -28,7 +28,7 @@
        onclick="document.querySelectorAll('.result-item.active').forEach(function(el){el.classList.remove('active');});this.classList.add('active');">
       <span class="kind">{{ r.document_type or 'Record' }}</span>
       {% if r.meeting_date %}<span class="date">{{ r.meeting_date }}</span>{% endif %}
-      <div class="snippet">{{ r.content }}</div>
+      <div class="snippet">{{ r.content | window_snippet(query) }}</div>
       <div class="cite-inline">
         {% if r.meeting_title %}<span>{{ r.meeting_title }}</span>{% endif %}
         {% if r.section %}<span>· {{ r.section }}</span>{% endif %}

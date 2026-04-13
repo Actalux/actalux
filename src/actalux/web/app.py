@@ -13,6 +13,7 @@ Endpoints:
 from __future__ import annotations
 
 import logging
+import re
 import time
 from datetime import date
 from pathlib import Path
@@ -22,6 +23,7 @@ from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from markupsafe import Markup, escape
 
 from actalux.config import Config, load_config
 from actalux.db import get_chunk_with_context, get_client, get_document, insert_correction
@@ -39,6 +41,67 @@ STATIC_DIR = Path(__file__).parent / "static"
 app = FastAPI(title="Actalux", version="0.1.0")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
+
+
+def _window_snippet(content: str, query: str, width: int = 160) -> Markup:
+    """Return an HTML-safe snippet windowed around the first query-term match.
+
+    Produces a preview roughly ``width`` characters long, centered on the
+    first occurrence of any query term. Query terms are wrapped in ``<mark>``
+    tags. Leading/trailing ellipses are added when the window is truncated.
+    Falls back to the first ``width`` characters of the content when no
+    query terms match.
+    """
+    cleaned = re.sub(r"\s+", " ", (content or "").strip())
+    if not cleaned:
+        return Markup("")
+
+    terms = [t for t in re.findall(r"[A-Za-z0-9]{3,}", (query or "").lower())]
+    lowered = cleaned.lower()
+    match_pos = -1
+    for t in terms:
+        pos = lowered.find(t)
+        if pos != -1 and (match_pos == -1 or pos < match_pos):
+            match_pos = pos
+
+    if match_pos == -1:
+        # No match — just head-truncate
+        snippet = cleaned[:width]
+        suffix = "…" if len(cleaned) > width else ""
+        return Markup(str(escape(snippet)) + suffix)
+
+    half = width // 2
+    start = max(0, match_pos - half)
+    end = min(len(cleaned), start + width)
+    # Shift start back if we ran out of text on the right
+    start = max(0, end - width)
+    prefix = "…" if start > 0 else ""
+    suffix = "…" if end < len(cleaned) else ""
+    window = cleaned[start:end]
+
+    # Wrap every matching term occurrence in <mark> (case-insensitive)
+    def _highlight(text: str) -> str:
+        if not terms:
+            return str(escape(text))
+        pattern = re.compile(
+            r"(" + "|".join(re.escape(t) for t in terms) + r")",
+            re.IGNORECASE,
+        )
+        parts: list[str] = []
+        last = 0
+        for m in pattern.finditer(text):
+            parts.append(str(escape(text[last : m.start()])))
+            parts.append("<mark>")
+            parts.append(str(escape(m.group(0))))
+            parts.append("</mark>")
+            last = m.end()
+        parts.append(str(escape(text[last:])))
+        return "".join(parts)
+
+    return Markup(prefix + _highlight(window) + suffix)
+
+
+templates.env.filters["window_snippet"] = _window_snippet
 
 # In-process cache for topic page queries (1-hour TTL)
 _topic_cache: dict[str, tuple[float, list[Any]]] = {}
