@@ -12,14 +12,14 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-import anthropic
+from openai import OpenAI
 
 from actalux.errors import SummaryError
 
 logger = logging.getLogger(__name__)
 
 HASH_ID_RE = re.compile(r"#q[0-9a-f]{4,5}")
-MODEL = "claude-sonnet-4-20250514"
+DEFAULT_MODEL = "gpt-4o-mini"
 MAX_TOKENS = 1024
 
 SYSTEM_PROMPT = """\
@@ -66,6 +66,7 @@ def generate_summary(
     query: str,
     results: list[dict[str, Any]],
     api_key: str,
+    model: str = DEFAULT_MODEL,
 ) -> Summary:
     """Generate a citation-backed summary from search results.
 
@@ -88,7 +89,7 @@ def generate_summary(
     quotes_block = _build_quotes_block(results)
 
     # Call Claude
-    raw_text = _call_llm(query, quotes_block, api_key)
+    raw_text = _call_llm(query, quotes_block, api_key, model)
 
     # Verify citations
     verified_text, stats = _verify_citations(raw_text, valid_ids)
@@ -129,25 +130,29 @@ def _build_quotes_block(results: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def _call_llm(query: str, quotes_block: str, api_key: str) -> str:
-    """Call Claude to generate a citation-backed summary."""
+def _call_llm(query: str, quotes_block: str, api_key: str, model: str) -> str:
+    """Call OpenAI to generate a citation-backed summary."""
     user_message = USER_PROMPT_TEMPLATE.format(
         query=query,
         quotes_block=quotes_block,
     )
 
     try:
-        client = anthropic.Anthropic(api_key=api_key)
-        response = client.messages.create(
-            model=MODEL,
+        client = OpenAI(api_key=api_key)
+        response = client.chat.completions.create(
+            model=model,
             max_tokens=MAX_TOKENS,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_message}],
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_message},
+            ],
         )
-        block = response.content[0]
-        if block.type != "text":
-            raise SummaryError("LLM returned non-text content block")
-        return block.text  # type: ignore[union-attr]
+        text = response.choices[0].message.content
+        if not text:
+            raise SummaryError("LLM returned empty content")
+        return text
+    except SummaryError:
+        raise
     except Exception as exc:
         raise SummaryError(f"LLM call failed: {exc}") from exc
 

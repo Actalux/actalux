@@ -16,6 +16,8 @@ class Config:
         default_factory=lambda: os.environ.get("BUTTONDOWN_API_KEY", "")
     )
     anthropic_api_key: str = field(default_factory=lambda: os.environ.get("ANTHROPIC_API_KEY", ""))
+    openai_api_key: str = field(default_factory=lambda: os.environ.get("OPENAI_API_KEY", ""))
+    summary_model: str = "gpt-4o-mini"
     embedding_model: str = "BAAI/bge-small-en-v1.5"
     embedding_dim: int = 384
     chunk_target_words: int = 200

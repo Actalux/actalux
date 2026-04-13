@@ -360,7 +360,7 @@ async def chunk_reader(
     summary_html: str | None = None
     cache_hit = False
     cfg = _get_config()
-    if q.strip() and cfg.anthropic_api_key:
+    if q.strip() and cfg.openai_api_key:
         cache_key = _summary_cache_key(chunk_id, q)
         cached = _SUMMARY_CACHE.get(cache_key)
         if cached is not None:
@@ -368,7 +368,9 @@ async def chunk_reader(
             cache_hit = True
         else:
             try:
-                summary = generate_summary(q, enriched_results, cfg.anthropic_api_key)
+                summary = generate_summary(
+                    q, enriched_results, cfg.openai_api_key, cfg.summary_model
+                )
                 rendered = _render_citation_links(summary.text, enriched_results)
                 summary_html = rendered
                 # Evict oldest if over cap (dict preserves insertion order in py3.7+)
@@ -437,7 +439,7 @@ async def summarize(
     with the summary text and inline citation links.
     """
     cfg = _get_config()
-    if not q.strip() or not cfg.anthropic_api_key:
+    if not q.strip() or not cfg.openai_api_key:
         return templates.TemplateResponse(
             request,
             "partials/summary.html",
@@ -455,7 +457,7 @@ async def summarize(
         query_embedding = _embed_query(q)
         results = hybrid_search(client, q, query_embedding, filters, max_results=10)
         enriched = _enrich_results(client, results)
-        summary = generate_summary(q, enriched, cfg.anthropic_api_key)
+        summary = generate_summary(q, enriched, cfg.openai_api_key, cfg.summary_model)
     except (SearchError, SummaryError):
         logger.exception("Summary generation failed for: %s", q)
         return templates.TemplateResponse(
