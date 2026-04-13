@@ -409,6 +409,14 @@ img { max-width: 100%; display: block; }
   min-width: 0;
   overflow-y: auto;
 }
+.pdf-frame {
+  display: block;
+  width: 100%;
+  min-height: calc(100vh - var(--topbar-h) - 240px);
+  border: 1px solid var(--rule);
+  background: var(--paper-warm);
+  margin-top: var(--s-4);
+}
 /* Legacy .split + .reader-col class for non-search usages (chunk_source) */
 .split {
   display: grid;
