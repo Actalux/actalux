@@ -1,0 +1,34 @@
+{# Middle column: AI-generated summary with inline citations. #}
+
+<div class="summary-head">
+  <div class="kicker">What this source says</div>
+  <div class="summary-query">
+    {% if query %}about <em>"{{ query }}"</em>{% else %}(open a search to see a summary){% endif %}
+  </div>
+</div>
+
+{% if summary_html %}
+  <div class="summary-body">
+    {{ summary_html | safe }}
+  </div>
+  {% if summary %}
+    <div class="summary-foot">
+      {{ summary.citations_verified }} citation{{ 's' if summary.citations_verified != 1 }} verified
+      {% if summary.citations_dropped %} · {{ summary.citations_dropped }} unverified claim{{ 's' if summary.citations_dropped != 1 }} removed{% endif %}
+      {% if cache_hit %} · cached{% endif %}
+    </div>
+  {% elif cache_hit %}
+    <div class="summary-foot">cached</div>
+  {% endif %}
+{% elif query %}
+  <div class="summary-fallback">
+    Could not generate a verified summary for this passage. See the source
+    document on the right for details.
+  </div>
+{% else %}
+  <div class="summary-fallback">
+    Summaries are generated from a search query. Open <a href="/search">search</a>
+    or a <a href="/topic/budget">topic page</a> to see a summary of what this
+    source says about a specific term.
+  </div>
+{% endif %}

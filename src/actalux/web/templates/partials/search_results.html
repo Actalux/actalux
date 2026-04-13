@@ -1,5 +1,5 @@
 {% if query and results %}
-<div class="split">
+<div class="three-col">
 
   <section class="results-col" id="results-col">
     <div class="results-head-row">
@@ -11,18 +11,11 @@
       </div>
     </div>
 
-    <div hx-post="/summarize"
-         hx-trigger="load"
-         hx-vals='{"q": {{ query | tojson }} }'
-         hx-swap="innerHTML"
-         id="summary-container">
-    </div>
-
     {% for r in results %}
     <a class="result-item{% if loop.first %} active{% endif %}"
        href="/chunk/{{ r.chunk_id }}/source"
-       hx-get="/chunk/{{ r.chunk_id }}/source?embed=1"
-       hx-target="#reader-col"
+       hx-get="/chunk/{{ r.chunk_id }}/reader?q={{ query | urlencode }}"
+       hx-target="#reader-twin"
        hx-swap="innerHTML"
        {% if loop.first %}hx-trigger="load, click"{% endif %}
        onclick="document.querySelectorAll('.result-item.active').forEach(function(el){el.classList.remove('active');});this.classList.add('active');">
@@ -38,9 +31,14 @@
     {% endfor %}
   </section>
 
-  <section class="reader-col" id="reader-col">
-    <div class="reader-empty">Loading source…</div>
-  </section>
+  <div class="reader-twin" id="reader-twin">
+    <section class="summary-col" aria-live="polite">
+      <div class="summary-fallback">Generating summary…</div>
+    </section>
+    <section class="source-col">
+      <div class="reader-empty">Loading source…</div>
+    </section>
+  </div>
 
 </div>
 {% elif query %}

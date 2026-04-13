@@ -294,6 +294,107 @@ async def chunk_source(request: Request, chunk_id: int, embed: int = 0) -> HTMLR
     )
 
 
+# In-process LRU cache for per-result summaries. Keyed by (chunk_id,
+# normalized_query). Keeps the Claude cost down when users click around
+# the same search. 500 entries is ~500 clicks before eviction; effectively
+# unlimited for a single-instance server. Upgrade to a DB cache if we go
+# multi-instance.
+_SUMMARY_CACHE: dict[tuple[int, str], str] = {}
+_SUMMARY_CACHE_MAX = 500
+
+
+def _summary_cache_key(chunk_id: int, query: str) -> tuple[int, str]:
+    normalized = " ".join((query or "").lower().split())
+    return (chunk_id, normalized)
+
+
+def _enriched_context(client: Any, chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Turn raw chunk rows into the dict shape generate_summary expects."""
+    enriched: list[dict[str, Any]] = []
+    doc_cache: dict[int, dict[str, Any]] = {}
+    for ch in chunks:
+        doc_id = ch["document_id"]
+        if doc_id not in doc_cache:
+            doc_cache[doc_id] = get_document(client, doc_id) or {}
+        doc = doc_cache[doc_id]
+        hash_id = f"#q{ch['id']:04x}"[-6:]
+        enriched.append(
+            {
+                "chunk_id": ch["id"],
+                "hash_id": hash_id,
+                "content": ch["content"],
+                "section": ch.get("section", ""),
+                "speaker": ch.get("speaker", ""),
+                "meeting_date": doc.get("meeting_date", ""),
+                "meeting_title": doc.get("meeting_title", ""),
+                "document_id": doc_id,
+                "document_type": doc.get("document_type", ""),
+            }
+        )
+    return enriched
+
+
+@app.get("/chunk/{chunk_id}/reader", response_class=HTMLResponse)
+async def chunk_reader(
+    request: Request, chunk_id: int, q: str = ""
+) -> HTMLResponse:
+    """Return the reader twin (summary pane + source pane) for a chunk.
+
+    Called by HTMX when the user clicks a search result. Fetches the
+    chunk and two neighbors from the same document, generates a
+    citation-backed summary (cached), and renders both panes together.
+    """
+    client = _get_db()
+    ctx = get_chunk_with_context(client, chunk_id, context_count=2)
+    if not ctx["chunk"]:
+        raise HTTPException(status_code=404, detail="Chunk not found")
+
+    doc = get_document(client, ctx["chunk"]["document_id"])
+    enriched_results = _enriched_context(client, ctx["context"])
+    target_hash = f"#q{chunk_id:04x}"[-6:]
+
+    # Generate or load cached summary (only when we have a query to summarize
+    # against). Without a query, skip summarization — the pane shows a
+    # "summary available when searching" placeholder.
+    summary = None
+    summary_html: str | None = None
+    cache_hit = False
+    cfg = _get_config()
+    if q.strip() and cfg.anthropic_api_key:
+        cache_key = _summary_cache_key(chunk_id, q)
+        cached = _SUMMARY_CACHE.get(cache_key)
+        if cached is not None:
+            summary_html = cached
+            cache_hit = True
+        else:
+            try:
+                summary = generate_summary(q, enriched_results, cfg.anthropic_api_key)
+                rendered = _render_citation_links(summary.text, enriched_results)
+                summary_html = rendered
+                # Evict oldest if over cap (dict preserves insertion order in py3.7+)
+                if len(_SUMMARY_CACHE) >= _SUMMARY_CACHE_MAX:
+                    _SUMMARY_CACHE.pop(next(iter(_SUMMARY_CACHE)))
+                _SUMMARY_CACHE[cache_key] = rendered
+            except SummaryError:
+                logger.exception("Summary generation failed for chunk %d q=%r", chunk_id, q)
+                summary_html = None
+
+    return templates.TemplateResponse(
+        request,
+        "partials/reader_twin.html",
+        {
+            "chunk": ctx["chunk"],
+            "context": ctx["context"],
+            "document": doc,
+            "query": q,
+            "target_hash": target_hash,
+            "summary": summary,
+            "summary_html": summary_html,
+            "cache_hit": cache_hit,
+        },
+    )
+
+
 @app.get("/methodology", response_class=HTMLResponse)
 async def methodology(request: Request) -> HTMLResponse:
     """How the system works — transparency page."""
