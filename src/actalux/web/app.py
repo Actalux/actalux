@@ -31,7 +31,7 @@ from actalux.errors import SearchError, SummaryError
 from actalux.ingest.embedder import load_model
 from actalux.models import Correction
 from actalux.search.hybrid import SearchFilters, hybrid_search
-from actalux.search.summarize import generate_summary
+from actalux.search.summarize import generate_match_summary, generate_summary
 
 logger = logging.getLogger(__name__)
 
@@ -366,6 +366,47 @@ async def chunk_source_pane(
     )
 
 
+@app.get("/chunk/{chunk_id}/match-summary", response_class=HTMLResponse)
+async def chunk_match_summary(chunk_id: int, q: str = "") -> HTMLResponse:
+    """Return a one-sentence match summary as a tiny HTML fragment.
+
+    Lazy-loaded by each result card via HTMX (hx-trigger='revealed once').
+    Cached in-process by (chunk_id, normalized query).
+    """
+    cfg = _get_config()
+    if not q.strip() or not cfg.openai_api_key:
+        return HTMLResponse("")
+
+    key = _summary_cache_key(chunk_id, q)
+    cached = _SUMMARY_CACHE.get(key)
+    if cached is not None:
+        return HTMLResponse(cached)
+
+    client = _get_db()
+    ctx = get_chunk_with_context(client, chunk_id, context_count=0)
+    if not ctx["chunk"]:
+        return HTMLResponse("")
+
+    try:
+        text = generate_match_summary(
+            q, chunk_id, ctx["chunk"]["content"], cfg.openai_api_key, cfg.summary_model
+        )
+    except SummaryError:
+        logger.exception("match summary failed for chunk %d q=%r", chunk_id, q)
+        text = ""
+
+    if not text:
+        return HTMLResponse("")
+
+    rendered = _render_citation_links(text, [
+        {"chunk_id": chunk_id, "hash_id": f"#q{chunk_id:04x}"[-6:]}
+    ])
+    if len(_SUMMARY_CACHE) >= _SUMMARY_CACHE_MAX:
+        _SUMMARY_CACHE.pop(next(iter(_SUMMARY_CACHE)))
+    _SUMMARY_CACHE[key] = rendered
+    return HTMLResponse(rendered)
+
+
 @app.get("/methodology", response_class=HTMLResponse)
 async def methodology(request: Request) -> HTMLResponse:
     """How the system works — transparency page."""
@@ -491,6 +532,7 @@ def _enrich_results(client: Any, results: list[Any]) -> list[dict[str, Any]]:
                 "meeting_title": doc.get("meeting_title", ""),
                 "document_id": doc_id,
                 "document_type": doc.get("document_type", ""),
+                "summary": doc.get("summary", ""),
             }
         )
 

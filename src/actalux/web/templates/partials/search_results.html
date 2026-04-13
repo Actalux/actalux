@@ -30,12 +30,17 @@
 
       <div class="card-summary doc-summary">
         <span class="card-label">Document</span>
-        <span class="card-body">{{ r.document_type or 'Record' }}{% if r.meeting_date %} · {{ r.meeting_date }}{% endif %}{% if r.section %} · {{ r.section }}{% endif %}</span>
+        <span class="card-body">{% if r.summary %}{{ r.summary }}{% else %}{{ r.document_type or 'Record' }}{% if r.meeting_date %} · {{ r.meeting_date }}{% endif %}{% if r.section %} · {{ r.section }}{% endif %}{% endif %}</span>
       </div>
 
       <div class="card-summary match-summary">
         <span class="card-label">Match</span>
-        <span class="card-body">{{ r.content | window_snippet(query) }}</span>
+        <span class="card-body"
+              hx-get="/chunk/{{ r.chunk_id }}/match-summary?q={{ query | urlencode }}"
+              hx-trigger="revealed once"
+              hx-swap="innerHTML">
+          <span class="match-fallback">{{ r.content | window_snippet(query) }}</span>
+        </span>
       </div>
 
       <div class="card-foot">

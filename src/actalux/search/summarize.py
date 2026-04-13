@@ -225,3 +225,122 @@ def _split_sentences(text: str) -> list[str]:
 def extract_citation_ids(text: str) -> list[str]:
     """Extract all hash IDs from text. Useful for testing."""
     return HASH_ID_RE.findall(text)
+
+
+# --- Card-sized summaries (per-document and per-match) ----------------
+
+DOC_SUMMARY_SYSTEM = """\
+You describe Clayton, MO school district public records in one sentence \
+for a citizen-facing search archive. Be factual and neutral. Say what the \
+document is (its kind, scope, and time frame), not what it argues. Do not \
+editorialize. Do not speculate.\
+"""
+
+DOC_SUMMARY_USER = """\
+Document title: {title}
+Document type: {doc_type}
+Date: {date}
+Source portal: {portal}
+
+Excerpts from the start of the document:
+
+{excerpts}
+
+In one sentence (under 25 words), say what this document is. Use plain \
+language. No citations needed (this is descriptive of the document itself).\
+"""
+
+MATCH_SUMMARY_SYSTEM = """\
+You explain why a search result matched a citizen's query for the Clayton, \
+MO school district public records archive. Be factual and neutral. Cite \
+the passage's hash ID like [#q003f]. Do not editorialize.\
+"""
+
+MATCH_SUMMARY_USER = """\
+Query: {query}
+
+Matched passage (cite as {hash_id}):
+{content}
+
+In one sentence (under 30 words), say what this passage tells the reader \
+about "{query}". End the sentence with the citation in brackets, like \
+[#q003f]. If the passage is not actually relevant to the query, say so \
+briefly without a citation.\
+"""
+
+
+def generate_doc_summary(
+    title: str,
+    doc_type: str,
+    date: str,
+    portal: str,
+    excerpts: list[str],
+    api_key: str,
+    model: str = DEFAULT_MODEL,
+) -> str:
+    """One-sentence description of a document. Stored on the document row."""
+    excerpts_block = "\n\n".join(e.strip() for e in excerpts if e and e.strip())[:6000]
+    user_message = DOC_SUMMARY_USER.format(
+        title=title or "(untitled)",
+        doc_type=doc_type or "(unknown)",
+        date=date or "(undated)",
+        portal=portal or "(unknown)",
+        excerpts=excerpts_block or "(no excerpts available)",
+    )
+    try:
+        client = OpenAI(api_key=api_key)
+        response = client.chat.completions.create(
+            model=model,
+            max_tokens=120,
+            messages=[
+                {"role": "system", "content": DOC_SUMMARY_SYSTEM},
+                {"role": "user", "content": user_message},
+            ],
+        )
+        text = (response.choices[0].message.content or "").strip()
+        if not text:
+            raise SummaryError("doc summary returned empty")
+        return text
+    except SummaryError:
+        raise
+    except Exception as exc:
+        raise SummaryError(f"doc summary call failed: {exc}") from exc
+
+
+def generate_match_summary(
+    query: str,
+    chunk_id: int,
+    content: str,
+    api_key: str,
+    model: str = DEFAULT_MODEL,
+) -> str:
+    """One-sentence explanation of why a passage matched, with verified citation.
+
+    Returns "" if the model produced no claim with a verifiable citation.
+    """
+    if not query.strip() or not content.strip():
+        return ""
+    hash_id = f"#q{chunk_id:04x}"[-6:]
+    user_message = MATCH_SUMMARY_USER.format(
+        query=query,
+        hash_id=hash_id,
+        content=content[:4000],
+    )
+    try:
+        client = OpenAI(api_key=api_key)
+        response = client.chat.completions.create(
+            model=model,
+            max_tokens=180,
+            messages=[
+                {"role": "system", "content": MATCH_SUMMARY_SYSTEM},
+                {"role": "user", "content": user_message},
+            ],
+        )
+        text = (response.choices[0].message.content or "").strip()
+    except Exception as exc:
+        raise SummaryError(f"match summary call failed: {exc}") from exc
+
+    verified, _stats = _verify_citations(text, {hash_id})
+    if verified == "Could not generate a verified summary for this query.":
+        return ""
+    return verified
