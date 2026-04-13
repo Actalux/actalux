@@ -334,15 +334,16 @@ def _enriched_context(client: Any, chunks: list[dict[str, Any]]) -> list[dict[st
     return enriched
 
 
-@app.get("/chunk/{chunk_id}/reader", response_class=HTMLResponse)
-async def chunk_reader(
+@app.get("/chunk/{chunk_id}/source-pane", response_class=HTMLResponse)
+async def chunk_source_pane(
     request: Request, chunk_id: int, q: str = ""
 ) -> HTMLResponse:
-    """Return the reader twin (summary pane + source pane) for a chunk.
+    """Return the source pane only (native-format document view) for a chunk.
 
     Called by HTMX when the user clicks a search result. Fetches the
-    chunk and two neighbors from the same document, generates a
-    citation-backed summary (cached), and renders both panes together.
+    chunk and two neighbors for in-context display. Per-card AI
+    summaries (doc summary + match summary) are generated separately
+    on the result cards, not here.
     """
     client = _get_db()
     ctx = get_chunk_with_context(client, chunk_id, context_count=2)
@@ -350,49 +351,17 @@ async def chunk_reader(
         raise HTTPException(status_code=404, detail="Chunk not found")
 
     doc = get_document(client, ctx["chunk"]["document_id"])
-    enriched_results = _enriched_context(client, ctx["context"])
     target_hash = f"#q{chunk_id:04x}"[-6:]
-
-    # Generate or load cached summary (only when we have a query to summarize
-    # against). Without a query, skip summarization — the pane shows a
-    # "summary available when searching" placeholder.
-    summary = None
-    summary_html: str | None = None
-    cache_hit = False
-    cfg = _get_config()
-    if q.strip() and cfg.openai_api_key:
-        cache_key = _summary_cache_key(chunk_id, q)
-        cached = _SUMMARY_CACHE.get(cache_key)
-        if cached is not None:
-            summary_html = cached
-            cache_hit = True
-        else:
-            try:
-                summary = generate_summary(
-                    q, enriched_results, cfg.openai_api_key, cfg.summary_model
-                )
-                rendered = _render_citation_links(summary.text, enriched_results)
-                summary_html = rendered
-                # Evict oldest if over cap (dict preserves insertion order in py3.7+)
-                if len(_SUMMARY_CACHE) >= _SUMMARY_CACHE_MAX:
-                    _SUMMARY_CACHE.pop(next(iter(_SUMMARY_CACHE)))
-                _SUMMARY_CACHE[cache_key] = rendered
-            except SummaryError:
-                logger.exception("Summary generation failed for chunk %d q=%r", chunk_id, q)
-                summary_html = None
 
     return templates.TemplateResponse(
         request,
-        "partials/reader_twin.html",
+        "partials/source_pane.html",
         {
             "chunk": ctx["chunk"],
             "context": ctx["context"],
             "document": doc,
             "query": q,
             "target_hash": target_hash,
-            "summary": summary,
-            "summary_html": summary_html,
-            "cache_hit": cache_hit,
         },
     )
 

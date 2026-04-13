@@ -1,5 +1,5 @@
 {% if query and results %}
-<div class="three-col">
+<div class="search-layout">
 
   <section class="results-col" id="results-col">
     <div class="results-head-row">
@@ -12,33 +12,42 @@
     </div>
 
     {% for r in results %}
-    <a class="result-item{% if loop.first %} active{% endif %}"
+    <a class="result-card{% if loop.first %} active{% endif %}"
        href="/chunk/{{ r.chunk_id }}/source"
-       hx-get="/chunk/{{ r.chunk_id }}/reader?q={{ query | urlencode }}"
-       hx-target="#reader-twin"
+       hx-get="/chunk/{{ r.chunk_id }}/source-pane?q={{ query | urlencode }}"
+       hx-target="#source-col"
        hx-swap="innerHTML"
        {% if loop.first %}hx-trigger="load, click"{% endif %}
-       onclick="document.querySelectorAll('.result-item.active').forEach(function(el){el.classList.remove('active');});this.classList.add('active');">
-      <span class="kind">{{ r.document_type or 'Record' }}</span>
-      {% if r.meeting_date %}<span class="date">{{ r.meeting_date }}</span>{% endif %}
-      <div class="snippet">{{ r.content | window_snippet(query) }}</div>
-      <div class="cite-inline">
-        {% if r.meeting_title %}<span>{{ r.meeting_title }}</span>{% endif %}
-        {% if r.section %}<span>· {{ r.section }}</span>{% endif %}
+       onclick="document.querySelectorAll('.result-card.active').forEach(function(el){el.classList.remove('active');});this.classList.add('active');">
+      <div class="card-head">
+        <h3 class="doc-title">{{ r.meeting_title or 'Untitled document' }}</h3>
+        <div class="card-meta">
+          <span class="kind">{{ r.document_type or 'Record' }}</span>
+          {% if r.meeting_date %}<span class="date">{{ r.meeting_date }}</span>{% endif %}
+          {% if r.section %}<span class="section">{{ r.section }}</span>{% endif %}
+        </div>
+      </div>
+
+      <div class="card-summary doc-summary">
+        <span class="card-label">Document</span>
+        <span class="card-body">{{ r.document_type or 'Record' }}{% if r.meeting_date %} · {{ r.meeting_date }}{% endif %}{% if r.section %} · {{ r.section }}{% endif %}</span>
+      </div>
+
+      <div class="card-summary match-summary">
+        <span class="card-label">Match</span>
+        <span class="card-body">{{ r.content | window_snippet(query) }}</span>
+      </div>
+
+      <div class="card-foot">
         <span class="hash">{{ r.hash_id }}</span>
       </div>
     </a>
     {% endfor %}
   </section>
 
-  <div class="reader-twin" id="reader-twin">
-    <section class="summary-col" aria-live="polite">
-      <div class="summary-fallback">Generating summary…</div>
-    </section>
-    <section class="source-col">
-      <div class="reader-empty">Loading source…</div>
-    </section>
-  </div>
+  <section class="source-col" id="source-col">
+    <div class="reader-empty">Loading source…</div>
+  </section>
 
 </div>
 {% elif query %}
