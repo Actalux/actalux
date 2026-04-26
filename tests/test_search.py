@@ -1,9 +1,17 @@
-"""Tests for hybrid search RRF logic.
+"""Tests for hybrid search behavior.
 
 RRF is a pure function — no database or embedding model needed.
 """
 
-from actalux.search.hybrid import SearchResult, _reciprocal_rank_fusion
+from datetime import date
+
+from actalux.search.hybrid import (
+    SearchFilters,
+    SearchResult,
+    _keyword_search,
+    _reciprocal_rank_fusion,
+    _semantic_search,
+)
 
 RRF_K = 60
 
@@ -91,3 +99,65 @@ class TestReciprocalRankFusion:
         results = _reciprocal_rank_fusion(semantic, keyword, max_results=10)
         ids = {r.chunk_id for r in results}
         assert ids == {1, 2, 3, 4}
+
+
+class _FakeRpc:
+    def __init__(self, data: list[dict]) -> None:
+        self.data = data
+
+    def execute(self) -> "_FakeRpc":
+        return self
+
+
+class _FakeClient:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict]] = []
+
+    def rpc(self, name: str, params: dict) -> _FakeRpc:
+        self.calls.append((name, params))
+        return _FakeRpc([{"chunk_id": 1}])
+
+
+class TestSearchRpcParams:
+    """Search RPC calls should pass filters in the database contract shape."""
+
+    def test_semantic_search_passes_filters(self) -> None:
+        client = _FakeClient()
+        filters = SearchFilters(
+            date_from=date(2024, 1, 1),
+            date_to=date(2024, 12, 31),
+            document_type="minutes",
+        )
+
+        rows = _semantic_search(client, [0.1, 0.2], filters)
+
+        assert rows == [{"chunk_id": 1}]
+        assert client.calls == [
+            (
+                "semantic_search",
+                {
+                    "query_embedding": [0.1, 0.2],
+                    "match_threshold": 0.35,
+                    "match_count": 50,
+                    "filter_date_from": "2024-01-01",
+                    "filter_date_to": "2024-12-31",
+                    "filter_doc_type": "minutes",
+                },
+            )
+        ]
+
+    def test_keyword_search_omits_empty_filters(self) -> None:
+        client = _FakeClient()
+
+        rows = _keyword_search(client, "budget", SearchFilters())
+
+        assert rows == [{"chunk_id": 1}]
+        assert client.calls == [
+            (
+                "keyword_search",
+                {
+                    "search_query": "budget",
+                    "match_count": 50,
+                },
+            )
+        ]

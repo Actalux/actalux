@@ -15,10 +15,11 @@ from typing import Any
 from openai import OpenAI
 
 from actalux.errors import SummaryError
+from actalux.models import chunk_hash_id
 
 logger = logging.getLogger(__name__)
 
-HASH_ID_RE = re.compile(r"#q[0-9a-f]{4,5}")
+HASH_ID_RE = re.compile(r"#q[0-9a-f]{4,}")
 DEFAULT_MODEL = "gpt-4o-mini"
 MAX_TOKENS = 1024
 
@@ -320,7 +321,7 @@ def generate_match_summary(
     """
     if not query.strip() or not content.strip():
         return ""
-    hash_id = f"#q{chunk_id:04x}"[-6:]
+    hash_id = chunk_hash_id(chunk_id)
     user_message = MATCH_SUMMARY_USER.format(
         query=query,
         hash_id=hash_id,

@@ -29,6 +29,9 @@ class TestExtractCitationIds:
     def test_five_char_hash(self) -> None:
         assert extract_citation_ids("[#q1a2b3]") == ["#q1a2b3"]
 
+    def test_long_hash(self) -> None:
+        assert extract_citation_ids("[#q10000]") == ["#q10000"]
+
     def test_hash_without_brackets(self) -> None:
         assert extract_citation_ids("See #q003f for details.") == ["#q003f"]
 

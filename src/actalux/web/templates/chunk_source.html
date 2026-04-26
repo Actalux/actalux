@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}#q{{ '%04x' % chunk.id }}{% endblock %}
+{% block title %}{{ chunk.id | chunk_hash_id }}{% endblock %}
 {% block content %}
 
 <section class="pane-header">
   <h2>Citation in context</h2>
-  <span class="meta">#q{{ '%04x' % chunk.id }}</span>
+  <span class="meta">{{ chunk.id | chunk_hash_id }}</span>
 </section>
 
 <div style="padding: var(--s-5) var(--s-6);">

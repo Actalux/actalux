@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS chunks (
     content TEXT NOT NULL,
     section TEXT DEFAULT '',
     speaker TEXT DEFAULT '',
+    chunk_index INT NOT NULL DEFAULT 0,
     embedding VECTOR(384)
 );
 
@@ -114,6 +115,23 @@ ALTER TABLE documents ADD COLUMN IF NOT EXISTS version INT DEFAULT 1;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS replaces_id INT REFERENCES documents(id);
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS last_checked_at TIMESTAMPTZ;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;
+
+-- Document-local chunk ordering for reliable context lookup
+ALTER TABLE chunks ADD COLUMN IF NOT EXISTS chunk_index INT NOT NULL DEFAULT 0;
+
+WITH ranked AS (
+    SELECT
+        id,
+        ROW_NUMBER() OVER (PARTITION BY document_id ORDER BY id) - 1 AS new_index
+    FROM chunks
+)
+UPDATE chunks
+SET chunk_index = ranked.new_index
+FROM ranked
+WHERE chunks.id = ranked.id;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_chunks_document_index
+    ON chunks (document_id, chunk_index);
 
 -- Fast lookup for latest version of a document
 CREATE INDEX IF NOT EXISTS idx_documents_latest

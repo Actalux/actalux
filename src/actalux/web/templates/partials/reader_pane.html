@@ -7,7 +7,7 @@
   <div class="controls">
     {% if document %}<a href="/document/{{ document.id }}">Open full →</a>{% endif %}
     {% if document.source_url %}<a href="{{ document.source_url }}" target="_blank" rel="noopener">Source file</a>{% endif %}
-    <a href="https://github.com/Actalux/actalux/issues/new?title=Error+report+{{ ctx_chunk.hash_id|default('#q') }}" target="_blank" rel="noopener">Report error</a>
+    <a href="https://github.com/Actalux/actalux/issues/new?title=Error+report+{{ ctx_chunk.id | chunk_hash_id | urlencode }}" target="_blank" rel="noopener">Report error</a>
   </div>
 </div>
 
@@ -16,7 +16,7 @@
   {% if document.source_portal %}<span>Portal: {{ document.source_portal }}</span>{% endif %}
   {% if ctx_chunk.section %}<span>Section: {{ ctx_chunk.section }}</span>{% endif %}
   {% if ctx_chunk.speaker %}<span>Speaker: {{ ctx_chunk.speaker }}</span>{% endif %}
-  <span>#q{{ '%04x' % ctx_chunk.id }}</span>
+  <span>{{ ctx_chunk.id | chunk_hash_id }}</span>
 </div>
 
 <div class="doc-page" style="padding-top: var(--s-4);">
@@ -32,7 +32,7 @@
 <div style="margin-top: var(--s-5); padding-top: var(--s-4); border-top: 1px solid var(--rule); display: flex; gap: var(--s-3); flex-wrap: wrap;">
   {% if document %}<a class="btn btn-primary" href="/document/{{ document.id }}">Open full document</a>{% endif %}
   {% if document.source_url %}<a class="btn" href="{{ document.source_url }}" target="_blank" rel="noopener">View original source</a>{% endif %}
-  <a class="btn btn-ghost" href="https://github.com/Actalux/actalux/issues/new?title=Error+report+%23q{{ '%04x' % ctx_chunk.id }}" target="_blank" rel="noopener">Report an error →</a>
+  <a class="btn btn-ghost" href="https://github.com/Actalux/actalux/issues/new?title=Error+report+{{ ctx_chunk.id | chunk_hash_id | urlencode }}" target="_blank" rel="noopener">Report an error →</a>
 </div>
 
 <script>

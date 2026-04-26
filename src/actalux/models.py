@@ -6,6 +6,13 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 
 
+def chunk_hash_id(chunk_id: int | None) -> str:
+    """Return the display hash for a chunk ID."""
+    if chunk_id is None:
+        return "#unknown"
+    return f"#q{chunk_id:04x}"
+
+
 @dataclass(frozen=True)
 class Document:
     """An official document (agenda, minutes, packet, resolution)."""
@@ -34,16 +41,14 @@ class Chunk:
     content: str
     section: str = ""
     speaker: str = ""
+    chunk_index: int = 0
     embedding: list[float] = field(default_factory=list)
     id: int | None = None
 
     @property
     def hash_id(self) -> str:
         """Short deterministic hash for display (e.g., #q3f8a)."""
-        if self.id is None:
-            return "#unknown"
-        # 5-char hex from chunk id, stable and deterministic
-        return f"#q{self.id:04x}"[-6:]
+        return chunk_hash_id(self.id)
 
 
 @dataclass(frozen=True)

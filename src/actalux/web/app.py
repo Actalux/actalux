@@ -29,7 +29,7 @@ from actalux.config import Config, load_config
 from actalux.db import get_chunk_with_context, get_client, get_document, insert_correction
 from actalux.errors import SearchError, SummaryError
 from actalux.ingest.embedder import load_model
-from actalux.models import Correction
+from actalux.models import Correction, chunk_hash_id
 from actalux.search.hybrid import SearchFilters, hybrid_search
 from actalux.search.summarize import generate_match_summary, generate_summary
 
@@ -41,6 +41,7 @@ STATIC_DIR = Path(__file__).parent / "static"
 app = FastAPI(title="Actalux", version="0.1.0")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
+templates.env.filters["chunk_hash_id"] = chunk_hash_id
 
 
 def _window_snippet(content: str, query: str, width: int = 160) -> Markup:
@@ -317,7 +318,7 @@ def _enriched_context(client: Any, chunks: list[dict[str, Any]]) -> list[dict[st
         if doc_id not in doc_cache:
             doc_cache[doc_id] = get_document(client, doc_id) or {}
         doc = doc_cache[doc_id]
-        hash_id = f"#q{ch['id']:04x}"[-6:]
+        hash_id = chunk_hash_id(ch["id"])
         enriched.append(
             {
                 "chunk_id": ch["id"],
@@ -351,7 +352,7 @@ async def chunk_source_pane(
         raise HTTPException(status_code=404, detail="Chunk not found")
 
     doc = get_document(client, ctx["chunk"]["document_id"])
-    target_hash = f"#q{chunk_id:04x}"[-6:]
+    target_hash = chunk_hash_id(chunk_id)
 
     return templates.TemplateResponse(
         request,
@@ -399,7 +400,7 @@ async def chunk_match_summary(chunk_id: int, q: str = "") -> HTMLResponse:
         return HTMLResponse("")
 
     rendered = _render_citation_links(text, [
-        {"chunk_id": chunk_id, "hash_id": f"#q{chunk_id:04x}"[-6:]}
+        {"chunk_id": chunk_id, "hash_id": chunk_hash_id(chunk_id)}
     ])
     if len(_SUMMARY_CACHE) >= _SUMMARY_CACHE_MAX:
         _SUMMARY_CACHE.pop(next(iter(_SUMMARY_CACHE)))
@@ -498,14 +499,22 @@ def _render_citation_links(text: str, results: list[dict[str, Any]]) -> str:
     for r in results:
         id_map[r["hash_id"]] = r["chunk_id"]
 
+    parts: list[str] = []
+    last = 0
+
     def replace_citation(match: re.Match[str]) -> str:
         hash_id = match.group(1)
         chunk_id = id_map.get(hash_id)
         if chunk_id is not None:
             return f'<a href="/chunk/{chunk_id}/source" class="source-link">[{hash_id}]</a>'
-        return match.group(0)
+        return str(escape(match.group(0)))
 
-    return re.sub(r"\[(#q[0-9a-f]{4,5})\]", replace_citation, text)
+    for match in re.finditer(r"\[(#q[0-9a-f]{4,})\]", text):
+        parts.append(str(escape(text[last : match.start()])))
+        parts.append(replace_citation(match))
+        last = match.end()
+    parts.append(str(escape(text[last:])))
+    return "".join(parts)
 
 
 def _enrich_results(client: Any, results: list[Any]) -> list[dict[str, Any]]:
@@ -519,7 +528,7 @@ def _enrich_results(client: Any, results: list[Any]) -> list[dict[str, Any]]:
             doc_cache[doc_id] = get_document(client, doc_id) or {}
 
         doc = doc_cache[doc_id]
-        chunk_hash = f"#q{r.chunk_id:04x}"[-6:]
+        chunk_hash = chunk_hash_id(r.chunk_id)
         enriched.append(
             {
                 "chunk_id": r.chunk_id,

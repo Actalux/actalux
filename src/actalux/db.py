@@ -114,6 +114,7 @@ def insert_chunks(client: Client, chunks: list[Chunk]) -> list[int]:
             "content": chunk.content,
             "section": chunk.section,
             "speaker": chunk.speaker,
+            "chunk_index": chunk.chunk_index,
         }
         if chunk.embedding:
             row["embedding"] = chunk.embedding
@@ -135,14 +136,28 @@ def get_chunk_with_context(client: Client, chunk_id: int, context_count: int = 2
     chunk_data = target.data[0]
     doc_id = chunk_data["document_id"]
 
-    # Get surrounding chunks (by ID ordering, which matches document order)
+    chunk_index = chunk_data.get("chunk_index")
+    if chunk_index is None:
+        # Backward-compatible fallback for databases not migrated yet.
+        context = (
+            client.table("chunks")
+            .select("*")
+            .eq("document_id", doc_id)
+            .gte("id", chunk_id - context_count)
+            .lte("id", chunk_id + context_count)
+            .order("id")
+            .execute()
+        )
+        return {"chunk": chunk_data, "context": context.data}
+
+    # Get surrounding chunks by document-local order.
     context = (
         client.table("chunks")
         .select("*")
         .eq("document_id", doc_id)
-        .gte("id", chunk_id - context_count)
-        .lte("id", chunk_id + context_count)
-        .order("id")
+        .gte("chunk_index", chunk_index - context_count)
+        .lte("chunk_index", chunk_index + context_count)
+        .order("chunk_index")
         .execute()
     )
 

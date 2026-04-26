@@ -49,8 +49,9 @@ class TestChunkDocument:
         text = "## Section A\n\n" + ("word " * 150) + "\n\n" + ("word " * 150)
         chunks = chunk_document(document_id=1, text=text, target_words=200)
         assert len(chunks) >= 1
-        for chunk in chunks:
+        for index, chunk in enumerate(chunks):
             assert chunk.document_id == 1
+            assert chunk.chunk_index == index
             assert len(chunk.content) > 0
 
     def test_empty_text_raises(self) -> None:

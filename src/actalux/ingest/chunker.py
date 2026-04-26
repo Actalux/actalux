@@ -41,6 +41,7 @@ def chunk_document(
     sections = _split_into_sections(text)
     chunks: list[Chunk] = []
 
+    chunk_index = 0
     for section_title, section_text in sections:
         section_chunks = _chunk_section(
             section_text,
@@ -55,8 +56,10 @@ def chunk_document(
                     content=chunk_text,
                     section=section_title,
                     speaker=speaker,
+                    chunk_index=chunk_index,
                 )
             )
+            chunk_index += 1
 
     if not chunks:
         raise ChunkError("Document produced zero chunks")
