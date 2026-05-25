@@ -255,7 +255,9 @@ def _budget_quote_sections() -> list[dict[str, Any]]:
 async def budget(request: Request) -> HTMLResponse:
     """First-class Budget page: charts from budget_line_items plus cited quotes."""
     client = _get_db()
-    line_items = get_budget_line_items(client)
+    # Scope to the by-fund breakdown so the time-series and fund charts sum a
+    # single dimension; source/function breakdowns drive the drill-down views.
+    line_items = get_budget_line_items(client, dimension="fund")
     year_totals = aggregate_by_year(line_items)
     latest_year = year_totals[-1].fiscal_year if year_totals else None
     funds = fund_breakdown(line_items, latest_year) if latest_year else []

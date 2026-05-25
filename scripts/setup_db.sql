@@ -105,6 +105,7 @@ CREATE TABLE IF NOT EXISTS transcripts (
 CREATE TABLE IF NOT EXISTS budget_line_items (
     id SERIAL PRIMARY KEY,
     fiscal_year TEXT NOT NULL,
+    dimension TEXT NOT NULL DEFAULT 'fund',  -- breakdown: 'fund' | 'source' | 'function'
     fund TEXT DEFAULT '',
     category TEXT NOT NULL,                -- 'revenue' | 'expenditure' | 'fund_balance'
     subcategory TEXT DEFAULT '',
@@ -118,6 +119,9 @@ CREATE TABLE IF NOT EXISTS budget_line_items (
 
 CREATE INDEX IF NOT EXISTS idx_budget_year_category
     ON budget_line_items (fiscal_year, category);
+
+CREATE INDEX IF NOT EXISTS idx_budget_dimension
+    ON budget_line_items (dimension, fiscal_year, category);
 
 -- ============================================================
 -- Migration: Document provenance tracking

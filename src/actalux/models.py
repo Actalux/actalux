@@ -102,6 +102,7 @@ class BudgetLineItem:
     category: str  # "revenue", "expenditure", "fund_balance"
     amount: Decimal
     document_id: int
+    dimension: str = "fund"  # breakdown: "fund", "source", "function"
     fund: str = ""
     subcategory: str = ""
     chunk_id: int | None = None

@@ -176,6 +176,7 @@ def insert_budget_line_items(client: Client, items: list[BudgetLineItem]) -> lis
     for item in items:
         row: dict[str, Any] = {
             "fiscal_year": item.fiscal_year,
+            "dimension": item.dimension,
             "fund": item.fund,
             "category": item.category,
             "subcategory": item.subcategory,
@@ -194,14 +195,19 @@ def insert_budget_line_items(client: Client, items: list[BudgetLineItem]) -> lis
     return ids
 
 
-def get_budget_line_items(client: Client, category: str | None = None) -> list[dict[str, Any]]:
+def get_budget_line_items(
+    client: Client, category: str | None = None, dimension: str | None = None
+) -> list[dict[str, Any]]:
     """Fetch budget line items, oldest fiscal year first.
 
-    Optionally filter by category ('revenue', 'expenditure', 'fund_balance').
+    Optionally filter by category ('revenue', 'expenditure', 'fund_balance')
+    and/or dimension ('fund', 'source', 'function').
     """
     query = client.table("budget_line_items").select("*")
     if category:
         query = query.eq("category", category)
+    if dimension:
+        query = query.eq("dimension", dimension)
     result = query.order("fiscal_year").order("fund").execute()
     return result.data
 
