@@ -20,18 +20,25 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup, escape
 
 from actalux.config import Config, load_config
-from actalux.db import get_chunk_with_context, get_client, get_document, insert_correction
+from actalux.db import (
+    get_budget_line_items,
+    get_chunk_with_context,
+    get_client,
+    get_document,
+    insert_correction,
+)
 from actalux.errors import SearchError, SummaryError
 from actalux.ingest.embedder import load_model
 from actalux.models import Correction, chunk_hash_id
 from actalux.search.hybrid import SearchFilters, hybrid_search
 from actalux.search.summarize import generate_match_summary, generate_summary
+from actalux.web.charts import aggregate_by_year, fund_breakdown, revenue_expenditure_svg, usd
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +110,7 @@ def _window_snippet(content: str, query: str, width: int = 160) -> Markup:
 
 
 templates.env.filters["window_snippet"] = _window_snippet
+templates.env.filters["usd"] = usd
 
 # In-process cache for topic page queries (1-hour TTL)
 _topic_cache: dict[str, tuple[float, list[Any]]] = {}
@@ -175,9 +183,7 @@ def _run_search(
     is_htmx = bool(request.headers.get("HX-Request"))
     if not q.strip():
         template = "partials/search_results.html" if is_htmx else "search.html"
-        return templates.TemplateResponse(
-            request, template, {"results": [], "query": ""}
-        )
+        return templates.TemplateResponse(request, template, {"results": [], "query": ""})
 
     filters = SearchFilters(
         date_from=date.fromisoformat(date_from) if date_from else None,
@@ -196,9 +202,7 @@ def _run_search(
     enriched = _enrich_results(client, results)
     template = "partials/search_results.html" if is_htmx else "search.html"
 
-    return templates.TemplateResponse(
-        request, template, {"results": enriched, "query": q}
-    )
+    return templates.TemplateResponse(request, template, {"results": enriched, "query": q})
 
 
 @app.get("/search", response_class=HTMLResponse)
@@ -225,20 +229,14 @@ async def search_post(
     return _run_search(request, q, date_from, date_to, doc_type)
 
 
-@app.get("/topic/budget", response_class=HTMLResponse)
-async def topic_budget(request: Request) -> HTMLResponse:
-    """Budget topic page with preset queries and cached results."""
+def _budget_quote_sections() -> list[dict[str, Any]]:
+    """Run the preset budget queries into cited-quote sections (cached 1h)."""
     cached = _get_cached_topic("budget")
     if cached is not None:
-        return templates.TemplateResponse(
-            request,
-            "topic_budget.html",
-            {"sections": cached, "active": "topic-budget"},
-        )
+        return cached
 
     client = _get_db()
     sections: list[dict[str, Any]] = []
-
     for query_text in BUDGET_QUERIES:
         try:
             query_embedding = _embed_query(query_text)
@@ -250,12 +248,37 @@ async def topic_budget(request: Request) -> HTMLResponse:
             sections.append({"query": query_text, "results": []})
 
     _set_cached_topic("budget", sections)
+    return sections
+
+
+@app.get("/budget", response_class=HTMLResponse)
+async def budget(request: Request) -> HTMLResponse:
+    """First-class Budget page: charts from budget_line_items plus cited quotes."""
+    client = _get_db()
+    line_items = get_budget_line_items(client)
+    year_totals = aggregate_by_year(line_items)
+    latest_year = year_totals[-1].fiscal_year if year_totals else None
+    funds = fund_breakdown(line_items, latest_year) if latest_year else []
 
     return templates.TemplateResponse(
         request,
-        "topic_budget.html",
-        {"sections": sections, "active": "topic-budget"},
+        "budget.html",
+        {
+            "active": "topic-budget",
+            "line_items": line_items,
+            "year_totals": year_totals,
+            "latest_year": latest_year,
+            "funds": funds,
+            "chart_svg": revenue_expenditure_svg(year_totals),
+            "sections": _budget_quote_sections(),
+        },
     )
+
+
+@app.get("/topic/budget")
+async def topic_budget_redirect() -> RedirectResponse:
+    """Legacy path -> canonical /budget (preserves existing links)."""
+    return RedirectResponse("/budget", status_code=308)
 
 
 @app.get("/document/{doc_id}", response_class=HTMLResponse)
@@ -336,9 +359,7 @@ def _enriched_context(client: Any, chunks: list[dict[str, Any]]) -> list[dict[st
 
 
 @app.get("/chunk/{chunk_id}/source-pane", response_class=HTMLResponse)
-async def chunk_source_pane(
-    request: Request, chunk_id: int, q: str = ""
-) -> HTMLResponse:
+async def chunk_source_pane(request: Request, chunk_id: int, q: str = "") -> HTMLResponse:
     """Return the source pane only (native-format document view) for a chunk.
 
     Called by HTMX when the user clicks a search result. Fetches the
@@ -399,9 +420,9 @@ async def chunk_match_summary(chunk_id: int, q: str = "") -> HTMLResponse:
     if not text:
         return HTMLResponse("")
 
-    rendered = _render_citation_links(text, [
-        {"chunk_id": chunk_id, "hash_id": chunk_hash_id(chunk_id)}
-    ])
+    rendered = _render_citation_links(
+        text, [{"chunk_id": chunk_id, "hash_id": chunk_hash_id(chunk_id)}]
+    )
     if len(_SUMMARY_CACHE) >= _SUMMARY_CACHE_MAX:
         _SUMMARY_CACHE.pop(next(iter(_SUMMARY_CACHE)))
     _SUMMARY_CACHE[key] = rendered

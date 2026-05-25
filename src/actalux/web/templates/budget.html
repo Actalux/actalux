@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Budget &amp; Spending{% endblock %}
+{% block content %}
+
+<section class="pane-header">
+  <h2>Budget</h2>
+  <span class="meta">Revenue, spending &amp; reserves</span>
+</section>
+
+<div class="topic-head">
+  <span class="kicker">Budget &amp; Spending</span>
+  <h1>The Clayton school district budget, by the numbers.</h1>
+  <p class="lede">
+    Figures below are read from public financial records the district has filed
+    or published. Every number links to the exact passage it was taken from.
+  </p>
+</div>
+
+{# --- By the numbers: charts --- #}
+<section class="chart-section">
+  <div class="section-label">Revenue vs. expenditure by fiscal year</div>
+
+  {% if year_totals %}
+    {{ chart_svg }}
+    <div class="chart-legend">
+      <span class="legend-item"><span class="swatch swatch-revenue"></span>Revenue</span>
+      <span class="legend-item"><span class="swatch swatch-expenditure"></span>Expenditure</span>
+      <span class="legend-item"><span class="swatch swatch-deficit"></span>Expenditure exceeds revenue</span>
+    </div>
+
+    {% if funds %}
+    <div class="section-label" style="margin-top: var(--s-6);">
+      Expenditure by fund — {{ latest_year }}
+    </div>
+    <div class="fund-bars">
+      {% for f in funds %}
+      <a class="fund-row" href="#fy-{{ latest_year }}">
+        <span class="fund-name">{{ f.fund }}</span>
+        <span class="fund-track"><span class="fund-fill" style="width: {{ '%.1f' % f.pct }}%;"></span></span>
+        <span class="fund-amount">{{ f.amount | usd }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+  {% else %}
+    <div class="empty-note">
+      <p class="lede">No budget figures have been verified and published yet. The
+      cited records below show what the district has said about the budget in the
+      meantime.</p>
+    </div>
+  {% endif %}
+</section>
+
+{# --- Figures & sources: every number with its citation --- #}
+{% if line_items %}
+<section class="figures-section">
+  <div class="section-label">Figures &amp; sources</div>
+  <p class="hint">Each figure links to the verbatim passage it was read from.</p>
+
+  {% for fy, rows in line_items | groupby('fiscal_year') %}
+  <div class="figures-year" id="fy-{{ fy }}">
+    <h3>{{ fy }}</h3>
+    <table class="figures-table">
+      <thead>
+        <tr><th>Category</th><th>Fund</th><th>Detail</th><th class="num">Amount</th><th>Source</th></tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td>{{ r.category }}</td>
+          <td>{{ r.fund }}</td>
+          <td>{{ r.subcategory }}</td>
+          <td class="num">{{ r.amount | usd }}</td>
+          <td>
+            {% if r.chunk_id %}
+              <a href="/chunk/{{ r.chunk_id }}/source" class="hash">{{ r.chunk_id | chunk_hash_id }}</a>
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% if r.source_quote %}
+        <tr class="figures-quote"><td colspan="5"><span class="cite-quote">"{{ r.source_quote }}"</span></td></tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+{# --- What the district has said (cited quotes from the corpus) --- #}
+<section class="topic-sections">
+  <div class="section-label">What the district has said about the budget</div>
+  {% for section in sections %}
+    {% if section.results %}
+    <div class="section-group">
+      <h3>"{{ section.query }}"</h3>
+      {% for r in section.results %}
+      <a class="result-item" href="/chunk/{{ r.chunk_id }}/source" style="display: block; border-bottom: 1px solid var(--rule); margin-bottom: 0;">
+        <span class="kind">{{ r.document_type or 'Record' }}</span>
+        {% if r.meeting_date %}<span class="date">{{ r.meeting_date }}</span>{% endif %}
+        <div class="snippet">{{ r.content | window_snippet(section.query) }}</div>
+        <div class="cite-inline">
+          {% if r.meeting_title %}<span>{{ r.meeting_title }}</span>{% endif %}
+          {% if r.section %}<span>· {{ r.section }}</span>{% endif %}
+          <span class="hash">{{ r.hash_id }}</span>
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+  {% endfor %}
+</section>
+
+<div class="error-form">
+  <h2>Found an error?</h2>
+  <p class="hint">Every passage has a short hash ID (e.g., <code style="font-family: var(--mono); font-size: 12px;">#q003f</code>). Include it so we can locate the quote.</p>
+  <form hx-post="/report-error" hx-target="#error-status" hx-swap="innerHTML">
+    <input type="hidden" name="chunk_id" value="0">
+    <textarea class="textarea" name="description" placeholder="Describe the error and include the quote ID…"></textarea>
+    <div class="form-row">
+      <input class="input" type="email" name="email" placeholder="Email (optional)">
+      <button class="btn btn-primary" type="submit">Submit report</button>
+    </div>
+  </form>
+  <div id="error-status"></div>
+</div>
+
+{% endblock %}

@@ -987,3 +987,93 @@ img { max-width: 100%; display: block; }
   .doc-frame { grid-template-columns: 1fr; padding: var(--s-4); }
   .featured-quote { grid-template-columns: 1fr; }
 }
+
+/* --- Budget page: section labels, charts, fund bars, figures table --- */
+
+.section-label {
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: var(--s-4);
+}
+
+.hint { font-family: var(--sans); font-size: 13px; color: var(--muted); }
+.muted { color: var(--muted); }
+
+.chart-section, .figures-section { padding: var(--s-6) var(--s-6) 0; }
+.topic-sections { padding: var(--s-6); }
+
+/* Inline SVG chart */
+.chart { width: 100%; height: auto; max-width: var(--col-reading); display: block; }
+.chart .grid { stroke: var(--rule); stroke-width: 1; }
+.chart .axis-base { stroke: var(--rule-strong); stroke-width: 1; }
+.chart .axis-y, .chart .axis-x {
+  fill: var(--muted); font-family: var(--mono); font-size: 10px;
+}
+.chart .bar { transition: opacity 120ms ease-out; }
+.chart .bar-revenue { fill: var(--ink-soft); }
+.chart .bar-expenditure { fill: url(#hatch); }
+.chart .bar-deficit { stroke: var(--accent); stroke-width: 2; }
+.chart a:hover .bar { opacity: 0.7; }
+.chart .hatch-bg { fill: var(--paper); }
+.chart .hatch-line { stroke: var(--ink-soft); stroke-width: 1.5; }
+
+.chart-legend {
+  display: flex; flex-wrap: wrap; gap: var(--s-5);
+  margin-top: var(--s-4);
+  font-family: var(--sans); font-size: 12px; color: var(--muted);
+}
+.legend-item { display: inline-flex; align-items: center; gap: var(--s-2); }
+.swatch { width: 12px; height: 12px; display: inline-block; }
+.swatch-revenue { background: var(--ink-soft); }
+.swatch-expenditure {
+  background: repeating-linear-gradient(
+    45deg, var(--paper), var(--paper) 2px, var(--ink-soft) 2px, var(--ink-soft) 3px);
+  border: 1px solid var(--rule-strong);
+}
+.swatch-deficit { background: var(--paper); border: 2px solid var(--accent); }
+
+/* Fund breakdown horizontal bars */
+.fund-bars { display: flex; flex-direction: column; gap: var(--s-2); max-width: var(--col-reading); }
+.fund-row {
+  display: grid; grid-template-columns: 160px 1fr 120px;
+  align-items: center; gap: var(--s-3);
+  padding: var(--s-2) 0; text-decoration: none; color: var(--ink-soft);
+}
+.fund-row:hover .fund-fill { background: var(--accent); }
+.fund-name { font-family: var(--sans); font-size: 13px; }
+.fund-track { height: 14px; background: var(--paper-sunk); }
+.fund-fill { display: block; height: 100%; background: var(--ink-soft); transition: background 120ms ease-out; }
+.fund-amount { font-family: var(--mono); font-size: 12px; text-align: right; color: var(--muted); }
+
+/* Figures & sources table */
+.figures-year { margin-bottom: var(--s-6); }
+.figures-year h3 { font-family: var(--serif-display); font-size: 20px; font-weight: 400; margin-bottom: var(--s-3); }
+.figures-table { width: 100%; border-collapse: collapse; max-width: var(--col-reading); }
+.figures-table th {
+  font-family: var(--sans); font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--muted); text-align: left;
+  padding: var(--s-2) var(--s-3); border-bottom: 1px solid var(--rule-strong);
+}
+.figures-table td {
+  font-family: var(--serif-body); font-size: 15px; color: var(--ink-soft);
+  padding: var(--s-2) var(--s-3); border-bottom: 1px solid var(--rule);
+}
+.figures-table .num { font-family: var(--mono); text-align: right; }
+.figures-table th.num { text-align: right; }
+.figures-quote td { border-bottom: 1px solid var(--rule); padding-top: 0; }
+.cite-quote {
+  font-family: var(--serif-body); font-style: italic; font-size: 13px; color: var(--muted);
+  background: var(--highlight); box-shadow: -3px 0 0 var(--accent);
+  padding: 2px 4px 2px 8px; box-decoration-break: clone;
+}
+
+.empty-note { max-width: var(--col-reading); }
+
+@media (max-width: 960px) {
+  .chart-section, .figures-section, .topic-sections { padding-left: var(--s-4); padding-right: var(--s-4); }
+  .fund-row { grid-template-columns: 110px 1fr 90px; }
+}
