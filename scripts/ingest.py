@@ -69,7 +69,7 @@ COMPACT_DATE_RE = re.compile(
     re.IGNORECASE,
 )
 # "2024-2025" fiscal year anywhere in the filename
-FISCAL_YEAR_RE = re.compile(r"(\d{4})-(\d{4})\s+")
+FISCAL_YEAR_RE = re.compile(r"(\d{4})-(\d{4})(?=[\s_]|$)")
 
 MONTH_NAMES = {
     "jan": 1,
@@ -102,6 +102,11 @@ DOC_TYPE_PATTERNS = {
     "minutes": re.compile(r"minutes", re.IGNORECASE),
     "packet": re.compile(r"packet|board.?pack", re.IGNORECASE),
     "resolution": re.compile(r"resolution", re.IGNORECASE),
+    "audit": re.compile(r"audit|audited|CAFR|comprehensive\s+annual\s+financial", re.IGNORECASE),
+    "per_pupil": re.compile(r"per[-_\s]?pupil", re.IGNORECASE),
+    "warrants": re.compile(r"warrants?", re.IGNORECASE),
+    "expenditure_summary": re.compile(r"expenditure\s+summary", re.IGNORECASE),
+    "revenue_summary": re.compile(r"revenue\s+summary", re.IGNORECASE),
     "budget": re.compile(r"budget", re.IGNORECASE),
     "presentation": re.compile(r"presentation|preliminary.?plan", re.IGNORECASE),
     "ballot": re.compile(r"ballot", re.IGNORECASE),
