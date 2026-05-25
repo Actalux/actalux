@@ -1,0 +1,96 @@
+name: ingest
+
+# Crawl Clayton public-records portals and ingest new/changed documents.
+# Schema is gated first: if migrations are pending or have drifted, the
+# job hard-fails before any crawl or ingest runs.
+#
+# Required repository secrets (Settings -> Secrets and variables -> Actions):
+#   SUPABASE_URL  - project URL, e.g. https://<ref>.supabase.co
+#   SUPABASE_KEY  - the key ingest writes with (same key the app uses)
+#   SUPABASE_PAT  - Supabase personal access token, for the migration gate
+#
+# Canva (needs a local browse daemon) and YouTube (discovery-only, and
+# YouTube blocks datacenter IPs) are not run here; they stay local/manual.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Mondays 09:00 UTC (~03:00-04:00 US Central). Board docs change ~monthly,
+    # so weekly catches updates without hammering the district's servers.
+    - cron: "0 9 * * 1"
+
+permissions:
+  contents: read
+
+# One ingest at a time; a manual run during a scheduled run waits rather
+# than racing it. We never cancel an in-flight ingest.
+concurrency:
+  group: ingest
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv + Python 3.11
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --no-dev
+
+      # bge-small-en-v1.5 is immutable, so a static key restores forever.
+      - name: Cache embedding model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-bge-small-en-v1-5
+
+      # Hard gate: pending or drifted migrations stop the pipeline here.
+      - name: Verify schema is up to date
+        run: uv run python scripts/apply_migrations.py --check
+
+      - name: Crawl Diligent portal
+        continue-on-error: true
+        run: uv run python scripts/download_documents.py
+
+      - name: Crawl curriculum resources
+        continue-on-error: true
+        run: uv run python scripts/crawl_curriculum.py
+
+      - name: Crawl finance reports
+        continue-on-error: true
+        run: uv run python scripts/crawl_clayton_finance.py
+
+      # Ingest each manifest a crawler produced. A missing manifest is a
+      # warning (that crawler found nothing or failed above); an ingest
+      # crash is a hard failure. Dedup by content_hash makes re-runs safe.
+      - name: Ingest manifests
+        run: |
+          ran=0
+          for m in \
+            data/documents/diligent_manifest.json \
+            data/documents/curriculum_manifest.json \
+            data/documents/clayton_finance_manifest.json; do
+            if [ -f "$m" ]; then
+              echo "::group::ingest $m"
+              uv run python scripts/ingest.py --manifest "$m"
+              echo "::endgroup::"
+              ran=1
+            else
+              echo "::warning::manifest missing, skipping: $m"
+            fi
+          done
+          if [ "$ran" -eq 0 ]; then
+            echo "::error::no manifests produced; nothing ingested"
+            exit 1
+          fi
