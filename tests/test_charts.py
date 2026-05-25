@@ -5,6 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from actalux.web.charts import (
+    _axis_label,
     aggregate_by_year,
     fund_breakdown,
     revenue_expenditure_svg,
@@ -73,6 +74,14 @@ class TestUsd:
     def test_thousands_separator_no_cents(self):
         assert usd(Decimal("1234567.89")) == "$1,234,568"
         assert usd(0) == "$0"
+
+
+class TestAxisLabel:
+    def test_compact_millions(self):
+        assert _axis_label(Decimal(0)) == "$0"
+        assert _axis_label(Decimal(75_000_000)) == "$75M"
+        assert _axis_label(Decimal(100_000_000)) == "$100M"
+        assert _axis_label(Decimal(12_500_000)) == "$12.5M"
 
 
 class TestRevenueExpenditureSvg:

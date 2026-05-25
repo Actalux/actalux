@@ -109,6 +109,13 @@ def _nice_ceiling(value: Decimal) -> Decimal:
     return Decimal(10) * magnitude
 
 
+def _axis_label(value: Decimal) -> str:
+    """Compact dollar label for a chart axis tick (e.g. '$75M', '$12.5M')."""
+    if value == 0:
+        return "$0"
+    return f"${value / Decimal(1_000_000):g}M"
+
+
 def revenue_expenditure_svg(year_totals: list[YearTotals]) -> Markup:
     """Grouped bar chart of revenue vs expenditure by fiscal year."""
     if not year_totals:
@@ -147,7 +154,7 @@ def revenue_expenditure_svg(year_totals: list[YearTotals]) -> Markup:
         )
         parts.append(
             f'<text class="axis-y" x="{_PAD_LEFT - 8}" y="{gy + 3:.1f}" '
-            f'text-anchor="end">{escape(usd(gv))}</text>'
+            f'text-anchor="end">{escape(_axis_label(gv))}</text>'
         )
 
     # Grouped bars per year.
