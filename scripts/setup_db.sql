@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS documents (
     source_url TEXT DEFAULT '',
     source_file TEXT DEFAULT '',
     content TEXT NOT NULL,
+    summary TEXT DEFAULT '',
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
