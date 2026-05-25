@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, datetime
+from decimal import Decimal
 
 
 def chunk_hash_id(chunk_id: int | None) -> str:
@@ -84,6 +85,28 @@ class Correction:
     description: str
     reporter_email: str = ""
     status: str = "open"  # "open", "fixed", "dismissed"
+    id: int | None = None
+    created_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class BudgetLineItem:
+    """A structured budget figure with a verbatim citation.
+
+    Every figure traces to a document (``document_id``) and, where
+    available, the exact passage (``chunk_id``) plus the ``source_quote``
+    it was read from. ``amount`` is a Decimal to preserve cents.
+    """
+
+    fiscal_year: str  # e.g. "2023-2024"
+    category: str  # "revenue", "expenditure", "fund_balance"
+    amount: Decimal
+    document_id: int
+    fund: str = ""
+    subcategory: str = ""
+    chunk_id: int | None = None
+    source_quote: str = ""
+    note: str = ""
     id: int | None = None
     created_at: datetime | None = None
 

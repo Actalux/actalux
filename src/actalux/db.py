@@ -11,7 +11,7 @@ from typing import Any
 
 from supabase import Client, create_client
 
-from actalux.models import Chunk, Correction, Document, IngestRun, Vote
+from actalux.models import BudgetLineItem, Chunk, Correction, Document, IngestRun, Vote
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +162,48 @@ def get_chunk_with_context(client: Client, chunk_id: int, context_count: int = 2
     )
 
     return {"chunk": chunk_data, "context": context.data}
+
+
+# --- Budget line items ---
+
+
+def insert_budget_line_items(client: Client, items: list[BudgetLineItem]) -> list[int]:
+    """Bulk insert budget line items and return their IDs."""
+    if not items:
+        return []
+
+    rows: list[dict[str, Any]] = []
+    for item in items:
+        row: dict[str, Any] = {
+            "fiscal_year": item.fiscal_year,
+            "fund": item.fund,
+            "category": item.category,
+            "subcategory": item.subcategory,
+            "amount": str(item.amount),  # send as string so Postgres parses exact NUMERIC
+            "document_id": item.document_id,
+            "source_quote": item.source_quote,
+            "note": item.note,
+        }
+        if item.chunk_id is not None:
+            row["chunk_id"] = item.chunk_id
+        rows.append(row)
+
+    result = client.table("budget_line_items").insert(rows).execute()
+    ids = [r["id"] for r in result.data]
+    logger.info("Inserted %d budget line items", len(ids))
+    return ids
+
+
+def get_budget_line_items(client: Client, category: str | None = None) -> list[dict[str, Any]]:
+    """Fetch budget line items, oldest fiscal year first.
+
+    Optionally filter by category ('revenue', 'expenditure', 'fund_balance').
+    """
+    query = client.table("budget_line_items").select("*")
+    if category:
+        query = query.eq("category", category)
+    result = query.order("fiscal_year").order("fund").execute()
+    return result.data
 
 
 # --- Votes ---

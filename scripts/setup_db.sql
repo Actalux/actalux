@@ -101,6 +101,24 @@ CREATE TABLE IF NOT EXISTS transcripts (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Structured budget line items (citation-anchored figures for the Budget page)
+CREATE TABLE IF NOT EXISTS budget_line_items (
+    id SERIAL PRIMARY KEY,
+    fiscal_year TEXT NOT NULL,
+    fund TEXT DEFAULT '',
+    category TEXT NOT NULL,                -- 'revenue' | 'expenditure' | 'fund_balance'
+    subcategory TEXT DEFAULT '',
+    amount NUMERIC(14, 2) NOT NULL,
+    document_id INT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    chunk_id INT REFERENCES chunks(id) ON DELETE SET NULL,
+    source_quote TEXT DEFAULT '',
+    note TEXT DEFAULT '',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_budget_year_category
+    ON budget_line_items (fiscal_year, category);
+
 -- ============================================================
 -- Migration: Document provenance tracking
 -- ============================================================
