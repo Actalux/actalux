@@ -59,29 +59,39 @@ def aggregate_by_year(items: list[dict[str, Any]]) -> list[YearTotals]:
 
 
 @dataclass(frozen=True)
-class FundShare:
-    """One fund's share of a single year's expenditure."""
+class Share:
+    """One labelled slice's share of a single year's total (a fund or a source)."""
 
-    fund: str
+    label: str
     amount: Decimal
     pct: float  # 0-100, share of the year's total
 
 
-def fund_breakdown(items: list[dict[str, Any]], fiscal_year: str) -> list[FundShare]:
-    """Expenditure by fund for one fiscal year, largest first."""
-    by_fund: dict[str, Decimal] = {}
+def _breakdown(
+    items: list[dict[str, Any]], fiscal_year: str, category: str, key: str
+) -> list[Share]:
+    """Shares of one year's `category` total, grouped by the `key` field, largest first."""
+    totals: dict[str, Decimal] = {}
     for item in items:
-        if item.get("category") != "expenditure" or item.get("fiscal_year") != fiscal_year:
+        if item.get("category") != category or item.get("fiscal_year") != fiscal_year:
             continue
-        fund = item.get("fund") or "Unspecified"
-        by_fund[fund] = by_fund.get(fund, Decimal(0)) + Decimal(str(item["amount"]))
-    total = sum(by_fund.values())
-    if total <= 0:
+        label = item.get(key) or "Unspecified"
+        totals[label] = totals.get(label, Decimal(0)) + Decimal(str(item["amount"]))
+    grand = sum(totals.values())
+    if grand <= 0:
         return []
-    shares = [
-        FundShare(fund, amount, float(amount / total * 100)) for fund, amount in by_fund.items()
-    ]
+    shares = [Share(label, amount, float(amount / grand * 100)) for label, amount in totals.items()]
     return sorted(shares, key=lambda s: s.amount, reverse=True)
+
+
+def fund_breakdown(items: list[dict[str, Any]], fiscal_year: str) -> list[Share]:
+    """Expenditure by fund for one fiscal year, largest first."""
+    return _breakdown(items, fiscal_year, category="expenditure", key="fund")
+
+
+def source_breakdown(items: list[dict[str, Any]], fiscal_year: str) -> list[Share]:
+    """Revenue by source for one fiscal year, largest first."""
+    return _breakdown(items, fiscal_year, category="revenue", key="subcategory")
 
 
 def usd(amount: Decimal | float | int) -> str:

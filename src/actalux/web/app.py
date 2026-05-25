@@ -38,7 +38,13 @@ from actalux.ingest.embedder import load_model
 from actalux.models import Correction, chunk_hash_id
 from actalux.search.hybrid import SearchFilters, hybrid_search
 from actalux.search.summarize import generate_match_summary, generate_summary
-from actalux.web.charts import aggregate_by_year, fund_breakdown, revenue_expenditure_svg, usd
+from actalux.web.charts import (
+    aggregate_by_year,
+    fund_breakdown,
+    revenue_expenditure_svg,
+    source_breakdown,
+    usd,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -261,6 +267,8 @@ async def budget(request: Request) -> HTMLResponse:
     year_totals = aggregate_by_year(line_items)
     latest_year = year_totals[-1].fiscal_year if year_totals else None
     funds = fund_breakdown(line_items, latest_year) if latest_year else []
+    source_items = get_budget_line_items(client, dimension="source")
+    sources = source_breakdown(source_items, latest_year) if latest_year else []
 
     return templates.TemplateResponse(
         request,
@@ -271,6 +279,7 @@ async def budget(request: Request) -> HTMLResponse:
             "year_totals": year_totals,
             "latest_year": latest_year,
             "funds": funds,
+            "sources": sources,
             "chart_svg": revenue_expenditure_svg(year_totals),
             "sections": _budget_quote_sections(),
         },

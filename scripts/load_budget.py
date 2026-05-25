@@ -194,9 +194,68 @@ YEARS: list[dict] = [
 ]
 
 
+# Revenue by source (Total Governmental Funds column), dimension='source'.
+# (amount, verbatim source row) per source; per-year sum is asserted to equal
+# that year's revenue_total. Quotes are the verbatim "Revenues" rows.
+SOURCE_LABELS = ("Local", "County", "State", "Federal", "Other")
+SOURCES: dict[str, list[tuple[int, str]]] = {
+    "2018-2019": [
+        (53169996, "Local $ 17,294,981 $ 26,911,952 $ 7,312,664 $ 1,650,399 $ 53,169,996"),
+        (525825, "County 112,759 242,944 151,287 18,835 525,825"),
+        (1742804, "State 244,496 1,498,308 1,742,804"),
+        (1635582, "Federal 316,041 183,242 1,136,299 1,635,582"),
+        (450645, "Other 5,417 351,630 93,598 450,645"),
+    ],
+    "2019-2020": [
+        (70058342, "Local $ 21,799,840 $ 37,182,930 $ 8,349,892 $ 2,725,680 $ 70,058,342"),
+        (610998, "County 123,380 281,775 182,266 23,577 610,998"),
+        (1716291, "State 308,641 1,407,650 - - 1,716,291"),
+        (1237578, "Federal 329,360 122,782 785,436 - 1,237,578"),
+        (151793, "Other 13,854 132,514 - 5,425 151,793"),
+    ],
+    "2020-2021": [
+        (61835038, "Local $ 19,160,260 $ 31,310,825 $ 7,644,096 $ 3,719,857 $ 61,835,038"),
+        (613816, "County 126,706 258,168 183,033 45,909 613,816"),
+        (1710141, "State 251,491 1,457,571 - 1,079 1,710,141"),
+        (1826199, "Federal 878,266 464,325 203,436 280,172 1,826,199"),
+        (116959, "Other (104) 75,451 - 41,612 116,959"),
+    ],
+    "2021-2022": [
+        (69305093, "Local $ 20,708,617 $ 35,774,596 $ 8,603,404 $ 4,218,476 $ 69,305,093"),
+        (633758, "County 117,824 248,983 181,784 85,167 633,758"),
+        (2198582, "State 360,218 1,838,364 - - 2,198,582"),
+        (2144249, "Federal 1,834,041 127,434 176,629 6,145 2,144,249"),
+        (71050, "Other 3,096 2,837 - 65,117 71,050"),
+    ],
+    "2022-2023": [
+        (70171316, "Local $ 21,409,679 $ 34,073,686 $ 8,635,557 $ 6,052,394 $ 70,171,316"),
+        (708616, "County 116,542 292,308 181,809 117,957 708,616"),
+        (2363931, "State 426,308 1,937,623 - - 2,363,931"),
+        (1468009, "Federal 985,724 305,953 176,332 - 1,468,009"),
+        (57962, "Other 32,225 - - 25,737 57,962"),
+    ],
+    "2023-2024": [
+        (71803874, "Local $ 28,982,530 $ 30,296,836 $ 7,642,552 $ 4,881,956 $ 71,803,874"),
+        (597991, "County 154,028 227,855 144,959 71,149 597,991"),
+        (1907709, "State 355,405 1,552,304 - - 1,907,709"),
+        (958434, "Federal 665,736 114,987 177,711 - 958,434"),
+        (51913, "Other 18,953 - - 32,960 51,913"),
+    ],
+    "2024-2025": [
+        (74513876, "Local $ 30,682,463 $ 30,903,035 $ 7,705,321 $ 5,223,057 $ 74,513,876"),
+        (556534, "County 152,039 201,794 147,970 54,731 556,534"),
+        (1826712, "State 338,091 1,488,621 - - 1,826,712"),
+        (738247, "Federal 422,499 137,497 178,251 - 738,247"),
+        (59614, "Other 14,600 - - 45,014 59,614"),
+    ],
+}
+
+
 def build_line_items() -> list[BudgetLineItem]:
     """Expand the verified figures into rows, asserting each year reconciles."""
     items: list[BudgetLineItem] = []
+    years_by_fy = {y["fiscal_year"]: y for y in YEARS}
+
     for y in YEARS:
         for category in ("revenue", "expenditure", "fund_balance"):
             amounts = y[category]
@@ -225,6 +284,34 @@ def build_line_items() -> list[BudgetLineItem]:
                         ),
                     )
                 )
+
+    # Revenue by source (dimension='source'): must sum to the year's total revenues.
+    for fiscal_year, rows in SOURCES.items():
+        y = years_by_fy[fiscal_year]
+        actual_total = sum(amount for amount, _ in rows)
+        if actual_total != y["revenue_total"]:
+            raise SystemExit(
+                f"Reconciliation failed for {fiscal_year} revenue-by-source: "
+                f"sum {actual_total} != stated total revenues {y['revenue_total']}"
+            )
+        for label, (amount, quote) in zip(SOURCE_LABELS, rows, strict=True):
+            items.append(
+                BudgetLineItem(
+                    fiscal_year=fiscal_year,
+                    category="revenue",
+                    amount=Decimal(amount),
+                    document_id=y["document_id"],
+                    dimension="source",
+                    subcategory=label,
+                    chunk_id=y["chunk_id"],
+                    source_quote=quote,
+                    note=(
+                        f"FY{fiscal_year} audit, Statement of Revenues, Expenditures "
+                        f"and Changes in Fund Balances - Governmental Funds, p. {y['page']}, "
+                        f"revenue by source"
+                    ),
+                )
+            )
     return items
 
 

@@ -9,6 +9,7 @@ from actalux.web.charts import (
     aggregate_by_year,
     fund_breakdown,
     revenue_expenditure_svg,
+    source_breakdown,
     usd,
 )
 
@@ -55,7 +56,7 @@ class TestAggregateByYear:
 class TestFundBreakdown:
     def test_shares_sum_and_order(self):
         funds = fund_breakdown(ITEMS, "2023-2024")
-        assert [f.fund for f in funds] == ["General", "Capital"]  # largest first
+        assert [f.label for f in funds] == ["General", "Capital"]  # largest first
         assert funds[0].amount == Decimal("72000000")
         assert round(funds[0].pct, 1) == 90.0
         assert round(funds[1].pct, 1) == 10.0
@@ -63,11 +64,27 @@ class TestFundBreakdown:
     def test_only_expenditures_of_the_named_year(self):
         # Revenue rows and other years are excluded.
         funds = fund_breakdown(ITEMS, "2022-2023")
-        assert [f.fund for f in funds] == ["General"]
+        assert [f.label for f in funds] == ["General"]
         assert funds[0].amount == Decimal("65000000")
 
     def test_missing_year_is_empty(self):
         assert fund_breakdown(ITEMS, "1999-2000") == []
+
+
+class TestSourceBreakdown:
+    SOURCE_ITEMS = [
+        {"fiscal_year": "2023-2024", "category": "revenue", "subcategory": s, "amount": a}
+        for s, a in [("Local", "71803874"), ("State", "1907709"), ("Federal", "958434")]
+    ]
+
+    def test_groups_by_subcategory_largest_first(self):
+        sources = source_breakdown(self.SOURCE_ITEMS, "2023-2024")
+        assert [s.label for s in sources] == ["Local", "State", "Federal"]
+        assert sources[0].amount == Decimal("71803874")
+        assert round(sources[0].pct, 1) == 96.2  # Local dominates
+
+    def test_missing_year_is_empty(self):
+        assert source_breakdown(self.SOURCE_ITEMS, "1999-2000") == []
 
 
 class TestUsd:
