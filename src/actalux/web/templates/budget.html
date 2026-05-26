@@ -40,6 +40,44 @@
   {% endif %}
 </section>
 
+{# --- Budget vs. actual: budgetary (cash-basis) schedules, per fund --- #}
+{% if budget_actual %}
+<section class="figures-section">
+  <div class="section-label">Budget vs. actual — {{ latest_year }}</div>
+  <p class="hint">Budgetary (cash-basis) figures from the district's budget-and-actual
+  schedules. They differ from the audited figures above, which are reported on the
+  modified-accrual basis. "vs final" is actual minus the final amended budget.</p>
+  <table class="figures-table budget-actual-table">
+    <thead>
+      <tr>
+        <th>Fund</th><th></th>
+        <th class="num">Original</th><th class="num">Final</th>
+        <th class="num">Actual</th><th class="num">vs final</th><th>Source</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for b in budget_actual %}
+      <tr>
+        <td>{{ b.fund }}</td>
+        <td>{{ "Revenues" if b.category == "revenue" else "Expenditures" }}</td>
+        <td class="num">{{ b.original | usd }}</td>
+        <td class="num">{{ b.final | usd }}</td>
+        <td class="num">{{ b.actual | usd }}</td>
+        <td class="num variance">{% if b.variance >= 0 %}+{{ b.variance | usd }}{% else %}&minus;{{ (-b.variance) | usd }}{% endif %}</td>
+        <td>
+          {% if b.chunk_id %}
+            <a href="/chunk/{{ b.chunk_id }}/source" class="hash">{{ b.chunk_id | chunk_hash_id }}</a>
+          {% else %}
+            <span class="muted">&mdash;</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
 {# --- Figures & sources: every number with its citation --- #}
 {% if line_items %}
 <section class="figures-section">

@@ -1102,6 +1102,8 @@ img { max-width: 100%; display: block; }
   padding: 2px 4px 2px 8px; box-decoration-break: clone;
 }
 
+.budget-actual-table .variance { color: var(--muted); }
+
 .empty-note { max-width: var(--col-reading); }
 
 @media (max-width: 960px) {

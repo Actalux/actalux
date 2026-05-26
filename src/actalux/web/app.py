@@ -41,6 +41,7 @@ from actalux.search.hybrid import SearchFilters, hybrid_search
 from actalux.search.summarize import generate_match_summary, generate_summary
 from actalux.web.charts import (
     aggregate_by_year,
+    budget_vs_actual,
     component_trend,
     cross_split,
     function_breakdown,
@@ -363,6 +364,8 @@ async def budget(request: Request) -> HTMLResponse:
     year_totals = aggregate_by_year(line_items)
     latest_year = year_totals[-1].fiscal_year if year_totals else None
     breakdown = _breakdown_context(client, _DEFAULT_BREAKDOWN_VIEW, latest_year)
+    budget_items = get_budget_line_items(client, dimension="budget")
+    budget_actual = budget_vs_actual(budget_items, latest_year) if latest_year else []
 
     return templates.TemplateResponse(
         request,
@@ -373,6 +376,7 @@ async def budget(request: Request) -> HTMLResponse:
             "year_totals": year_totals,
             "latest_year": latest_year,
             "chart_svg": revenue_expenditure_svg(year_totals),
+            "budget_actual": budget_actual,
             "sections": _budget_quote_sections(),
             **breakdown,
         },

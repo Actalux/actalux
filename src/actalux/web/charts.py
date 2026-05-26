@@ -151,6 +151,69 @@ def component_trend(
     return [YearPoint(fy, amount, chunk) for fy, (amount, chunk) in sorted(agg.items())]
 
 
+@dataclass(frozen=True)
+class BudgetActual:
+    """One fund's budget-vs-actual line (revenues or expenditures) for a year."""
+
+    fund: str
+    category: str  # "revenue" | "expenditure"
+    original: Decimal
+    final: Decimal
+    actual: Decimal
+    chunk_id: int | None = None
+
+    @property
+    def variance(self) -> Decimal:
+        """Actual minus final budget (positive = above budget)."""
+        return self.actual - self.final
+
+
+# Fund display order, matching the GAAP charts.
+_BUDGET_FUND_ORDER = (
+    "General",
+    "Special Revenue (Teachers)",
+    "Debt Service",
+    "Capital Projects",
+)
+
+
+def budget_vs_actual(items: list[dict[str, Any]], fiscal_year: str) -> list[BudgetActual]:
+    """One year's budget-vs-actual lines, fund order then revenues before expenditures.
+
+    Expects dimension='budget' rows (basis in original/final/actual). Each
+    (fund, category) collapses its three basis rows into one line.
+    """
+    grouped: dict[tuple[str, str], dict[str, Decimal]] = {}
+    chunks: dict[tuple[str, str], int | None] = {}
+    for item in items:
+        if item.get("fiscal_year") != fiscal_year:
+            continue
+        basis = item.get("basis")
+        if basis not in ("original", "final", "actual"):
+            continue
+        key = (item.get("fund") or "", item.get("category") or "")
+        grouped.setdefault(key, {})[basis] = Decimal(str(item["amount"]))
+        chunks.setdefault(key, item.get("chunk_id"))
+
+    lines: list[BudgetActual] = []
+    for fund in _BUDGET_FUND_ORDER:
+        for category in ("revenue", "expenditure"):
+            vals = grouped.get((fund, category))
+            if not vals or not {"original", "final", "actual"} <= vals.keys():
+                continue
+            lines.append(
+                BudgetActual(
+                    fund=fund,
+                    category=category,
+                    original=vals["original"],
+                    final=vals["final"],
+                    actual=vals["actual"],
+                    chunk_id=chunks.get((fund, category)),
+                )
+            )
+    return lines
+
+
 def trend_svg(points: list[YearPoint]) -> Markup:
     """Single-series bar chart of one component's amount across fiscal years."""
     if not points:

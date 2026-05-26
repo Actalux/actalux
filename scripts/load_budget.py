@@ -10,9 +10,11 @@ source row, so every number on the Budget page drills down to its source.
 Funds, in column order, follow the audit's presentation: General, Special
 Revenue (the Teachers' Fund in Missouri), Debt Service, Capital Projects.
 
-Three breakdowns are loaded: by fund (dimension='fund'), revenue by source
-(dimension='source'), and expenditure by function (dimension='function', the
-function x fund matrix from the same statement).
+Breakdowns loaded: by fund (dimension='fund'), revenue by source
+(dimension='source'), expenditure by function (dimension='function', the
+function x fund matrix from the same statement), and budget vs actual
+(dimension='budget', cash/budgetary basis from the per-fund budget-and-actual
+schedules - kept separate from the GAAP figures above).
 
 Integrity guard: each year's four per-fund figures are asserted to sum to
 the audit's stated "Total Governmental Funds" column at load time; the
@@ -415,6 +417,156 @@ def _function_row_quote(label: str, cells: list[int], total: int) -> str:
     return f"{label} {' '.join(parts)} {total:,}"
 
 
+# Budget vs actual (dimension='budget'), cash/budgetary basis, per fund. Each
+# fund-year carries Total revenues and Total expenditures at three bases:
+# original budget, final budget, actual. Read from each fund's "Schedule of
+# Revenues, Expenditures and Changes in Fund Balance - Budget and Actual - Cash
+# Basis". These are budgetary-basis figures and differ from the GAAP figures
+# above, so they live under their own dimension and never mix into the GAAP
+# charts. Each (original, final, actual, chunk_id) triple was reconciled against
+# the schedule's stated variance columns at extraction: |final - original| and
+# |actual - final| matched the printed "Original to final" / "Final to actual".
+BUDGET_VS_ACTUAL: dict[str, dict] = {
+    "2018-2019": {
+        "doc": 429,
+        "General": {
+            "rev": (16364320, 16844860, 17849518, 7745),
+            "exp": (19438270, 19583800, 18615448, 7745),
+        },
+        "Special Revenue": {
+            "rev": (30932280, 27188980, 29172041, 7746),
+            "exp": (33020600, 33091540, 32191556, 7746),
+        },
+        "Debt Service": {
+            "rev": (8241540, 8090030, 8598170, 7753),
+            "exp": (28084540, 28084540, 28081872, 7753),
+        },
+        "Capital Projects": {
+            "rev": (1289030, 1437290, 1793984, 7754),
+            "exp": (1515080, 2132770, 2098469, 7754),
+        },
+    },
+    "2019-2020": {
+        "doc": 428,
+        "General": {
+            "rev": (19861950, 22083570, 22581777, 7651),
+            "exp": (19997090, 20224640, 18053213, 7651),
+        },
+        "Special Revenue": {
+            "rev": (36170940, 37979710, 39102161, 7652),
+            "exp": (33615510, 33618390, 32754695, 7653),
+        },
+        "Debt Service": {
+            "rev": (9355540, 9238630, 9313162, 7659),
+            "exp": (7829650, 8291510, 8288389, 7659),
+        },
+        "Capital Projects": {
+            "rev": (2612120, 2638610, 3280681, 7660),
+            "exp": (2153320, 6256370, 4078860, 7660),
+        },
+    },
+    "2020-2021": {
+        "doc": 427,
+        "General": {
+            "rev": (22179480, 20952270, 20794490, 7541),
+            "exp": (20550630, 21234700, 17521743, 7541),
+        },
+        "Special Revenue": {
+            "rev": (36424990, 35046590, 34314514, 7542),
+            "exp": (34411760, 34511600, 33775525, 7542),
+        },
+        "Debt Service": {
+            "rev": (8371730, 8407370, 8338121, 7548),
+            "exp": (8977790, 8977790, 8973611, 7548),
+        },
+        "Capital Projects": {
+            "rev": (1430850, 4126430, 4179476, 7549),
+            "exp": (2313230, 6924720, 5042334, 7549),
+        },
+    },
+    "2021-2022": {
+        "doc": 426,
+        "General": {
+            "rev": (22851660, 22277750, 22345089, 7433),
+            "exp": (21375980, 21591370, 18781278, 7433),
+        },
+        "Special Revenue": {
+            "rev": (34872800, 36911690, 37187005, 7434),
+            "exp": (35432760, 35365630, 34520563, 7434),
+        },
+        "Debt Service": {
+            "rev": (8921400, 8632800, 8654588, 7440),
+            "exp": (8546030, 8546030, 8541502, 7440),
+        },
+        "Capital Projects": {
+            "rev": (3607960, 4167170, 4281274, 7441),
+            "exp": (2410130, 9204560, 4858737, 7441),
+        },
+    },
+    "2022-2023": {
+        "doc": 425,
+        "General": {
+            "rev": (22651810, 22674260, 22865227, 7322),
+            "exp": (21684020, 21988010, 20164719, 7322),
+        },
+        "Special Revenue": {
+            "rev": (34633900, 34775150, 36485372, 7323),
+            "exp": (36146680, 36224600, 35527822, 7323),
+        },
+        "Debt Service": {
+            "rev": (8567790, 8567790, 8998620, 7329),
+            "exp": (6520030, 6520030, 6515483, 7329),
+        },
+        "Capital Projects": {
+            "rev": (5246150, 5246150, 6194613, 7330),
+            "exp": (2820460, 8766280, 7001989, 7330),
+        },
+    },
+    "2023-2024": {
+        "doc": 424,
+        "General": {
+            "rev": (29672260, 29725310, 29999528, 7214),
+            "exp": (23270262, 23483542, 22063876, 7214),
+        },
+        "Special Revenue": {
+            "rev": (32945150, 32967970, 32162461, 7215),
+            "exp": (37937690, 38213740, 38208562, 7215),
+        },
+        "Debt Service": {
+            "rev": (9745330, 9745330, 7948702, 7221),
+            "exp": (10826930, 10826930, 10822104, 7221),
+        },
+        "Capital Projects": {
+            "rev": (5083500, 5083500, 4978628, 7222),
+            "exp": (2572370, 5187250, 3815527, 7222),
+        },
+    },
+    "2024-2025": {
+        "doc": 436,
+        "General": {
+            "rev": (24006880, 24058267, 31708277, 7862),
+            "exp": (23761689, 24069207, 22507352, 7862),
+        },
+        "Special Revenue": {
+            "rev": (40642910, 40714733, 32925089, 7863),
+            "exp": (40466370, 40425483, 39868534, 7863),
+        },
+        "Debt Service": {
+            "rev": (8063430, 8063430, 8045686, 7869),
+            "exp": (7394340, 7394340, 7389078, 7869),
+        },
+        "Capital Projects": {
+            "rev": (3678200, 3678200, 5340972, 7870),
+            "exp": (3761470, 6207370, 5244280, 7870),
+        },
+    },
+}
+
+# Budget-schedule fund labels match the GAAP fund labels used elsewhere.
+_BUDGET_FUND_LABEL = {"Special Revenue": "Special Revenue (Teachers)"}
+_BASES = ("original", "final", "actual")
+
+
 def build_line_items() -> list[BudgetLineItem]:
     """Expand the verified figures into rows, asserting each year reconciles."""
     items: list[BudgetLineItem] = []
@@ -521,6 +673,52 @@ def build_line_items() -> list[BudgetLineItem]:
                 f"Reconciliation failed for {fiscal_year} function grand total: "
                 f"{grand} != stated total expenditures {y['expenditure_total']}"
             )
+
+    # Budget vs actual (dimension='budget'): per fund, Total revenues and Total
+    # expenditures at original/final/actual (cash/budgetary basis). Three rows
+    # per (fund, category). Guard: every figure positive and the full grid present.
+    n_budget = 0
+    for fiscal_year, funds in BUDGET_VS_ACTUAL.items():
+        document_id = funds["doc"]
+        for fund_key in ("General", "Special Revenue", "Debt Service", "Capital Projects"):
+            fund_label = _BUDGET_FUND_LABEL.get(fund_key, fund_key)
+            for kind, category, subcat in (
+                ("rev", "revenue", "Total revenues"),
+                ("exp", "expenditure", "Total expenditures"),
+            ):
+                original, final, actual, chunk_id = funds[fund_key][kind]
+                if not (original > 0 and final > 0 and actual > 0):
+                    raise SystemExit(
+                        f"Budget-vs-actual {fiscal_year} {fund_key} {kind}: non-positive figure"
+                    )
+                quote = (
+                    f"{subcat} — original ${original:,} · final ${final:,} · "
+                    f"actual ${actual:,} (budgetary/cash basis)"
+                )
+                note = (
+                    f"FY{fiscal_year} audit, Schedule of Revenues, Expenditures and Changes in "
+                    f"Fund Balance - Budget and Actual - Cash Basis - {fund_label} Fund (unaudited)"
+                )
+                for basis, amount in zip(_BASES, (original, final, actual), strict=True):
+                    items.append(
+                        BudgetLineItem(
+                            fiscal_year=fiscal_year,
+                            category=category,
+                            amount=Decimal(amount),
+                            document_id=document_id,
+                            dimension="budget",
+                            fund=fund_label,
+                            subcategory=subcat,
+                            basis=basis,
+                            chunk_id=chunk_id,
+                            source_quote=quote,
+                            note=note,
+                        )
+                    )
+                    n_budget += 1
+    expected = len(BUDGET_VS_ACTUAL) * 4 * 2 * 3
+    if n_budget != expected:
+        raise SystemExit(f"Budget-vs-actual: built {n_budget} rows, expected {expected}")
     return items
 
 

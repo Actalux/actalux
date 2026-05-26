@@ -105,11 +105,12 @@ CREATE TABLE IF NOT EXISTS transcripts (
 CREATE TABLE IF NOT EXISTS budget_line_items (
     id SERIAL PRIMARY KEY,
     fiscal_year TEXT NOT NULL,
-    dimension TEXT NOT NULL DEFAULT 'fund',  -- breakdown: 'fund' | 'source' | 'function'
+    dimension TEXT NOT NULL DEFAULT 'fund',  -- breakdown: 'fund' | 'source' | 'function' | 'budget'
     fund TEXT DEFAULT '',
     category TEXT NOT NULL,                -- 'revenue' | 'expenditure' | 'fund_balance'
     subcategory TEXT DEFAULT '',
     amount NUMERIC(14, 2) NOT NULL,
+    basis TEXT,                            -- budget-vs-actual only: 'original' | 'final' | 'actual' (NULL = GAAP)
     document_id INT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
     chunk_id INT REFERENCES chunks(id) ON DELETE SET NULL,
     source_quote TEXT DEFAULT '',
@@ -122,6 +123,9 @@ CREATE INDEX IF NOT EXISTS idx_budget_year_category
 
 CREATE INDEX IF NOT EXISTS idx_budget_dimension
     ON budget_line_items (dimension, fiscal_year, category);
+
+CREATE INDEX IF NOT EXISTS idx_budget_basis
+    ON budget_line_items (dimension, basis, fiscal_year, fund);
 
 -- ============================================================
 -- Migration: Document provenance tracking

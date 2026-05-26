@@ -185,6 +185,8 @@ def insert_budget_line_items(client: Client, items: list[BudgetLineItem]) -> lis
             "source_quote": item.source_quote,
             "note": item.note,
         }
+        if item.basis is not None:
+            row["basis"] = item.basis
         if item.chunk_id is not None:
             row["chunk_id"] = item.chunk_id
         rows.append(row)
@@ -196,18 +198,24 @@ def insert_budget_line_items(client: Client, items: list[BudgetLineItem]) -> lis
 
 
 def get_budget_line_items(
-    client: Client, category: str | None = None, dimension: str | None = None
+    client: Client,
+    category: str | None = None,
+    dimension: str | None = None,
+    basis: str | None = None,
 ) -> list[dict[str, Any]]:
     """Fetch budget line items, oldest fiscal year first.
 
-    Optionally filter by category ('revenue', 'expenditure', 'fund_balance')
-    and/or dimension ('fund', 'source', 'function').
+    Optionally filter by category ('revenue', 'expenditure', 'fund_balance'),
+    dimension ('fund', 'source', 'function', 'budget'), and/or basis
+    ('original', 'final', 'actual' for the budget-vs-actual rows).
     """
     query = client.table("budget_line_items").select("*")
     if category:
         query = query.eq("category", category)
     if dimension:
         query = query.eq("dimension", dimension)
+    if basis:
+        query = query.eq("basis", basis)
     result = query.order("fiscal_year").order("fund").execute()
     return result.data
 

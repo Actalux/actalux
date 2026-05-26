@@ -7,6 +7,7 @@ from decimal import Decimal
 from actalux.web.charts import (
     _axis_label,
     aggregate_by_year,
+    budget_vs_actual,
     component_trend,
     cross_split,
     function_breakdown,
@@ -223,6 +224,63 @@ class TestTrendSvg:
         assert "<svg" in svg and "</svg>" in svg
         assert svg.count('class="bar bar-trend"') == 2  # one bar per year
         assert "23-24" in svg and "24-25" in svg  # short-year x labels
+
+
+class TestBudgetVsActual:
+    BUDGET_ITEMS = [
+        {
+            "fiscal_year": "2024-2025",
+            "category": cat,
+            "fund": fund,
+            "basis": basis,
+            "amount": amt,
+            "chunk_id": 7862,
+        }
+        for fund, cat, basis, amt in [
+            ("General", "revenue", "original", "24006880"),
+            ("General", "revenue", "final", "24058267"),
+            ("General", "revenue", "actual", "31708277"),
+            ("General", "expenditure", "original", "23761689"),
+            ("General", "expenditure", "final", "24069207"),
+            ("General", "expenditure", "actual", "22507352"),
+            ("Debt Service", "revenue", "original", "8063430"),
+            ("Debt Service", "revenue", "final", "8063430"),
+            ("Debt Service", "revenue", "actual", "8045686"),
+        ]
+    ]
+
+    def test_collapses_three_bases_into_one_line(self):
+        lines = budget_vs_actual(self.BUDGET_ITEMS, "2024-2025")
+        gen_rev = next(b for b in lines if b.fund == "General" and b.category == "revenue")
+        assert gen_rev.original == Decimal("24006880")
+        assert gen_rev.final == Decimal("24058267")
+        assert gen_rev.actual == Decimal("31708277")
+        # variance = actual - final (positive: collected above budget)
+        assert gen_rev.variance == Decimal("7650010")
+
+    def test_fund_order_and_revenue_before_expenditure(self):
+        labels = [(b.fund, b.category) for b in budget_vs_actual(self.BUDGET_ITEMS, "2024-2025")]
+        assert labels == [
+            ("General", "revenue"),
+            ("General", "expenditure"),
+            ("Debt Service", "revenue"),
+        ]
+
+    def test_incomplete_line_is_dropped(self):
+        # A (fund, category) missing one of the three bases is not emitted.
+        items = [
+            {
+                "fiscal_year": "2024-2025",
+                "category": "revenue",
+                "fund": "Capital Projects",
+                "basis": "original",
+                "amount": "100",
+            }
+        ]
+        assert budget_vs_actual(items, "2024-2025") == []
+
+    def test_missing_year_is_empty(self):
+        assert budget_vs_actual(self.BUDGET_ITEMS, "1999-2000") == []
 
 
 class TestUsd:
