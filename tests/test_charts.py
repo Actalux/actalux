@@ -7,10 +7,13 @@ from decimal import Decimal
 from actalux.web.charts import (
     _axis_label,
     aggregate_by_year,
+    component_trend,
+    cross_split,
     function_breakdown,
     fund_breakdown,
     revenue_expenditure_svg,
     source_breakdown,
+    trend_svg,
     usd,
 )
 
@@ -122,6 +125,104 @@ class TestFunctionBreakdown:
 
     def test_missing_year_is_empty(self):
         assert function_breakdown(self.FN_ITEMS, "1999-2000") == []
+
+
+# Function x fund matrix rows for the drill helpers: two functions, two years.
+MATRIX_ITEMS = [
+    {
+        "fiscal_year": fy,
+        "category": "expenditure",
+        "subcategory": sub,
+        "fund": fund,
+        "amount": amt,
+        "chunk_id": chunk,
+    }
+    for fy, sub, fund, amt, chunk in [
+        ("2023-2024", "Instruction", "General", "2972138", 7154),
+        ("2023-2024", "Instruction", "Special Revenue (Teachers)", "31133438", 7154),
+        ("2023-2024", "Operation of plant", "General", "8434210", 7154),
+        ("2024-2025", "Instruction", "General", "2900882", 7802),
+        ("2024-2025", "Instruction", "Special Revenue (Teachers)", "32727714", 7802),
+        ("2024-2025", "Instruction", "Capital Projects", "1043599", 7802),
+        ("2024-2025", "Operation of plant", "General", "8786759", 7802),
+        ("2024-2025", "Operation of plant", "Capital Projects", "3037670", 7802),
+    ]
+]
+
+
+class TestCrossSplit:
+    def test_function_splits_across_its_funds_largest_first(self):
+        split = cross_split(
+            MATRIX_ITEMS,
+            "2024-2025",
+            match={"category": "expenditure", "subcategory": "Instruction"},
+            group_key="fund",
+        )
+        assert [s.label for s in split] == [
+            "Special Revenue (Teachers)",
+            "General",
+            "Capital Projects",
+        ]
+        assert split[0].amount == Decimal("32727714")
+        assert sum(s.amount for s in split) == Decimal("36672195")
+
+    def test_fund_splits_across_its_functions(self):
+        split = cross_split(
+            MATRIX_ITEMS,
+            "2024-2025",
+            match={"category": "expenditure", "fund": "General"},
+            group_key="subcategory",
+        )
+        assert [s.label for s in split] == ["Operation of plant", "Instruction"]
+        assert split[0].amount == Decimal("8786759")
+
+    def test_scoped_to_the_named_year(self):
+        split = cross_split(
+            MATRIX_ITEMS,
+            "2023-2024",
+            match={"category": "expenditure", "subcategory": "Instruction"},
+            group_key="fund",
+        )
+        # 2023-2024 Instruction has no Capital Projects cell.
+        assert [s.label for s in split] == ["Special Revenue (Teachers)", "General"]
+
+
+class TestComponentTrend:
+    def test_sums_across_funds_per_year_oldest_first(self):
+        trend = component_trend(
+            MATRIX_ITEMS, category="expenditure", key="subcategory", value="Instruction"
+        )
+        assert [p.fiscal_year for p in trend] == ["2023-2024", "2024-2025"]
+        # 2023-24: 2,972,138 + 31,133,438 ; 2024-25: 2,900,882 + 32,727,714 + 1,043,599
+        assert trend[0].amount == Decimal("34105576")
+        assert trend[1].amount == Decimal("36672195")
+
+    def test_carries_the_statement_chunk_per_year(self):
+        trend = component_trend(
+            MATRIX_ITEMS, category="expenditure", key="subcategory", value="Instruction"
+        )
+        assert trend[0].chunk_id == 7154
+        assert trend[1].chunk_id == 7802
+
+    def test_unknown_component_is_empty(self):
+        assert (
+            component_trend(MATRIX_ITEMS, category="expenditure", key="subcategory", value="Nope")
+            == []
+        )
+
+
+class TestTrendSvg:
+    def test_empty_returns_empty_string(self):
+        assert str(trend_svg([])) == ""
+
+    def test_renders_a_bar_per_year(self):
+        trend = component_trend(
+            MATRIX_ITEMS, category="expenditure", key="subcategory", value="Instruction"
+        )
+        svg = str(trend_svg(trend))
+        assert "<svg" in svg and "</svg>" in svg
+        assert svg.count('class="bar bar-trend"') == 2  # one bar per year
+        assert "23-24" in svg and "24-25" in svg  # short-year x labels
 
 
 class TestUsd:

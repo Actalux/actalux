@@ -67,15 +67,13 @@ class Share:
     pct: float  # 0-100, share of the year's total
 
 
-def _breakdown(
-    items: list[dict[str, Any]], fiscal_year: str, category: str, key: str
-) -> list[Share]:
-    """Shares of one year's `category` total, grouped by the `key` field, largest first."""
+def _shares(items: list[dict[str, Any]], *, where: dict[str, str], group_key: str) -> list[Share]:
+    """Shares grouped by `group_key`, over rows matching every field in `where`, largest first."""
     totals: dict[str, Decimal] = {}
     for item in items:
-        if item.get("category") != category or item.get("fiscal_year") != fiscal_year:
+        if any(item.get(k) != v for k, v in where.items()):
             continue
-        label = item.get(key) or "Unspecified"
+        label = item.get(group_key) or "Unspecified"
         totals[label] = totals.get(label, Decimal(0)) + Decimal(str(item["amount"]))
     grand = sum(totals.values())
     if grand <= 0:
@@ -86,12 +84,16 @@ def _breakdown(
 
 def fund_breakdown(items: list[dict[str, Any]], fiscal_year: str) -> list[Share]:
     """Expenditure by fund for one fiscal year, largest first."""
-    return _breakdown(items, fiscal_year, category="expenditure", key="fund")
+    return _shares(
+        items, where={"category": "expenditure", "fiscal_year": fiscal_year}, group_key="fund"
+    )
 
 
 def source_breakdown(items: list[dict[str, Any]], fiscal_year: str) -> list[Share]:
     """Revenue by source for one fiscal year, largest first."""
-    return _breakdown(items, fiscal_year, category="revenue", key="subcategory")
+    return _shares(
+        items, where={"category": "revenue", "fiscal_year": fiscal_year}, group_key="subcategory"
+    )
 
 
 def function_breakdown(items: list[dict[str, Any]], fiscal_year: str) -> list[Share]:
@@ -100,7 +102,106 @@ def function_breakdown(items: list[dict[str, Any]], fiscal_year: str) -> list[Sh
     Sums the function x fund matrix across funds, so each share is a function's
     total Governmental Funds expenditure.
     """
-    return _breakdown(items, fiscal_year, category="expenditure", key="subcategory")
+    return _shares(
+        items,
+        where={"category": "expenditure", "fiscal_year": fiscal_year},
+        group_key="subcategory",
+    )
+
+
+def cross_split(
+    items: list[dict[str, Any]], fiscal_year: str, *, match: dict[str, str], group_key: str
+) -> list[Share]:
+    """One year's rows matching `match`, split across `group_key`, largest first.
+
+    Drives the fund<->function matrix drill: a function's funds (``match`` on the
+    function, ``group_key='fund'``) or a fund's functions (the reverse).
+    """
+    return _shares(items, where={"fiscal_year": fiscal_year, **match}, group_key=group_key)
+
+
+@dataclass(frozen=True)
+class YearPoint:
+    """One fiscal year's amount for a single tracked component, with its citation."""
+
+    fiscal_year: str
+    amount: Decimal
+    chunk_id: int | None = None
+
+
+def component_trend(
+    items: list[dict[str, Any]], *, category: str, key: str, value: str
+) -> list[YearPoint]:
+    """A component's amount per fiscal year, oldest first.
+
+    Groups rows where ``item[key] == value`` and category matches by fiscal year,
+    summing amounts (e.g. a function summed across its funds) and keeping the
+    statement chunk each year traces to.
+    """
+    agg: dict[str, tuple[Decimal, int | None]] = {}
+    for item in items:
+        if item.get("category") != category or item.get(key) != value:
+            continue
+        fy = item["fiscal_year"]
+        amount, chunk = agg.get(fy, (Decimal(0), None))
+        agg[fy] = (
+            amount + Decimal(str(item["amount"])),
+            chunk if chunk is not None else item.get("chunk_id"),
+        )
+    return [YearPoint(fy, amount, chunk) for fy, (amount, chunk) in sorted(agg.items())]
+
+
+def trend_svg(points: list[YearPoint]) -> Markup:
+    """Single-series bar chart of one component's amount across fiscal years."""
+    if not points:
+        return Markup("")
+
+    plot_w = _CHART_W - _PAD_LEFT - _PAD_RIGHT
+    plot_h = _CHART_H - _PAD_TOP - _PAD_BOTTOM
+    baseline = _PAD_TOP + plot_h
+    ceiling = _nice_ceiling(max((p.amount for p in points), default=Decimal(1)))
+
+    def y_for(value: Decimal) -> float:
+        return baseline - float(value / ceiling) * plot_h
+
+    parts: list[str] = [
+        f'<svg class="chart" viewBox="0 0 {_CHART_W} {_CHART_H}" '
+        f'role="img" aria-label="Amount by fiscal year" preserveAspectRatio="xMidYMid meet">'
+    ]
+    for i in range(_GRIDLINES + 1):
+        gv = ceiling * Decimal(i) / Decimal(_GRIDLINES)
+        gy = y_for(gv)
+        parts.append(
+            f'<line class="grid" x1="{_PAD_LEFT}" y1="{gy:.1f}" '
+            f'x2="{_CHART_W - _PAD_RIGHT}" y2="{gy:.1f}"/>'
+        )
+        parts.append(
+            f'<text class="axis-y" x="{_PAD_LEFT - 8}" y="{gy + 3:.1f}" '
+            f'text-anchor="end">{escape(_axis_label(gv))}</text>'
+        )
+
+    slot_w = plot_w / len(points)
+    bar_w = min(slot_w * 0.5, 56)
+    for idx, p in enumerate(points):
+        cx = _PAD_LEFT + slot_w * (idx + 0.5)
+        x = cx - bar_w / 2
+        y = y_for(p.amount)
+        parts.append(
+            f"<title>{escape(p.fiscal_year)} {escape(usd(p.amount))}</title>"
+            f'<rect class="bar bar-trend" x="{x:.1f}" y="{y:.1f}" '
+            f'width="{bar_w:.1f}" height="{baseline - y:.1f}"/>'
+        )
+        parts.append(
+            f'<text class="axis-x" x="{cx:.1f}" y="{baseline + 18:.1f}" '
+            f'text-anchor="middle">{escape(_short_year(p.fiscal_year))}</text>'
+        )
+
+    parts.append(
+        f'<line class="axis-base" x1="{_PAD_LEFT}" y1="{baseline}" '
+        f'x2="{_CHART_W - _PAD_RIGHT}" y2="{baseline}"/>'
+    )
+    parts.append("</svg>")
+    return Markup("".join(parts))
 
 
 def usd(amount: Decimal | float | int) -> str:

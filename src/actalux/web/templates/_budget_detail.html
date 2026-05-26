@@ -1,0 +1,50 @@
+{# Drill-down detail for one component: its multi-year trend, a citation-first
+   year/amount/source table, and the fund<->function cross-split. Swapped into
+   #breakdown-panel by clicking a breakdown bar. Split bars drill the other way. #}
+<button type="button" class="back-link"
+        hx-get="/budget/breakdown?view={{ view }}"
+        hx-target="#breakdown-panel" hx-swap="innerHTML">&larr; Back to {{ back_label }}</button>
+
+{% if rows %}
+<h3 class="detail-title">{{ key }}</h3>
+<div class="section-label">{{ measure }} &mdash; {{ span }}</div>
+{{ trend_svg }}
+
+<table class="figures-table detail-table">
+  <thead>
+    <tr><th>Fiscal year</th><th class="num">Amount</th><th>Source</th></tr>
+  </thead>
+  <tbody>
+    {% for p in rows %}
+    <tr>
+      <td>{{ p.fiscal_year }}</td>
+      <td class="num">{{ p.amount | usd }}</td>
+      <td>
+        {% if p.chunk_id %}
+          <a href="/chunk/{{ p.chunk_id }}/source" class="hash">{{ p.chunk_id | chunk_hash_id }}</a>
+        {% else %}
+          <span class="muted">&mdash;</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% if split %}
+<div class="section-label" style="margin-top: var(--s-6);">{{ key }} {{ split_label }} &mdash; {{ split_year }}</div>
+<div class="fund-bars">
+  {% for s in split %}
+  <button type="button" class="fund-row"
+          hx-get="/budget/detail?view={{ split_view }}&amp;key={{ s.label | urlencode }}"
+          hx-target="#breakdown-panel" hx-swap="innerHTML">
+    <span class="fund-name">{{ s.label }}</span>
+    <span class="fund-track"><span class="fund-fill" style="width: {{ '%.1f' % s.pct }}%;"></span></span>
+    <span class="fund-amount">{{ s.amount | usd }}</span>
+  </button>
+  {% endfor %}
+</div>
+{% endif %}
+{% else %}
+<p class="hint">No figures available for this selection.</p>
+{% endif %}

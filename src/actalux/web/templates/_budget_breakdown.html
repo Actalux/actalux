@@ -16,14 +16,16 @@
 {% if shares %}
 <div class="fund-bars">
   {% for s in shares %}
-  <a class="fund-row"
-     href="{% if source_chunk_id %}/chunk/{{ source_chunk_id }}/source{% else %}#fy-{{ year }}{% endif %}">
+  <button type="button" class="fund-row"
+          hx-get="/budget/detail?view={{ view }}&amp;key={{ s.label | urlencode }}"
+          hx-target="#breakdown-panel" hx-swap="innerHTML">
     <span class="fund-name">{{ s.label }}</span>
     <span class="fund-track"><span class="fund-fill" style="width: {{ '%.1f' % s.pct }}%;"></span></span>
     <span class="fund-amount">{{ s.amount | usd }}</span>
-  </a>
+  </button>
   {% endfor %}
 </div>
+<p class="hint" style="margin-top: var(--s-3);">Select a row to see its year-by-year trend and sources.</p>
 {% else %}
 <p class="hint">No figures available for this view.</p>
 {% endif %}

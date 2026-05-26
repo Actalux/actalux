@@ -41,10 +41,13 @@ from actalux.search.hybrid import SearchFilters, hybrid_search
 from actalux.search.summarize import generate_match_summary, generate_summary
 from actalux.web.charts import (
     aggregate_by_year,
+    component_trend,
+    cross_split,
     function_breakdown,
     fund_breakdown,
     revenue_expenditure_svg,
     source_breakdown,
+    trend_svg,
     usd,
 )
 
@@ -279,23 +282,75 @@ def _breakdown_context(client: Client, view: str, fiscal_year: str | None) -> di
         items = get_budget_line_items(client, dimension="function")
         shares = function_breakdown(items, fiscal_year) if fiscal_year else []
         measure = "Expenditure by function"
-    # Every figure in a year comes from one statement chunk; link bars to it.
-    source_chunk_id = next(
-        (it.get("chunk_id") for it in items if it.get("fiscal_year") == fiscal_year), None
-    )
-    return {
-        "view": view,
-        "year": fiscal_year,
-        "shares": shares,
-        "measure": measure,
-        "source_chunk_id": source_chunk_id,
-    }
+    return {"view": view, "year": fiscal_year, "shares": shares, "measure": measure}
 
 
 def _latest_budget_year(client: Client) -> str | None:
     """Most recent fiscal year present in the by-fund figures, or None."""
     year_totals = aggregate_by_year(get_budget_line_items(client, dimension="fund"))
     return year_totals[-1].fiscal_year if year_totals else None
+
+
+# Human label per view, for the detail back-link and split heading.
+_VIEW_LABEL = {"function": "by function", "fund": "by fund", "source": "by source"}
+
+
+def _detail_context(client: Client, view: str, key: str) -> dict[str, Any]:
+    """A single component's trend over all years + its fund<->function cross-split.
+
+    The split bars drill the *other* direction: a function detail splits by fund
+    (and each fund drills to its own detail), a fund detail splits by function.
+    """
+    latest = _latest_budget_year(client)
+    if view == "fund":
+        trend = component_trend(
+            get_budget_line_items(client, dimension="fund"),
+            category="expenditure",
+            key="fund",
+            value=key,
+        )
+        split = cross_split(
+            get_budget_line_items(client, dimension="function"),
+            latest or "",
+            match={"category": "expenditure", "fund": key},
+            group_key="subcategory",
+        )
+        split_label, split_view, measure = "by function", "function", "Expenditure"
+    elif view == "source":
+        trend = component_trend(
+            get_budget_line_items(client, dimension="source"),
+            category="revenue",
+            key="subcategory",
+            value=key,
+        )
+        split, split_label, split_view, measure = [], "", "", "Revenue"
+    else:  # function
+        function_items = get_budget_line_items(client, dimension="function")
+        trend = component_trend(
+            function_items, category="expenditure", key="subcategory", value=key
+        )
+        split = cross_split(
+            function_items,
+            latest or "",
+            match={"category": "expenditure", "subcategory": key},
+            group_key="fund",
+        )
+        split_label, split_view, measure = "by fund", "fund", "Expenditure"
+
+    span = f"{trend[0].fiscal_year} to {trend[-1].fiscal_year}" if trend else ""
+    return {
+        "view": view,
+        "key": key,
+        "measure": measure,
+        "back_label": _VIEW_LABEL[view],
+        "trend_svg": trend_svg(trend),
+        "rows": trend,
+        "split": split,
+        "split_label": split_label,
+        "split_view": split_view,
+        "split_year": latest,
+        "span": span,
+    }
 
 
 @app.get("/budget", response_class=HTMLResponse)
@@ -332,6 +387,19 @@ async def budget_breakdown(request: Request, view: str = _DEFAULT_BREAKDOWN_VIEW
     client = _get_db()
     breakdown = _breakdown_context(client, view, _latest_budget_year(client))
     return templates.TemplateResponse(request, "_budget_breakdown.html", breakdown)
+
+
+@app.get("/budget/detail", response_class=HTMLResponse)
+async def budget_detail(
+    request: Request, view: str = _DEFAULT_BREAKDOWN_VIEW, key: str = ""
+) -> HTMLResponse:
+    """HTMX partial: one component's multi-year trend + fund<->function cross-split."""
+    if view not in _BREAKDOWN_VIEWS:
+        view = _DEFAULT_BREAKDOWN_VIEW
+    client = _get_db()
+    return templates.TemplateResponse(
+        request, "_budget_detail.html", _detail_context(client, view, key)
+    )
 
 
 @app.get("/topic/budget")
