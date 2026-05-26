@@ -24,6 +24,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup, escape
+from supabase import Client
 
 from actalux.config import Config, load_config
 from actalux.db import (
@@ -40,6 +41,7 @@ from actalux.search.hybrid import SearchFilters, hybrid_search
 from actalux.search.summarize import generate_match_summary, generate_summary
 from actalux.web.charts import (
     aggregate_by_year,
+    function_breakdown,
     fund_breakdown,
     revenue_expenditure_svg,
     source_breakdown,
@@ -257,18 +259,55 @@ def _budget_quote_sections() -> list[dict[str, Any]]:
     return sections
 
 
+# Breakdown views switchable on the Budget page. "fund"/"function" break down
+# expenditure; "source" breaks down revenue. Order = tab order.
+_BREAKDOWN_VIEWS = ("function", "fund", "source")
+_DEFAULT_BREAKDOWN_VIEW = "function"
+
+
+def _breakdown_context(client: Client, view: str, fiscal_year: str | None) -> dict[str, Any]:
+    """Shares + heading + citation anchor for one breakdown view of one year."""
+    if view == "source":
+        items = get_budget_line_items(client, dimension="source")
+        shares = source_breakdown(items, fiscal_year) if fiscal_year else []
+        measure = "Revenue by source"
+    elif view == "fund":
+        items = get_budget_line_items(client, dimension="fund")
+        shares = fund_breakdown(items, fiscal_year) if fiscal_year else []
+        measure = "Expenditure by fund"
+    else:  # function
+        items = get_budget_line_items(client, dimension="function")
+        shares = function_breakdown(items, fiscal_year) if fiscal_year else []
+        measure = "Expenditure by function"
+    # Every figure in a year comes from one statement chunk; link bars to it.
+    source_chunk_id = next(
+        (it.get("chunk_id") for it in items if it.get("fiscal_year") == fiscal_year), None
+    )
+    return {
+        "view": view,
+        "year": fiscal_year,
+        "shares": shares,
+        "measure": measure,
+        "source_chunk_id": source_chunk_id,
+    }
+
+
+def _latest_budget_year(client: Client) -> str | None:
+    """Most recent fiscal year present in the by-fund figures, or None."""
+    year_totals = aggregate_by_year(get_budget_line_items(client, dimension="fund"))
+    return year_totals[-1].fiscal_year if year_totals else None
+
+
 @app.get("/budget", response_class=HTMLResponse)
 async def budget(request: Request) -> HTMLResponse:
     """First-class Budget page: charts from budget_line_items plus cited quotes."""
     client = _get_db()
-    # Scope to the by-fund breakdown so the time-series and fund charts sum a
-    # single dimension; source/function breakdowns drive the drill-down views.
+    # By-fund rows drive the time-series chart and the figures table; the
+    # breakdown panel below the chart switches between fund/function/source.
     line_items = get_budget_line_items(client, dimension="fund")
     year_totals = aggregate_by_year(line_items)
     latest_year = year_totals[-1].fiscal_year if year_totals else None
-    funds = fund_breakdown(line_items, latest_year) if latest_year else []
-    source_items = get_budget_line_items(client, dimension="source")
-    sources = source_breakdown(source_items, latest_year) if latest_year else []
+    breakdown = _breakdown_context(client, _DEFAULT_BREAKDOWN_VIEW, latest_year)
 
     return templates.TemplateResponse(
         request,
@@ -278,12 +317,21 @@ async def budget(request: Request) -> HTMLResponse:
             "line_items": line_items,
             "year_totals": year_totals,
             "latest_year": latest_year,
-            "funds": funds,
-            "sources": sources,
             "chart_svg": revenue_expenditure_svg(year_totals),
             "sections": _budget_quote_sections(),
+            **breakdown,
         },
     )
+
+
+@app.get("/budget/breakdown", response_class=HTMLResponse)
+async def budget_breakdown(request: Request, view: str = _DEFAULT_BREAKDOWN_VIEW) -> HTMLResponse:
+    """HTMX partial: the breakdown bars for one view of the latest fiscal year."""
+    if view not in _BREAKDOWN_VIEWS:
+        view = _DEFAULT_BREAKDOWN_VIEW
+    client = _get_db()
+    breakdown = _breakdown_context(client, view, _latest_budget_year(client))
+    return templates.TemplateResponse(request, "_budget_breakdown.html", breakdown)
 
 
 @app.get("/topic/budget")

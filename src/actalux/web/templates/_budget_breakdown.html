@@ -1,0 +1,29 @@
+{# Breakdown panel: a View-by tab strip + horizontal bars for one fiscal year.
+   Rendered standalone for HTMX swaps into #breakdown-panel, and included on
+   first paint by budget.html. Bars link to the statement chunk they came from. #}
+<div class="view-tabs" role="tablist" aria-label="Break expenditure and revenue down by">
+  {% for v, label in [("function", "By function"), ("fund", "By fund"), ("source", "By source")] %}
+  <button type="button"
+          class="view-tab{{ ' is-active' if v == view else '' }}"
+          role="tab" aria-selected="{{ 'true' if v == view else 'false' }}"
+          hx-get="/budget/breakdown?view={{ v }}"
+          hx-target="#breakdown-panel" hx-swap="innerHTML">{{ label }}</button>
+  {% endfor %}
+</div>
+
+<div class="section-label" style="margin-top: var(--s-4);">{{ measure }} — {{ year }}</div>
+
+{% if shares %}
+<div class="fund-bars">
+  {% for s in shares %}
+  <a class="fund-row"
+     href="{% if source_chunk_id %}/chunk/{{ source_chunk_id }}/source{% else %}#fy-{{ year }}{% endif %}">
+    <span class="fund-name">{{ s.label }}</span>
+    <span class="fund-track"><span class="fund-fill" style="width: {{ '%.1f' % s.pct }}%;"></span></span>
+    <span class="fund-amount">{{ s.amount | usd }}</span>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<p class="hint">No figures available for this view.</p>
+{% endif %}

@@ -1036,6 +1036,22 @@ img { max-width: 100%; display: block; }
 }
 .swatch-deficit { background: var(--paper); border: 2px solid var(--accent); }
 
+/* Breakdown view switch — editorial tab strip, active tab underlined in accent */
+.view-tabs {
+  display: inline-flex; gap: var(--s-5);
+  border-bottom: 1px solid var(--rule);
+  max-width: var(--col-reading);
+}
+.view-tab {
+  font-family: var(--sans); font-size: 13px; font-weight: 500;
+  padding: var(--s-2) 0; margin-bottom: -1px;
+  background: transparent; color: var(--muted);
+  border: 0; border-bottom: 2px solid transparent;
+  cursor: pointer; transition: color 120ms ease-out;
+}
+.view-tab:hover { color: var(--ink); }
+.view-tab.is-active { color: var(--ink); border-bottom-color: var(--accent); }
+
 /* Fund breakdown horizontal bars */
 .fund-bars { display: flex; flex-direction: column; gap: var(--s-2); max-width: var(--col-reading); }
 .fund-row {

@@ -10,10 +10,16 @@ source row, so every number on the Budget page drills down to its source.
 Funds, in column order, follow the audit's presentation: General, Special
 Revenue (the Teachers' Fund in Missouri), Debt Service, Capital Projects.
 
+Three breakdowns are loaded: by fund (dimension='fund'), revenue by source
+(dimension='source'), and expenditure by function (dimension='function', the
+function x fund matrix from the same statement).
+
 Integrity guard: each year's four per-fund figures are asserted to sum to
-the audit's stated "Total Governmental Funds" column at load time, so a
-transcription error in this file fails loudly rather than publishing a
-wrong figure.
+the audit's stated "Total Governmental Funds" column at load time; the
+function matrix is additionally asserted to reconcile both ways (fund columns
+to the verified per-fund expenditures, all functions to the grand total). A
+transcription error in this file fails loudly rather than publishing a wrong
+figure.
 
 Idempotent: replaces all rows in budget_line_items on each run.
 
@@ -251,6 +257,164 @@ SOURCES: dict[str, list[tuple[int, str]]] = {
 }
 
 
+# Expenditure by function (Total Governmental Funds), dimension='function'. Each
+# function carries its four per-fund cells in FUNDS order [General, Special
+# Revenue, Debt Service, Capital Projects], read from the expenditure block of
+# the same Governmental Funds statement. Two checks at load time: each year's
+# fund columns sum to that year's verified per-fund "Total expenditures", and
+# every function row's cells sum to the grand total. FY2018-19's source collapsed
+# its empty cells (no dashes); its split below is the unique assignment that
+# satisfies all four audited column totals.
+FUNCTION_MATRIX: dict[str, dict[str, list[int]]] = {
+    "2018-2019": {
+        "Instruction": [2759538, 26868880, 0, 665281],
+        "Attendance and guidance": [712672, 1310617, 0, 0],
+        "Health services": [437221, 126345, 0, 0],
+        "Improvement of instruction and professional development": [420831, 600954, 0, 0],
+        "Media services": [344194, 606639, 0, 2618],
+        "Board of Education services": [203563, 0, 0, 0],
+        "Executive administration": [1408521, 1123656, 0, 283320],
+        "Building level administration": [1086820, 1536469, 0, 0],
+        "Operation of plant": [7152373, 0, 0, 401749],
+        "Security services": [203979, 0, 0, 48676],
+        "Nonallowable transportation": [185253, 0, 0, 0],
+        "Food services": [1184498, 0, 0, 11990],
+        "Business services": [939330, 0, 0, 0],
+        "Central office support services": [448930, 0, 0, 1098],
+        "Adult/community programs": [1199620, 3511, 0, 0],
+        "Debt service - Principal retirements": [0, 0, 23750000, 7122],
+        "Debt service - Interest and other charges": [0, 0, 4331872, 63149],
+    },
+    "2019-2020": {
+        "Instruction": [2194594, 26956239, 0, 616870],
+        "Attendance and guidance": [721359, 1346623, 0, 0],
+        "Health services": [479307, 158637, 0, 0],
+        "Improvement of instruction and professional development": [303007, 970133, 0, 0],
+        "Media services": [357872, 588093, 0, 1309],
+        "Board of Education services": [215141, 0, 0, 4528],
+        "Executive administration": [1537873, 1050968, 0, 25257],
+        "Building level administration": [1082408, 1594989, 0, 10470],
+        "Operation of plant": [7296625, 0, 0, 1018075],
+        "Security services": [171267, 0, 0, 80511],
+        "Nonallowable transportation": [190403, 0, 0, 0],
+        "Food services": [966005, 0, 0, 0],
+        "Business services": [913553, 0, 0, 0],
+        "Central office support services": [410932, 0, 0, 1574],
+        "Adult/community programs": [1127901, 3600, 0, 11299],
+        "Facilities acquisition and construction": [0, 0, 0, 6947251],
+        "Debt service - Principal retirements": [0, 0, 4935000, 320000],
+        "Debt service - Interest and other charges": [0, 0, 3353792, 83043],
+    },
+    "2020-2021": {
+        "Instruction": [2024025, 27748406, 0, 1048194],
+        "Attendance and guidance": [750317, 1385574, 0, 0],
+        "Health services": [638257, 211849, 0, 13606],
+        "Improvement of instruction and professional development": [168646, 1117884, 0, 0],
+        "Media services": [361959, 604720, 0, 6177],
+        "Board of Education services": [196702, 0, 0, 0],
+        "Executive administration": [1624208, 1190156, 0, 97784],
+        "Building level administration": [1058731, 1594375, 0, 7570],
+        "Operation of plant": [7364685, 0, 0, 1755025],
+        "Security services": [190429, 0, 0, 205414],
+        "Nonallowable transportation": [112574, 0, 0, 0],
+        "Food services": [582583, 0, 0, 1574],
+        "Business services": [982985, 0, 0, 9812],
+        "Central office support services": [472269, 0, 0, 1371],
+        "Adult/community programs": [1086492, 3166, 0, 13107],
+        "Facilities acquisition and construction": [0, 0, 0, 1492652],
+        "Debt service - Principal retirements": [0, 0, 6915000, 480000],
+        "Debt service - Interest and other charges": [0, 0, 2058208, 114499],
+    },
+    "2021-2022": {
+        "Instruction": [2120006, 28273865, 0, 703693],
+        "Attendance and guidance": [755832, 1425228, 0, 0],
+        "Health services": [681646, 218904, 0, 7980],
+        "Improvement of instruction and professional development": [311663, 1139285, 0, 0],
+        "Media services": [358347, 537841, 0, 1422],
+        "Board of Education services": [220250, 0, 0, 0],
+        "Executive administration": [1631790, 1278517, 0, 40677],
+        "Building level administration": [1068014, 1674124, 0, 2556],
+        "Operation of plant": [7595132, 0, 0, 1154610],
+        "Security services": [207176, 0, 0, 2155933],
+        "Nonallowable transportation": [160660, 0, 0, 0],
+        "Food services": [1064557, 0, 0, 0],
+        "Business services": [920753, 0, 0, 0],
+        "Central office support services": [481028, 504, 0, 0],
+        "Adult/community programs": [1201442, 3518, 0, 24329],
+        "Debt service - Principal retirements": [0, 0, 6720000, 490000],
+        "Debt service - Interest and other charges": [0, 0, 1821502, 102917],
+    },
+    "2022-2023": {
+        "Instruction": [2497564, 29132042, 0, 761515],
+        "Attendance and guidance": [840799, 1372781, 0, 0],
+        "Health services": [720003, 203497, 0, 0],
+        "Improvement of instruction and professional development": [436018, 1197202, 0, 0],
+        "Media services": [480380, 560187, 0, 0],
+        "Board of Education services": [251438, 0, 0, 1280],
+        "Executive administration": [1867741, 1294462, 0, 89762],
+        "Building level administration": [1153652, 1711528, 0, 60000],
+        "Operation of plant": [7731392, 0, 0, 2686959],
+        "Security services": [292449, 0, 0, 2782421],
+        "Nonreimbursable transportation": [317486, 0, 0, 0],
+        "Food services": [1075550, 0, 0, 20365],
+        "Business services": [1075426, 0, 0, 0],
+        "Central office support services": [482435, 3936, 0, 2110],
+        "Adult/community programs": [1161987, 5503, 0, 20063],
+        "Debt service - Principal retirements": [0, 0, 4920000, 500000],
+        "Debt service - Interest and other charges": [0, 0, 1595483, 91093],
+    },
+    "2023-2024": {
+        "Instruction": [2972138, 31133438, 0, 794410],
+        "Attendance and guidance": [922628, 1497828, 0, 0],
+        "Health services": [743527, 134052, 0, 5145],
+        "Improvement of instruction and professional development": [511079, 1431857, 0, 0],
+        "Media services": [429283, 618066, 0, 0],
+        "Board of Education services": [295005, 0, 0, 2024],
+        "Executive administration": [1747699, 1524257, 0, 229799],
+        "Building level administration": [1240887, 1749575, 0, 1172],
+        "Operation of plant": [8434210, 0, 0, 2097058],
+        "Security services": [496305, 0, 0, 125824],
+        "Nonreimbursable transportation": [306529, 0, 0, 0],
+        "Food services": [1151905, 0, 0, 19305],
+        "Business services": [1044836, 0, 0, 49279],
+        "Central office support services": [314688, 166979, 0, 0],
+        "Adult/community programs": [1317901, 1548, 0, 6213],
+        "Facilities acquisition and construction": [0, 0, 0, 121586],
+        "Debt service - Principal retirements": [0, 0, 9410000, 515000],
+        "Debt service - Interest and other charges": [0, 0, 1412473, 79244],
+    },
+    "2024-2025": {
+        "Instruction": [2900882, 32727714, 0, 1043599],
+        "Attendance and guidance": [1076534, 1592498, 0, 0],
+        "Health services": [771221, 211125, 0, 4995],
+        "Improvement of instruction and professional development": [410979, 1420098, 0, 0],
+        "Media services": [460164, 659606, 0, 1799],
+        "Board of Education services": [263051, 0, 0, 0],
+        "Executive administration": [1998689, 1356989, 0, 242074],
+        "Building level administration": [1160239, 1789335, 0, 18055],
+        "Operation of plant": [8786759, 0, 0, 3037670],
+        "Security services": [493077, 0, 0, 639902],
+        "Nonreimbursable transportation": [324278, 0, 0, 0],
+        "Food services": [1186086, 0, 0, 10555],
+        "Business services": [1082951, 0, 0, 34842],
+        "Central office support services": [332304, 89442, 0, 1311],
+        "Adult/community programs": [1391829, 3783, 0, 6004],
+        "Debt service - Principal retirements": [0, 0, 6110000, 525000],
+        "Debt service - Interest and other charges": [0, 0, 1279008, 66600],
+    },
+}
+
+
+def _function_row_quote(label: str, cells: list[int], total: int) -> str:
+    """Render the audit's expenditure-by-function row as a citation quote.
+
+    Empty fund cells show as an em dash, mirroring the dashes the audit prints
+    in FY2019-20 onward (FY2018-19 left them blank in the source).
+    """
+    parts = [f"{c:,}" if c else "—" for c in cells]
+    return f"{label} {' '.join(parts)} {total:,}"
+
+
 def build_line_items() -> list[BudgetLineItem]:
     """Expand the verified figures into rows, asserting each year reconciles."""
     items: list[BudgetLineItem] = []
@@ -311,6 +475,51 @@ def build_line_items() -> list[BudgetLineItem]:
                         f"revenue by source"
                     ),
                 )
+            )
+
+    # Expenditure by function (dimension='function'): the function x fund matrix
+    # from the same statement. One row per nonzero cell. Two integrity checks per
+    # year: fund columns sum to the verified per-fund "Total expenditures", and
+    # all functions sum to the grand total.
+    for fiscal_year, functions in FUNCTION_MATRIX.items():
+        y = years_by_fy[fiscal_year]
+        col_sums = [0, 0, 0, 0]
+        grand = 0
+        for label, cells in functions.items():
+            row_total = sum(cells)
+            grand += row_total
+            quote = _function_row_quote(label, cells, row_total)
+            for i, (fund, amount) in enumerate(zip(FUNDS, cells, strict=True)):
+                col_sums[i] += amount
+                if amount == 0:
+                    continue
+                items.append(
+                    BudgetLineItem(
+                        fiscal_year=fiscal_year,
+                        category="expenditure",
+                        amount=Decimal(amount),
+                        document_id=y["document_id"],
+                        dimension="function",
+                        fund=fund,
+                        subcategory=label,
+                        chunk_id=y["chunk_id"],
+                        source_quote=quote,
+                        note=(
+                            f"FY{fiscal_year} audit, Statement of Revenues, "
+                            f"Expenditures and Changes in Fund Balances - Governmental "
+                            f"Funds, p. {y['page']}, expenditure by function"
+                        ),
+                    )
+                )
+        if col_sums != y["expenditure"]:
+            raise SystemExit(
+                f"Reconciliation failed for {fiscal_year} function-by-fund columns: "
+                f"{col_sums} != verified per-fund expenditures {y['expenditure']}"
+            )
+        if grand != y["expenditure_total"]:
+            raise SystemExit(
+                f"Reconciliation failed for {fiscal_year} function grand total: "
+                f"{grand} != stated total expenditures {y['expenditure_total']}"
             )
     return items
 

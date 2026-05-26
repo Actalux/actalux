@@ -94,6 +94,15 @@ def source_breakdown(items: list[dict[str, Any]], fiscal_year: str) -> list[Shar
     return _breakdown(items, fiscal_year, category="revenue", key="subcategory")
 
 
+def function_breakdown(items: list[dict[str, Any]], fiscal_year: str) -> list[Share]:
+    """Expenditure by function for one fiscal year, largest first.
+
+    Sums the function x fund matrix across funds, so each share is a function's
+    total Governmental Funds expenditure.
+    """
+    return _breakdown(items, fiscal_year, category="expenditure", key="subcategory")
+
+
 def usd(amount: Decimal | float | int) -> str:
     """Format a dollar amount with thousands separators, no cents."""
     return f"${Decimal(str(amount)):,.0f}"

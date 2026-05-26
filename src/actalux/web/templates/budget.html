@@ -28,35 +28,9 @@
       <span class="legend-item"><span class="swatch swatch-deficit"></span>Expenditure exceeds revenue</span>
     </div>
 
-    {% if funds %}
-    <div class="section-label" style="margin-top: var(--s-6);">
-      Expenditure by fund — {{ latest_year }}
+    <div id="breakdown-panel" style="margin-top: var(--s-6);">
+      {% include "_budget_breakdown.html" %}
     </div>
-    <div class="fund-bars">
-      {% for f in funds %}
-      <a class="fund-row" href="#fy-{{ latest_year }}">
-        <span class="fund-name">{{ f.label }}</span>
-        <span class="fund-track"><span class="fund-fill" style="width: {{ '%.1f' % f.pct }}%;"></span></span>
-        <span class="fund-amount">{{ f.amount | usd }}</span>
-      </a>
-      {% endfor %}
-    </div>
-    {% endif %}
-
-    {% if sources %}
-    <div class="section-label" style="margin-top: var(--s-6);">
-      Revenue by source — {{ latest_year }}
-    </div>
-    <div class="fund-bars">
-      {% for s in sources %}
-      <a class="fund-row" href="#fy-{{ latest_year }}">
-        <span class="fund-name">{{ s.label }}</span>
-        <span class="fund-track"><span class="fund-fill" style="width: {{ '%.1f' % s.pct }}%;"></span></span>
-        <span class="fund-amount">{{ s.amount | usd }}</span>
-      </a>
-      {% endfor %}
-    </div>
-    {% endif %}
   {% else %}
     <div class="empty-note">
       <p class="lede">No budget figures have been verified and published yet. The

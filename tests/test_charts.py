@@ -7,6 +7,7 @@ from decimal import Decimal
 from actalux.web.charts import (
     _axis_label,
     aggregate_by_year,
+    function_breakdown,
     fund_breakdown,
     revenue_expenditure_svg,
     source_breakdown,
@@ -85,6 +86,42 @@ class TestSourceBreakdown:
 
     def test_missing_year_is_empty(self):
         assert source_breakdown(self.SOURCE_ITEMS, "1999-2000") == []
+
+
+class TestFunctionBreakdown:
+    # function x fund matrix: each function appears once per fund it spends in.
+    FN_ITEMS = [
+        {"fiscal_year": "2024-2025", "category": "expenditure", "subcategory": sub, "amount": amt}
+        for sub, amt in [
+            ("Instruction", "2900882"),  # General
+            ("Instruction", "32727714"),  # Special Revenue
+            ("Instruction", "1043599"),  # Capital
+            ("Operation of plant", "8786759"),
+            ("Operation of plant", "3037670"),
+        ]
+    ]
+
+    def test_sums_a_function_across_its_funds(self):
+        fns = function_breakdown(self.FN_ITEMS, "2024-2025")
+        assert [f.label for f in fns] == ["Instruction", "Operation of plant"]
+        # Instruction = 2,900,882 + 32,727,714 + 1,043,599
+        assert fns[0].amount == Decimal("36672195")
+        assert fns[1].amount == Decimal("11824429")
+
+    def test_excludes_revenue_rows(self):
+        items = self.FN_ITEMS + [
+            {
+                "fiscal_year": "2024-2025",
+                "category": "revenue",
+                "subcategory": "Local",
+                "amount": "74513876",
+            }
+        ]
+        fns = function_breakdown(items, "2024-2025")
+        assert "Local" not in [f.label for f in fns]
+
+    def test_missing_year_is_empty(self):
+        assert function_breakdown(self.FN_ITEMS, "1999-2000") == []
 
 
 class TestUsd:
