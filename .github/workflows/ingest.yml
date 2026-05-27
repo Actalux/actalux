@@ -33,9 +33,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-      SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
+      # Repo secrets stay named SUPABASE_* (unambiguous within this repo);
+      # the app/scripts read ACTALUX_-prefixed env vars, so map them here.
+      ACTALUX_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      ACTALUX_SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      ACTALUX_SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
     steps:
       - uses: actions/checkout@v4
 

@@ -13,7 +13,7 @@ that works for this project). Every migration file MUST be idempotent
 re-applies any migration missing from the ledger, and CI may run it
 unattended.
 
-Usage (always under doppler for SUPABASE_URL + SUPABASE_PAT):
+Usage (always under doppler for ACTALUX_SUPABASE_URL + ACTALUX_SUPABASE_PAT):
     doppler run --project mac --config dev -- uv run python scripts/apply_migrations.py
     doppler run --project mac --config dev -- uv run python scripts/apply_migrations.py --dry-run
     doppler run --project mac --config dev -- uv run python scripts/apply_migrations.py --check
@@ -84,13 +84,13 @@ def parse_project_ref(supabase_url: str) -> str:
 
     e.g. https://zeblohpnlznsmvzumpir.supabase.co -> "zeblohpnlznsmvzumpir".
     Avoids hardcoding the ref so the script follows whatever project the
-    injected SUPABASE_URL points at.
+    injected ACTALUX_SUPABASE_URL points at.
     """
     host = urlparse(supabase_url).hostname or ""
     ref = host.split(".")[0]
     if not PROJECT_REF_RE.match(ref):
         raise SystemExit(
-            f"Could not parse a project ref from SUPABASE_URL ({supabase_url!r}); "
+            f"Could not parse a project ref from ACTALUX_SUPABASE_URL ({supabase_url!r}); "
             f"got {ref!r}, expected 20 lowercase alphanumeric chars."
         )
     return ref
@@ -223,8 +223,8 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
-        supabase_url = os.environ["SUPABASE_URL"]
-        pat = os.environ["SUPABASE_PAT"]
+        supabase_url = os.environ["ACTALUX_SUPABASE_URL"]
+        pat = os.environ["ACTALUX_SUPABASE_PAT"]
     except KeyError as exc:
         raise SystemExit(
             f"Missing required env var {exc}. Run under: "

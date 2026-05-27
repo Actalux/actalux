@@ -10,8 +10,8 @@ from dataclasses import dataclass, field
 class Config:
     """Immutable application configuration."""
 
-    supabase_url: str = field(default_factory=lambda: os.environ["SUPABASE_URL"])
-    supabase_key: str = field(default_factory=lambda: os.environ["SUPABASE_KEY"])
+    supabase_url: str = field(default_factory=lambda: os.environ["ACTALUX_SUPABASE_URL"])
+    supabase_key: str = field(default_factory=lambda: os.environ["ACTALUX_SUPABASE_KEY"])
     buttondown_api_key: str = field(
         default_factory=lambda: os.environ.get("BUTTONDOWN_API_KEY", "")
     )

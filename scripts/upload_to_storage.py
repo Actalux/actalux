@@ -4,7 +4,7 @@
 Usage:
     doppler run --project mac --config dev -- uv run python scripts/upload_to_storage.py
 
-Requires SUPABASE_SERVICE_KEY in environment (for storage uploads).
+Requires ACTALUX_SUPABASE_SERVICE_KEY in environment (for storage uploads).
 """
 
 from __future__ import annotations
@@ -41,9 +41,9 @@ def get_mime_type(path: Path) -> str:
 
 
 def main() -> None:
-    url = os.environ["SUPABASE_URL"]
-    service_key = os.environ["SUPABASE_SERVICE_KEY"]
-    anon_key = os.environ["SUPABASE_KEY"]
+    url = os.environ["ACTALUX_SUPABASE_URL"]
+    service_key = os.environ["ACTALUX_SUPABASE_SERVICE_KEY"]
+    anon_key = os.environ["ACTALUX_SUPABASE_KEY"]
 
     # Service client for storage uploads
     storage_client = create_client(url, service_key)
