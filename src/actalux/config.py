@@ -22,6 +22,10 @@ class Config:
     embedding_dim: int = 384
     chunk_target_words: int = 200
     chunk_overlap_sentences: int = 2
+    # Ingest-time PII guard: "block" (skip flagged docs, default), "warn", "off".
+    pii_guard_mode: str = field(
+        default_factory=lambda: os.environ.get("ACTALUX_PII_GUARD", "block")
+    )
     search_similarity_threshold: float = 0.35
     search_max_results: int = 20
     search_rrf_k: int = 60

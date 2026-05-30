@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "note": "Retrieval eval query set, grounded in actual corpus content (finance, governance, curriculum). Edit freely. 'expect_empty' marks integrity probes that should surface NO relevant result (e.g. closed-session content is never published).",
+  "note": "Retrieval eval query set, grounded in actual corpus content (finance, governance, curriculum). All entries are scored relevance queries. There are no retrieval-time integrity probes: the privacy guarantee (no individual student/personnel records; no closed-session deliberation content) is enforced at INGEST (src/actalux/ingest/pii_guard.py), not at search. A relevance judge cannot tell public text *about* a private topic (e.g. the Missouri Sunshine Law, which lists what may be closed) from an actual private record -- both look topically relevant -- so a search-time probe false-fails on legitimate public records. 'closed session topics' is therefore a normal scored query.",
   "queries": [
     {"id": "fin01", "domain": "finance", "query": "how much did the district spend on instruction"},
     {"id": "fin02", "domain": "finance", "query": "general fund total expenditures fiscal year 2024"},
@@ -15,7 +15,7 @@
     {"id": "gov02", "domain": "governance", "query": "resolution approving the annual budget"},
     {"id": "gov03", "domain": "governance", "query": "board officer elections and board president"},
     {"id": "gov04", "domain": "governance", "query": "consent agenda approval of meeting minutes"},
-    {"id": "gov05", "domain": "governance", "query": "closed session topics", "expect_empty": true},
+    {"id": "gov05", "domain": "governance", "query": "closed session topics"},
     {"id": "gov06", "domain": "governance", "query": "bond ballot measure board action"},
     {"id": "gov07", "domain": "governance", "query": "board retreat goals and priorities"},
     {"id": "gov08", "domain": "governance", "query": "board policy on public comment"},

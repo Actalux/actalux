@@ -9,9 +9,14 @@ silently.
 
 1. **Query set** (`queries.json`) — a fixed set of realistic records-search
    queries grounded in actual corpus content (finance, governance,
-   curriculum). `expect_empty: true` marks integrity probes that *should*
-   surface no relevant result (e.g. closed-session content is never
-   published).
+   curriculum). All entries are scored relevance queries. There are **no
+   retrieval-time integrity probes**: the privacy guarantee (no individual
+   student/personnel records; no closed-session deliberation content) is
+   enforced at ingest (`src/actalux/ingest/pii_guard.py`), not at search. A
+   relevance judge cannot tell public text *about* a private topic (e.g. the
+   Missouri Sunshine Law, which itself lists what may be closed) from an actual
+   private record — both look topically relevant — so a search-time "should
+   return nothing" probe false-fails on legitimate public records.
 
 2. **Retrieval** — the production path, unchanged: bge-small query embedding →
    `hybrid_search` (pgvector + Postgres FTS, fused with RRF) → a candidate

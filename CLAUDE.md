@@ -33,6 +33,7 @@ src/actalux/
     embedder.py    — bge-small-en-v1.5, cached model
     hashing.py     — SHA-256 content hash for change detection
     to_markdown.py — pymupdf4llm PDF→markdown with frontmatter
+    pii_guard.py   — ingest-time high-precision PII guard (SSN/DOB); blocks private records pre-DB
   search/
     hybrid.py      — semantic + keyword search, RRF (k=60)
     summarize.py   — citation-backed LLM summaries with post-verification

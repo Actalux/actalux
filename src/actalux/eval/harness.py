@@ -152,15 +152,20 @@ def run(
     arms: dict[str, Arm] | None = None,
     limit: int | None = None,
     do_judge: bool = True,
+    query_ids: set[str] | None = None,
 ) -> dict[str, Any]:
     """Run the eval and return a report dict.
 
     `arms` maps an arm name to a function reordering the retrieved pool given
     the query; it defaults to the RRF-only baseline (identity over the
     already-RRF-ordered pool). Phase B passes reranker arms over the same pool.
+    `query_ids` runs only those queries (e.g. to judge a newly added probe
+    without re-running the rerankers over the whole set).
     """
     arms = arms or {"rrf_only": lambda _query, pool: pool}
     queries = load_queries()
+    if query_ids is not None:
+        queries = [q for q in queries if q["id"] in query_ids]
     if limit is not None:
         queries = queries[:limit]
     cache = judge.load_cache(JUDGMENTS_PATH)

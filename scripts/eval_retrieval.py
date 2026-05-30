@@ -78,6 +78,13 @@ def build_arms(spec: str, parser: argparse.ArgumentParser) -> dict[str, harness.
 def main() -> None:
     parser = argparse.ArgumentParser(description="Retrieval eval (RRF baseline + reranker arms).")
     parser.add_argument("--limit", type=int, default=None, help="only the first N queries")
+    parser.add_argument(
+        "--query-ids",
+        type=str,
+        default="",
+        help="comma list of query ids to run (e.g. judge a new probe without "
+        "re-running the rerankers over the whole set)",
+    )
     parser.add_argument("--no-judge", action="store_true", help="skip the LLM judge (plumbing)")
     parser.add_argument(
         "--spot-check", type=int, metavar="N", help="print N cached grades, then exit"
@@ -123,6 +130,7 @@ def main() -> None:
     client = get_client(cfg.supabase_url, cfg.supabase_key)
     model = load_model(cfg.embedding_model)
 
+    query_ids = {q.strip() for q in args.query_ids.split(",") if q.strip()} or None
     report = harness.run(
         client,
         model,
@@ -130,6 +138,7 @@ def main() -> None:
         arms=arms,
         limit=args.limit,
         do_judge=not args.no_judge,
+        query_ids=query_ids,
     )
     body = harness.render_markdown(report)
     print("\n" + body)

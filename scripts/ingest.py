@@ -40,6 +40,7 @@ from actalux.db import (
     update_document_checked,
 )
 from actalux.errors import ActaluxError, ParseError
+from actalux.ingest import pii_guard
 from actalux.ingest.chunker import chunk_document, validate_chunks
 from actalux.ingest.embedder import embed_chunks
 from actalux.ingest.hashing import content_hash
@@ -239,6 +240,7 @@ def ingest_directory(data_dir: Path) -> None:
     total_docs = 0
     total_chunks = 0
     total_failed = 0
+    total_blocked = 0
 
     # Process flat files (each file is its own meeting/document)
     if flat_files:
@@ -256,6 +258,9 @@ def ingest_directory(data_dir: Path) -> None:
                     config=config,
                 )
                 if result["status"] == "skipped":
+                    continue
+                if result["status"] == "blocked":
+                    total_blocked += 1
                     continue
                 total_docs += 1
                 total_chunks += result["chunks"]
@@ -300,6 +305,10 @@ def ingest_directory(data_dir: Path) -> None:
                 )
                 if result["status"] == "skipped":
                     continue
+                if result["status"] == "blocked":
+                    total_blocked += 1
+                    errors.append(f"{doc_file.name}: BLOCKED by PII guard (see warning above)")
+                    continue
                 docs_ingested += 1
                 total_chunks += result["chunks"]
             except ActaluxError as exc:
@@ -324,15 +333,49 @@ def ingest_directory(data_dir: Path) -> None:
             logger.error("Failed to log ingest run: %s", exc)
 
     logger.info(
-        "Ingestion complete: %d documents, %d chunks, %d failures",
+        "Ingestion complete: %d documents, %d chunks, %d failures, %d blocked (PII)",
         total_docs,
         total_chunks,
         total_failed,
+        total_blocked,
     )
+
+    if total_blocked > 0:
+        logger.warning(
+            "%d document(s) BLOCKED by the PII guard — review the source files; "
+            "they were NOT ingested. Set ACTALUX_PII_GUARD=warn to override.",
+            total_blocked,
+        )
 
     if total_failed > 0:
         logger.warning("%d documents failed to ingest. Check errors above.", total_failed)
         sys.exit(1)
+
+
+def _pii_gate(path: Path, text: str, config: Any) -> bool:
+    """Scan for high-precision PII before storing. Return True to block ingest.
+
+    Mode (`config.pii_guard_mode`): "block" skips the document, "warn" logs and
+    proceeds, "off" skips the scan. Only pattern names and offsets are logged --
+    never the matched values -- so the guard never copies PII into the logs.
+    """
+    mode = getattr(config, "pii_guard_mode", "block")
+    if mode == "off":
+        return False
+    findings = pii_guard.scan_text(text)
+    if not findings:
+        return False
+    block = pii_guard.should_block(findings, mode)
+    note = "not ingested; review the source file" if block else "ingested anyway; mode=warn"
+    logger.warning(
+        "  PII GUARD: %s %s — %s at offset %s (%s)",
+        "BLOCKED" if block else "WARN",
+        path.name,
+        pii_guard.summarize(findings),
+        ", ".join(str(f.char_offset) for f in findings[:5]),
+        note,
+    )
+    return block
 
 
 def _ingest_with_dedup(
@@ -346,7 +389,9 @@ def _ingest_with_dedup(
 ) -> dict[str, Any]:
     """Parse a file, check for duplicates by content hash, then ingest.
 
-    Returns {"status": "new"|"updated"|"skipped", "chunks": N}.
+    Returns {"status": "new"|"updated"|"skipped"|"blocked", "chunks": N}.
+    Documents with high-precision PII are blocked before storage (see
+    `_pii_gate`), so private records never reach the database.
     """
     text = parse_file(path)
     file_hash = content_hash(text)
@@ -363,6 +408,8 @@ def _ingest_with_dedup(
             return {"status": "skipped", "chunks": 0}
 
         # Content changed — create new version
+        if _pii_gate(path, text, config):
+            return {"status": "blocked", "chunks": 0}
         old_version = existing.get("version", 1)
         logger.info(
             "  UPDATE %s: content changed (v%d -> v%d)",
@@ -388,6 +435,8 @@ def _ingest_with_dedup(
         return {"status": "updated", "chunks": result["chunks"]}
 
     # New document
+    if _pii_gate(path, text, config):
+        return {"status": "blocked", "chunks": 0}
     result = ingest_single_file(
         client=client,
         path=path,
