@@ -21,7 +21,7 @@ from pathlib import Path
 
 from actalux.config import load_config
 from actalux.db import get_client
-from actalux.eval import harness, judge
+from actalux.eval import harness, judge, rerank
 from actalux.ingest.embedder import load_model
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -48,19 +48,73 @@ def spot_check(n: int) -> None:
         print()
 
 
+def build_arms(spec: str, parser: argparse.ArgumentParser) -> dict[str, harness.Arm]:
+    """Build the arm map: always the RRF baseline, plus any selected rerankers.
+
+    Each reranker arm closes over its short name and reorders the pool via the
+    self-hosted cross-encoder; the `n=name` default binds the loop variable.
+
+    At most one reranker per process: the zerank custom modeling code patches
+    sentence-transformers' CrossEncoder class globally and hardcodes its own
+    weights path, so a second reranker loaded in the same process would
+    silently score with the first model's weights. Run each separately, then
+    combine with --combined-report.
+    """
+    selected = [r.strip() for r in spec.split(",") if r.strip()]
+    unknown = [r for r in selected if r not in rerank.RERANKERS]
+    if unknown:
+        parser.error(f"unknown reranker(s) {unknown}; known: {sorted(rerank.RERANKERS)}")
+    if len(selected) > 1:
+        parser.error(
+            f"only one reranker per process (got {selected}); the zerank custom code "
+            "patches CrossEncoder globally. Run each separately, then --combined-report."
+        )
+    arms: dict[str, harness.Arm] = {"rrf_only": lambda _query, pool: pool}
+    for name in selected:
+        arms[name] = lambda query, pool, n=name: rerank.rerank_pool(n, query, pool)
+    return arms
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Retrieval eval (Phase A baseline).")
+    parser = argparse.ArgumentParser(description="Retrieval eval (RRF baseline + reranker arms).")
     parser.add_argument("--limit", type=int, default=None, help="only the first N queries")
     parser.add_argument("--no-judge", action="store_true", help="skip the LLM judge (plumbing)")
     parser.add_argument(
         "--spot-check", type=int, metavar="N", help="print N cached grades, then exit"
     )
     parser.add_argument("--out", type=Path, default=None, help="report path (eval/results/)")
+    parser.add_argument(
+        "--rerankers",
+        type=str,
+        default="",
+        help="one self-hosted reranker arm alongside the RRF baseline, e.g. "
+        "'zerank-2' (one per process; combine separate runs with --combined-report)",
+    )
+    parser.add_argument(
+        "--combined-report",
+        action="store_true",
+        help="build the multi-arm report from persisted rankings + judgments "
+        "(no DB, models, or LLM), then exit",
+    )
     args = parser.parse_args()
 
     if args.spot_check is not None:
         spot_check(args.spot_check)
         return
+
+    if args.combined_report:
+        report = harness.report_from_disk()
+        body = harness.render_markdown(report)
+        print("\n" + body)
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+        out = args.out or (RESULTS_DIR / f"combined_{stamp}.md")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        header = f"<!-- generated {stamp} | arms={','.join(report['arms'])} -->\n\n"
+        out.write_text(header + body + "\n")
+        print(f"\nReport written to {out}")
+        return
+
+    arms = build_arms(args.rerankers, parser)
 
     cfg = load_config()
     if not args.no_judge and not cfg.anthropic_api_key:
@@ -73,6 +127,7 @@ def main() -> None:
         client,
         model,
         cfg.anthropic_api_key,
+        arms=arms,
         limit=args.limit,
         do_judge=not args.no_judge,
     )
@@ -81,9 +136,13 @@ def main() -> None:
 
     if not args.no_judge:
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-        out = args.out or (RESULTS_DIR / f"baseline_{stamp}.md")
+        prefix = "rerank" if len(arms) > 1 else "baseline"
+        out = args.out or (RESULTS_DIR / f"{prefix}_{stamp}.md")
         out.parent.mkdir(parents=True, exist_ok=True)
-        header = f"<!-- generated {stamp} | queries={len(report['queries'])} -->\n\n"
+        header = (
+            f"<!-- generated {stamp} | queries={len(report['queries'])} "
+            f"| arms={','.join(arms)} -->\n\n"
+        )
         out.write_text(header + body + "\n")
         print(f"\nReport written to {out}")
 

@@ -26,6 +26,10 @@ from actalux.search.hybrid import SearchResult, hybrid_search
 
 logger = logging.getLogger(__name__)
 
+# An arm reorders the retrieved pool given the query. RRF-only is the identity;
+# a reranker arm scores (query, passage) pairs and sorts by relevance.
+Arm = Callable[[str, list[SearchResult]], list[SearchResult]]
+
 POOL_SIZE = 100  # candidates retrieved per query (rerank room for Phase B)
 JUDGE_DEPTH = 20  # top-N of each arm's ranking that gets relevance-judged
 K = 10  # cutoff for the reported metrics
@@ -33,6 +37,7 @@ K = 10  # cutoff for the reported metrics
 REPO_ROOT = Path(__file__).resolve().parents[3]
 QUERIES_PATH = REPO_ROOT / "eval" / "queries.json"
 JUDGMENTS_PATH = REPO_ROOT / "eval" / "judgments.json"
+RANKINGS_PATH = REPO_ROOT / "eval" / "rankings.json"
 
 
 @dataclass
@@ -55,8 +60,9 @@ class QueryReport:
     query: str
     expect_empty: bool
     arms: dict[str, ArmScore] = field(default_factory=dict)
-    # For expect_empty integrity probes: relevant hits that leaked into top-K.
-    leaked_in_top_k: int = 0
+    # For expect_empty integrity probes: per-arm relevant hits that leaked into
+    # top-K (each arm orders the pool differently, so each is checked).
+    leaked_in_top_k: dict[str, int] = field(default_factory=dict)
     coverage_ok: bool = True
 
 
@@ -114,19 +120,19 @@ def judge_pool(
 
 def score_arm(
     name: str,
-    ranked: list[SearchResult],
+    ranked_ids: list[int],
     grades: dict[int, int],
 ) -> tuple[ArmScore, bool]:
-    """Score one arm's ranking against the judged grades.
+    """Score one arm's ranking (chunk_ids in arm order) against judged grades.
 
     Returns the ArmScore and a coverage flag (False when a top-K item was left
     ungraded, so the query can be excluded from aggregates rather than scored
-    on a hole).
+    on a hole). Scoring on chunk_ids lets the same function serve the live run
+    and the from-disk merge, where only persisted rankings are available.
     """
-    top_k_ids = [r.chunk_id for r in ranked[:K]]
-    coverage_ok = all(cid in grades for cid in top_k_ids)
-    # Build the ranked grade list over judged items, preserving arm order.
-    ranked_grades = [grades[r.chunk_id] for r in ranked if r.chunk_id in grades]
+    coverage_ok = all(cid in grades for cid in ranked_ids[:K])
+    # Ranked grade list over judged items, preserving arm order.
+    ranked_grades = [grades[cid] for cid in ranked_ids if cid in grades]
     return (
         ArmScore(
             name=name,
@@ -143,23 +149,24 @@ def run(
     client: Client,
     model: Any,
     api_key: str,
-    arms: dict[str, Callable[[list[SearchResult]], list[SearchResult]]] | None = None,
+    arms: dict[str, Arm] | None = None,
     limit: int | None = None,
     do_judge: bool = True,
 ) -> dict[str, Any]:
     """Run the eval and return a report dict.
 
-    `arms` maps an arm name to a function reordering the retrieved pool; it
-    defaults to the RRF-only baseline (identity over the already-RRF-ordered
-    pool). Phase B passes a second arm that reranks the pool.
+    `arms` maps an arm name to a function reordering the retrieved pool given
+    the query; it defaults to the RRF-only baseline (identity over the
+    already-RRF-ordered pool). Phase B passes reranker arms over the same pool.
     """
-    arms = arms or {"rrf_only": lambda pool: pool}
+    arms = arms or {"rrf_only": lambda _query, pool: pool}
     queries = load_queries()
     if limit is not None:
         queries = queries[:limit]
     cache = judge.load_cache(JUDGMENTS_PATH)
 
     reports: list[QueryReport] = []
+    run_rankings: dict[str, dict[str, list[int]]] = {}
     for q in queries:
         pool = retrieve_pool(client, model, q["query"])
         # Judge the union of every arm's top-JUDGE_DEPTH so each arm is scored
@@ -167,7 +174,7 @@ def run(
         grades: dict[int, int] = {}
         if do_judge:
             for reorder in arms.values():
-                ranked = reorder(pool)
+                ranked = reorder(q["query"], pool)
                 grades.update(judge_pool(q["id"], q["query"], ranked, cache, api_key))
             judge.save_cache(JUDGMENTS_PATH, cache)
 
@@ -178,20 +185,100 @@ def run(
             expect_empty=bool(q.get("expect_empty")),
         )
         for name, reorder in arms.items():
-            ranked = reorder(pool)
+            ranked_ids = [r.chunk_id for r in reorder(q["query"], pool)]
+            run_rankings.setdefault(q["id"], {})[name] = ranked_ids
             if qr.expect_empty:
-                top_k_ids = [r.chunk_id for r in ranked[:K]]
-                qr.leaked_in_top_k = sum(
-                    1 for cid in top_k_ids if grades.get(cid, 0) >= metrics.RELEVANCE_THRESHOLD
+                qr.leaked_in_top_k[name] = sum(
+                    1 for cid in ranked_ids[:K] if grades.get(cid, 0) >= metrics.RELEVANCE_THRESHOLD
                 )
                 continue
-            score, coverage_ok = score_arm(name, ranked, grades)
+            score, coverage_ok = score_arm(name, ranked_ids, grades)
             qr.arms[name] = score
             qr.coverage_ok = qr.coverage_ok and coverage_ok
         reports.append(qr)
         logger.info("scored %s (%s)", q["id"], q["query"][:48])
 
+    # Persist this run's rankings (judged runs only) so a from-disk merge can
+    # score every arm against the final judgment union. Rerankers must run in
+    # separate processes (their custom code patches CrossEncoder globally), so
+    # each run contributes its arms here.
+    if do_judge:
+        _merge_rankings(RANKINGS_PATH, run_rankings)
     return {"k": K, "arms": list(arms.keys()), "queries": reports}
+
+
+def _merge_rankings(path: Path, new: dict[str, dict[str, list[int]]]) -> None:
+    """Merge per-(query, arm) rankings into rankings.json, updating in place."""
+    existing: dict[str, dict[str, list[int]]] = {}
+    if path.exists():
+        existing = json.loads(path.read_text())
+    for qid, arm_rankings in new.items():
+        existing.setdefault(qid, {}).update(arm_rankings)
+    path.write_text(json.dumps(existing, indent=2) + "\n")
+
+
+def _ordered_arms(rankings: dict[str, dict[str, list[int]]]) -> list[str]:
+    """Every arm present across queries, with the RRF baseline first."""
+    seen: list[str] = []
+    for arm_rankings in rankings.values():
+        for arm in arm_rankings:
+            if arm not in seen:
+                seen.append(arm)
+    seen.sort(key=lambda a: (a != "rrf_only", a))
+    return seen
+
+
+def report_from_disk(
+    rankings_path: Path = RANKINGS_PATH,
+    judgments_path: Path = JUDGMENTS_PATH,
+    queries_path: Path = QUERIES_PATH,
+) -> dict[str, Any]:
+    """Build the multi-arm report from persisted rankings + cached judgments.
+
+    No models, no DB, no LLM: scores every arm against the *final* judgment
+    union, which is the only correct way to compare recall@K across arms that
+    cannot share a process. This is the reproducible combined report.
+    """
+    rankings = json.loads(rankings_path.read_text())
+    cache = judge.load_cache(judgments_path)
+    judged = cache["grades"]
+    arms = _ordered_arms(rankings)
+
+    reports: list[QueryReport] = []
+    for q in load_queries(queries_path):
+        qid = q["id"]
+        arm_rankings = rankings.get(qid)
+        if arm_rankings is None:
+            continue
+        # Grades for this query: any judged (qid, cid) reachable from its arms.
+        grades: dict[int, int] = {}
+        for ids in arm_rankings.values():
+            for cid in ids:
+                key = judge.cache_key(qid, cid)
+                if key in judged:
+                    grades[cid] = judged[key]["grade"]
+
+        qr = QueryReport(
+            query_id=qid,
+            domain=q["domain"],
+            query=q["query"],
+            expect_empty=bool(q.get("expect_empty")),
+        )
+        for name in arms:
+            ranked_ids = arm_rankings.get(name)
+            if ranked_ids is None:
+                continue
+            if qr.expect_empty:
+                qr.leaked_in_top_k[name] = sum(
+                    1 for cid in ranked_ids[:K] if grades.get(cid, 0) >= metrics.RELEVANCE_THRESHOLD
+                )
+                continue
+            score, coverage_ok = score_arm(name, ranked_ids, grades)
+            qr.arms[name] = score
+            qr.coverage_ok = qr.coverage_ok and coverage_ok
+        reports.append(qr)
+
+    return {"k": K, "arms": arms, "queries": reports}
 
 
 def _mean(values: list[float]) -> float | None:
@@ -234,22 +321,23 @@ def render_markdown(report: dict[str, Any]) -> str:
         )
     lines.append("")
 
-    lines.append(f"### Per-query ({report['arms'][0]})")
-    lines.append(f"| query | domain | nDCG@{k} | MRR | recall@{k} | rel-in-pool |")
-    lines.append("|---|---|---|---|---|---|")
-    arm0 = report["arms"][0]
+    arms = report["arms"]
+    lines.append(f"### Per-query nDCG@{k} (rel-in-pool = relevant items the first stage surfaced)")
+    lines.append("| query | domain | " + " | ".join(arms) + " | rel-in-pool |")
+    lines.append("|---|---|" + "---|" * (len(arms) + 1))
     for qr in report["queries"]:
         if qr.expect_empty:
             continue
-        s = qr.arms.get(arm0)
-        if s is None:
-            lines.append(f"| {qr.query} | {qr.domain} | (no coverage) | | | |")
-            continue
-        rec = f"{s.recall_at_k:.2f}" if s.recall_at_k is not None else "n/a"
+        cells = []
+        rel_in_pool = "—"
+        for arm in arms:
+            s = qr.arms.get(arm)
+            cells.append(f"{s.ndcg_at_k:.3f}" if s is not None else "—")
+            if s is not None and rel_in_pool == "—":
+                rel_in_pool = str(s.relevant_in_pool)
         flag = "" if qr.coverage_ok else " ⚠"
         lines.append(
-            f"| {qr.query}{flag} | {qr.domain} | {s.ndcg_at_k:.3f} | {s.mrr:.3f} "
-            f"| {rec} | {s.relevant_in_pool} |"
+            f"| {qr.query}{flag} | {qr.domain} | " + " | ".join(cells) + f" | {rel_in_pool} |"
         )
     lines.append("")
 
@@ -257,8 +345,11 @@ def render_markdown(report: dict[str, Any]) -> str:
     if empties:
         lines.append("### Integrity probes (expect no relevant result)")
         for qr in empties:
-            verdict = "PASS" if qr.leaked_in_top_k == 0 else f"FAIL ({qr.leaked_in_top_k} leaked)"
-            lines.append(f"- `{qr.query}` → {verdict}")
+            verdicts = []
+            for arm in arms:
+                leaked = qr.leaked_in_top_k.get(arm, 0)
+                verdicts.append(f"{arm}: {'PASS' if leaked == 0 else f'FAIL ({leaked})'}")
+            lines.append(f"- `{qr.query}` → " + " · ".join(verdicts))
         lines.append("")
 
     return "\n".join(lines)

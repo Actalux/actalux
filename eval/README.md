@@ -44,22 +44,60 @@ silently.
 
 ## Phases
 
-- **Phase A (here):** establish the **RRF-only baseline**. No external
-  retrieval API; only the LLM judge.
-- **Phase B:** add a `zerank-1-small` reranker arm over the same pool and
-  judgments, behind a flag, with RRF as the fallback ordering. Needs an
-  Actalux-scoped ZeroEntropy API key.
+- **Phase A:** the **RRF-only baseline** — no external retrieval API, only the
+  LLM judge.
+- **Phase B (here):** add self-hosted cross-encoder **reranker arms** over the
+  same pool and judgments. The weights run locally via sentence-transformers —
+  no API key, no per-token cost, no query-time network call — exactly as
+  bge-small embeddings already do. The RRF ordering is always kept as the
+  comparison anchor; each reranker reorders the same 100-candidate pool by
+  cross-encoder relevance, so adding an arm only judges the items it newly
+  lifts into the top `JUDGE_DEPTH`, reusing every prior grade. Two models:
+  - `zerank-1-small` (`zeroentropy/zerank-1-small-reranker`, 1.7B,
+    **Apache-2.0**) — self-hostable with no licensing constraint; the
+    production candidate if it captures most of the gain. Loads with
+    `trust_remote_code=True`; ships custom modeling code that prompts the
+    Qwen3 base as a causal LM and reads the "Yes" logit (runs on CPU here, as
+    its code has no MPS path). Needs `accelerate` (dev group) for its
+    `device_map` load.
+  - `zerank-2` (`zeroentropy/zerank-2-reranker`, 4B, **CC-BY-NC-4.0**) — newer,
+    larger, with calibrated scores; a standard CrossEncoder (no remote code),
+    runs on MPS. Eval comparison only; production use would need the
+    non-commercial determination or a hosted-API agreement.
+
+  Registry and load/score code: `src/actalux/eval/rerank.py`.
+
+### One reranker per process
+
+`zerank-1-small`'s custom code monkeypatches sentence-transformers'
+`CrossEncoder` class **globally** and hardcodes its own weights path, so a
+second reranker loaded in the same process silently scores with
+zerank-1-small's weights. The CLI therefore allows **at most one reranker per
+invocation**. Run each separately — each persists its per-query rankings to
+`rankings.json` — then `--combined-report` scores every arm against the
+**final** judgment union (the only correct way to compare recall@K across arms
+that can't co-reside). The combined report is pure: no models, DB, or LLM.
 
 ## Running
 
-All commands run under `doppler run --project mac --config dev -- uv run python …`:
+All commands run under `doppler run --project mac --config dev -- uv run python …`
+(the combined-report and spot-check commands need no secrets, but the prefix is
+harmless):
 
 ```
+# RRF baseline
 scripts/eval_retrieval.py --no-judge --limit 3   # plumbing only, no LLM spend
 scripts/eval_retrieval.py --limit 5              # small judged sample
 scripts/eval_retrieval.py                        # full baseline → eval/results/
+
+# self-hosted rerankers — ONE per process (first use downloads its weights)
+scripts/eval_retrieval.py --rerankers zerank-2          # full run, persists rankings
+scripts/eval_retrieval.py --rerankers zerank-1-small    # full run, persists rankings
+scripts/eval_retrieval.py --combined-report             # merge → eval/results/combined_*.md
+
 scripts/eval_retrieval.py --spot-check 20        # review cached grades
 ```
 
-`queries.json` and `judgments.json` are committed (reproducible labels);
-`results/` reports are regenerated, not committed.
+Reports land in `eval/results/` (`baseline_*.md`, `rerank_*.md`, `combined_*.md`).
+`queries.json`, `judgments.json`, and `rankings.json` are committed (reproducible
+labels + arm orderings); `results/` reports are regenerated, not committed.

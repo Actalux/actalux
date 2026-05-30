@@ -1,7 +1,27 @@
 {
   "grades": {
+    "cur01::1084": {
+      "chunk_preview": "The state made a decision about up until that point. EOC's had been districts making decisions about best time to assess students. We at that point had our Alge",
+      "grade": 1,
+      "query": "high school math curriculum map grades 9-12"
+    },
+    "cur01::1579": {
+      "chunk_preview": "I'm just wondering would this be something available to all grade levels or could you only be enrolled in the class if you're currently taking algebra or is it ",
+      "grade": 1,
+      "query": "high school math curriculum map grades 9-12"
+    },
     "cur01::1685": {
       "chunk_preview": "9\nGlenridge\nElementary \nSchool\n\nGlenridge Elementary School\nExisting Site Plan\n\n11\nIn Progress Draft\n\n12\nLevel 01\nGlenridge Elementary School\nFloor Plans\nLevel ",
+      "grade": 0,
+      "query": "high school math curriculum map grades 9-12"
+    },
+    "cur01::2373": {
+      "chunk_preview": "Captain Elementary \nK - 5th \n48 \n49 \n55 \n41 \n48 \n51 \n0 \n0 \n0 \n0 \n0 \n0 \n0 \n292 \nGlenridge Elementary \nK - 5th \n48 \n47 \n54 \n48 \n55 \n63 \n0 \n0 \n0 \n0 \n0 \n0 \n0 \n315 \n",
+      "grade": 0,
+      "query": "high school math curriculum map grades 9-12"
+    },
+    "cur01::2375": {
+      "chunk_preview": "Captain Elementary \nK - 5th \n45 \n39 \n50 \n47 \n55 \n54 \n0 \n0 \n0 \n0 \n0 \n0 \n0 \n290 \nGlenridge Elementary \nK - 5th \n46 \n40 \n51 \n48 \n55 \n52 \n0 \n0 \n0 \n0 \n0 \n0 \n0 \n292 \n",
       "grade": 0,
       "query": "high school math curriculum map grades 9-12"
     },
@@ -20,14 +40,69 @@
       "grade": 0,
       "query": "high school math curriculum map grades 9-12"
     },
+    "cur01::3105": {
+      "chunk_preview": "Reflection\nover line k\nRotation 60\u00b0 \nclockwise about P\nRotation 90\u00b0 \nclockwise about P\nReflection\nover line n\nk\nP\nn\nP\nReflection\nover line r\nReflection\nover lin",
+      "grade": 0,
+      "query": "high school math curriculum map grades 9-12"
+    },
     "cur01::3107": {
       "chunk_preview": "Mathematics MPG Expanded Goal \nStructure \nMathematics MPG Goal \nStructure \nMathematics \nMPG Report \nNames \nOperations and Algebraic Thinking \nOperations and Alg",
+      "grade": 0,
+      "query": "high school math curriculum map grades 9-12"
+    },
+    "cur01::3112": {
+      "chunk_preview": "Measures of Academic Progress (MAP) Common Core Aligned Version 4 \n \n \nPage 2 of 17 \nCommon Core Goal Structure Version 4 \nCreated by NWEA in 2013 Using CCSSO 2",
+      "grade": 1,
+      "query": "high school math curriculum map grades 9-12"
+    },
+    "cur01::3113": {
+      "chunk_preview": "Number and Operations in Base Ten \n \nNumber and operations-fractions: Develop understanding of \nfractions as numbers; understand fraction equivalence and \norder",
+      "grade": 1,
+      "query": "high school math curriculum map grades 9-12"
+    },
+    "cur01::3180": {
+      "chunk_preview": "Please refer to the DesCartes Use Agreement for terms of use. Educational Standard: Common Core Mathematics K-12: 2010\nPage\n21\nof\n22\nDesCartes: A Continuum of L",
+      "grade": 0,
+      "query": "high school math curriculum map grades 9-12"
+    },
+    "cur01::3182": {
+      "chunk_preview": "All rights reserved. Please refer to the DesCartes Use Agreement for terms of use. Educational Standard: Common Core Mathematics K-12: 2010\nPage\n1\nof\n17\nDesCart",
+      "grade": 0,
+      "query": "high school math curriculum map grades 9-12"
+    },
+    "cur01::3188": {
+      "chunk_preview": "All rights reserved. Please refer to the DesCartes Use Agreement for terms of use. Educational Standard: Common Core Mathematics K-12: 2010\nPage\n4\nof\n17\nDesCart",
+      "grade": 1,
+      "query": "high school math curriculum map grades 9-12"
+    },
+    "cur01::3208": {
+      "chunk_preview": "Please refer to the DesCartes Use Agreement for terms of use. Educational Standard: Common Core Mathematics K-12: 2010\nPage\n14\nof\n17\nDesCartes: A Continuum of L",
+      "grade": 0,
+      "query": "high school math curriculum map grades 9-12"
+    },
+    "cur01::3219": {
+      "chunk_preview": "All rights reserved. Please refer to the DesCartes Use Agreement for terms of use. Educational Standard: Common Core Mathematics K-12: 2010\nPage\n1\nof\n20\nDesCart",
+      "grade": 0,
+      "query": "high school math curriculum map grades 9-12"
+    },
+    "cur01::3294": {
+      "chunk_preview": "Please refer to the DesCartes Use Agreement for terms of use. Educational Standard: Common Core Mathematics K-12: 2010\nPage\n24\nof\n40\nDesCartes: A Continuum of L",
+      "grade": 1,
+      "query": "high school math curriculum map grades 9-12"
+    },
+    "cur01::3335": {
+      "chunk_preview": "Any of the material in this document may be out of date \nat any given time, and NWEA is under no obligation to update such material. However, in the event NWEA,",
       "grade": 0,
       "query": "high school math curriculum map grades 9-12"
     },
     "cur01::3336": {
       "chunk_preview": "Common Core MAP Mathematics\nKhan Academy Practice Exercises Correlation\nCommon Core Mathematics 2-5\nGeometry\nP 4\nReason with Shapes, Attributes, & Coordinate Pl",
       "grade": 0,
+      "query": "high school math curriculum map grades 9-12"
+    },
+    "cur01::3360": {
+      "chunk_preview": "Common Core MAP Mathematics\nKhan Academy Practice Exercises Correlation\nCommon Core Mathematics 6+\nGeometry\nCongruence, Similarity, Right Triangles, & Trig\nP 4\n",
+      "grade": 1,
       "query": "high school math curriculum map grades 9-12"
     },
     "cur01::3410": {
@@ -105,6 +180,11 @@
       "grade": 0,
       "query": "Spanish curriculum elementary grades"
     },
+    "cur02::1263": {
+      "chunk_preview": "Yeah, great question. At the elementary level sometimes it's what the kids bring up, right? To be real and honest in the world we've lived through in the last 1",
+      "grade": 0,
+      "query": "Spanish curriculum elementary grades"
+    },
     "cur02::1567": {
       "chunk_preview": "The total revisions are complete rewrites. Middle school literacy all three grade levels we did a complete rewrite with a focus on increasing the volume of read",
       "grade": 1,
@@ -113,6 +193,11 @@
     "cur02::1568": {
       "chunk_preview": "And similarly Spanish adopted a new resource last year which you all approved and we had rewritten the college prep Spanish 1, Spanish 2 last summer and this su",
       "grade": 1,
+      "query": "Spanish curriculum elementary grades"
+    },
+    "cur02::1571": {
+      "chunk_preview": "I don't bring a lot of those to you because they're not big enough to feel like it's not a good use of your time but the ones that I wanted to highlight are the",
+      "grade": 0,
       "query": "Spanish curriculum elementary grades"
     },
     "cur02::1933": {
@@ -130,6 +215,36 @@
       "grade": 0,
       "query": "Spanish curriculum elementary grades"
     },
+    "cur02::2373": {
+      "chunk_preview": "Captain Elementary \nK - 5th \n48 \n49 \n55 \n41 \n48 \n51 \n0 \n0 \n0 \n0 \n0 \n0 \n0 \n292 \nGlenridge Elementary \nK - 5th \n48 \n47 \n54 \n48 \n55 \n63 \n0 \n0 \n0 \n0 \n0 \n0 \n0 \n315 \n",
+      "grade": 0,
+      "query": "Spanish curriculum elementary grades"
+    },
+    "cur02::2375": {
+      "chunk_preview": "Captain Elementary \nK - 5th \n45 \n39 \n50 \n47 \n55 \n54 \n0 \n0 \n0 \n0 \n0 \n0 \n0 \n290 \nGlenridge Elementary \nK - 5th \n46 \n40 \n51 \n48 \n55 \n52 \n0 \n0 \n0 \n0 \n0 \n0 \n0 \n292 \n",
+      "grade": 0,
+      "query": "Spanish curriculum elementary grades"
+    },
+    "cur02::3136": {
+      "chunk_preview": "Educational Standard: Common Core Mathematics K-12: 2010\nPage\n4\nof\n19\nDesCartes: A Continuum of Learning\u00ae\nMathematics\nRIT Score Range:\n171 - 180\nStatements Last",
+      "grade": 0,
+      "query": "Spanish curriculum elementary grades"
+    },
+    "cur02::3313": {
+      "chunk_preview": "Please refer to the DesCartes Use Agreement for terms of use. Educational Standard: Common Core Mathematics K-12: 2010\nPage\n3\nof\n21\nDesCartes: A Continuum of Le",
+      "grade": 0,
+      "query": "Spanish curriculum elementary grades"
+    },
+    "cur02::3325": {
+      "chunk_preview": "Please refer to the DesCartes Use Agreement for terms of use. Educational Standard: Common Core Mathematics K-12: 2010\nPage\n15\nof\n21\nDesCartes: A Continuum of L",
+      "grade": 0,
+      "query": "Spanish curriculum elementary grades"
+    },
+    "cur02::3407": {
+      "chunk_preview": "Kindergarten ELD Learning Targets \nFor the given level of English language proficiency and with visual, graphic, or interactive support through Level 4, English",
+      "grade": 1,
+      "query": "Spanish curriculum elementary grades"
+    },
     "cur02::3408": {
       "chunk_preview": "Grades 6-8 ELD Learning Targets \nFor the given level of English language proficiency and with visual graphic, or interactive support through Level 4, English le",
       "grade": 0,
@@ -142,6 +257,11 @@
     },
     "cur02::3422": {
       "chunk_preview": "6th Grade 7th Grade 8th Grade Orchestra 6Orchestra 7Chamber Orchestra(audition required)Orchestra 8Chamber Orchestra(audition required)1/1",
+      "grade": 0,
+      "query": "Spanish curriculum elementary grades"
+    },
+    "cur02::3427": {
+      "chunk_preview": "6th Grade 7th Grade 8th Grade Drama 6MusicalTheatreMusicalTheatre 6Introduction to Technical TheatreIntroduction to Speech & DebateDramaDramaMusicalTheatreIntro",
       "grade": 0,
       "query": "Spanish curriculum elementary grades"
     },
@@ -200,6 +320,31 @@
       "grade": 0,
       "query": "Spanish curriculum elementary grades"
     },
+    "cur02::4481": {
+      "chunk_preview": "5\n\nPART II: ASSESSMENT DESCRIPTIONS\nThe following section provides descriptions of all assessments on the District assessment matrix.\nState-Required Assessments",
+      "grade": 0,
+      "query": "Spanish curriculum elementary grades"
+    },
+    "cur02::4485": {
+      "chunk_preview": "Students in grades K\n- 8\nTeachers use the\ninformation to plan\ninstruction for\nindividuals and groups of\nstudents and to make\ninstructional decisions.\n60 minutes",
+      "grade": 0,
+      "query": "Spanish curriculum elementary grades"
+    },
+    "cur02::4488": {
+      "chunk_preview": "Data can be\nused for qualification for\nthe Seal of Biliteracy.\n120 minutes\n5 and 8 -\nWinter\n9-12 - Spring\nPanorama\nFeedback survey focused on\nsocial emotional l",
+      "grade": 1,
+      "query": "Spanish curriculum elementary grades"
+    },
+    "cur02::4489": {
+      "chunk_preview": "The District\nreports these data to the\nstate in meeting the\nrequirement for a\nkindergarten readiness\nassessment.\n30 minutes\nFall\nWIDA\nMODEL\n(Measure of\nDevelopi",
+      "grade": 0,
+      "query": "Spanish curriculum elementary grades"
+    },
+    "cur02::7919": {
+      "chunk_preview": "6.1 \nFacility Updates by Design Team & Construction Management Team \nJohn Brazeal and the team from Paragon, BLDD, and BSI shared an update with the Board of \nE",
+      "grade": 1,
+      "query": "Spanish curriculum elementary grades"
+    },
     "cur03::1360": {
       "chunk_preview": "So I think that's what we're trying to get to with the when we talked about the work that we still need to do. This idea of like the age appropriate technology ",
       "grade": 0,
@@ -217,6 +362,26 @@
     },
     "cur03::3336": {
       "chunk_preview": "Common Core MAP Mathematics\nKhan Academy Practice Exercises Correlation\nCommon Core Mathematics 2-5\nGeometry\nP 4\nReason with Shapes, Attributes, & Coordinate Pl",
+      "grade": 3,
+      "query": "RIT to Khan Academy alignment"
+    },
+    "cur03::3341": {
+      "chunk_preview": "2-5 | Measurement and Data | Geometric Measurement and Problem Solving | RIT 220-223\nGeometric Measurement and Problem Solving\nMeasurement and Data\nStandards Al",
+      "grade": 3,
+      "query": "RIT to Khan Academy alignment"
+    },
+    "cur03::3347": {
+      "chunk_preview": "2-5 | Number and Operations | Number and Operations in Base Ten | RIT 179-191\nNumber and Operations in Base Ten\nNumber and Operations\nStandards Alignment\nRIT Ra",
+      "grade": 3,
+      "query": "RIT to Khan Academy alignment"
+    },
+    "cur03::3348": {
+      "chunk_preview": "2-5 | Number and Operations | Number and Operations in Base Ten | RIT 203-212\nNumber and Operations in Base Ten\nNumber and Operations\nStandards Alignment\nRIT Ra",
+      "grade": 3,
+      "query": "RIT to Khan Academy alignment"
+    },
+    "cur03::3349": {
+      "chunk_preview": "2-5 | Number and Operations | Number and Operations in Base Ten | RIT 220-223\nNumber and Operations in Base Ten\nNumber and Operations\nStandards Alignment\nRIT Ra",
       "grade": 3,
       "query": "RIT to Khan Academy alignment"
     },
@@ -255,8 +420,23 @@
       "grade": 3,
       "query": "RIT to Khan Academy alignment"
     },
+    "cur03::3362": {
+      "chunk_preview": "6+ | Geometry | Congruence, Similarity, Right Triangles, & Trig | RIT 228-230\nCongruence, Similarity, Right Triangles, & Trig\nGeometry\nStandards Alignment\nRIT R",
+      "grade": 3,
+      "query": "RIT to Khan Academy alignment"
+    },
+    "cur03::3363": {
+      "chunk_preview": "6+ | Geometry | Congruence, Similarity, Right Triangles, & Trig | RIT > 231\nCongruence, Similarity, Right Triangles, & Trig\nGeometry\nStandards Alignment\nRIT Ran",
+      "grade": 3,
+      "query": "RIT to Khan Academy alignment"
+    },
     "cur03::3364": {
       "chunk_preview": "6+ | Geometry | Geometric Measurement and Relationships | RIT 192-202\nGeometric Measurement and Relationships\nGeometry\nStandards Alignment\nRIT Range: 192-202\nCo",
+      "grade": 3,
+      "query": "RIT to Khan Academy alignment"
+    },
+    "cur03::3366": {
+      "chunk_preview": "6+ | Geometry | Geometric Measurement and Relationships | RIT 220-223\nGeometric Measurement and Relationships\nGeometry\nStandards Alignment\nRIT Range: 220-223\nRe",
       "grade": 3,
       "query": "RIT to Khan Academy alignment"
     },
@@ -280,6 +460,11 @@
       "grade": 3,
       "query": "RIT to Khan Academy alignment"
     },
+    "cur03::3371": {
+      "chunk_preview": "6+ | Operations and Algebraic Thinking | Expressions and Equations | RIT 220-223\nExpressions and Equations\nOperations and Algebraic Thinking\nStandards Alignment",
+      "grade": 3,
+      "query": "RIT to Khan Academy alignment"
+    },
     "cur03::3372": {
       "chunk_preview": "6+ | Operations and Algebraic Thinking | Expressions and Equations | RIT 224-227\nExpressions and Equations\nOperations and Algebraic Thinking\nStandards Alignment",
       "grade": 3,
@@ -290,13 +475,33 @@
       "grade": 3,
       "query": "RIT to Khan Academy alignment"
     },
+    "cur03::3374": {
+      "chunk_preview": "6+ | Operations and Algebraic Thinking | Expressions and Equations | RIT > 231\nExpressions and Equations\nOperations and Algebraic Thinking\nStandards Alignment\nR",
+      "grade": 3,
+      "query": "RIT to Khan Academy alignment"
+    },
     "cur03::3375": {
+      "chunk_preview": "6+ | Operations and Algebraic Thinking | Expressions and Equations | RIT > 231\nExpressions and Equations\nOperations and Algebraic Thinking\nStandards Alignment\nR",
+      "grade": 3,
+      "query": "RIT to Khan Academy alignment"
+    },
+    "cur03::3377": {
       "chunk_preview": "6+ | Operations and Algebraic Thinking | Expressions and Equations | RIT > 231\nExpressions and Equations\nOperations and Algebraic Thinking\nStandards Alignment\nR",
       "grade": 3,
       "query": "RIT to Khan Academy alignment"
     },
     "cur03::3390": {
       "chunk_preview": "6+ | The Real and Complex Number Systems | Perform Operations | RIT 161-178\nPerform Operations\nThe Real and Complex Number Systems\nStandards Alignment\nRIT Range",
+      "grade": 3,
+      "query": "RIT to Khan Academy alignment"
+    },
+    "cur03::3391": {
+      "chunk_preview": "6+ | The Real and Complex Number Systems | Perform Operations | RIT 179-191\nPerform Operations\nThe Real and Complex Number Systems\nStandards Alignment\nRIT Range",
+      "grade": 3,
+      "query": "RIT to Khan Academy alignment"
+    },
+    "cur03::3392": {
+      "chunk_preview": "6+ | The Real and Complex Number Systems | Perform Operations | RIT 192-202\nPerform Operations\nThe Real and Complex Number Systems\nStandards Alignment\nRIT Range",
       "grade": 3,
       "query": "RIT to Khan Academy alignment"
     },
@@ -313,6 +518,11 @@
     "cur04::1711": {
       "chunk_preview": "Long Range Facilities Master Plan Options\nTotal potential future long-range projects at each site:\nBuilding \n \n \nLevel 2 \n \nLevel 3\n\u2022\nThe Family Center \n$8m \n \n",
       "grade": 3,
+      "query": "Long Range Facilities Master Plan"
+    },
+    "cur04::1783": {
+      "chunk_preview": "Thank you. Thank you everyone and thank you for being here tonight. So, typically when I do a superintendence update, I usually share highlights from the across",
+      "grade": 2,
       "query": "Long Range Facilities Master Plan"
     },
     "cur04::1912": {
@@ -350,6 +560,21 @@
       "grade": 3,
       "query": "Long Range Facilities Master Plan"
     },
+    "cur04::1921": {
+      "chunk_preview": "Involving parents, students, staff and Clayton residents, the District ensures diverse\nperspectives and needs are considered when identifying and prioritizing f",
+      "grade": 3,
+      "query": "Long Range Facilities Master Plan"
+    },
+    "cur04::1922": {
+      "chunk_preview": "10\nLRFMP Schedule:\nMay:   Kickoff meeting and BOE introduction\nJune:   Conduct building assessments\nJune:   Building tours with principals\nJuly:    Prep and fie",
+      "grade": 3,
+      "query": "Long Range Facilities Master Plan"
+    },
+    "cur04::1923": {
+      "chunk_preview": "Thank you\nYour engagement and feedback are\nessential as we work to create spaces\nthat support our students, staff, and\ncommunity. Together, we can ensure our\nsc",
+      "grade": 3,
+      "query": "Long Range Facilities Master Plan"
+    },
     "cur04::1925": {
       "chunk_preview": "MASTER PLANNING \nPROCESS\nMASTER \nPLANNING \nPROCESS\n\nThe development of the School District of Clayton\u2019s Long-Range Facility Master Plan (LRFMP) was \nguided by a",
       "grade": 3,
@@ -357,6 +582,11 @@
     },
     "cur04::1926": {
       "chunk_preview": "The completion of this Long-Range Facilities Master Plan marks a critical milestone in supporting the \ndistrict\u2019s mission and its educational goals for years to",
+      "grade": 3,
+      "query": "Long Range Facilities Master Plan"
+    },
+    "cur04::1932": {
+      "chunk_preview": "The list \nbelow includes the names of individuals who made up the Steering Committee, as well as their \nrole, and the facility or organization they are represen",
       "grade": 3,
       "query": "Long Range Facilities Master Plan"
     },
@@ -372,6 +602,11 @@
     },
     "cur04::1949": {
       "chunk_preview": "The highest priority among respondents was increasing and updating specialized learning \nspaces for real-world learning opportunities, with 299 votes. This refl",
+      "grade": 3,
+      "query": "Long Range Facilities Master Plan"
+    },
+    "cur04::1950": {
+      "chunk_preview": "The retreat was an important opportunity \nfor the Board to assess both the financial and design aspects of the Master Plan, enabling them to make \ninformed deci",
       "grade": 3,
       "query": "Long Range Facilities Master Plan"
     },
@@ -400,6 +635,16 @@
       "grade": 2,
       "query": "Long Range Facilities Master Plan"
     },
+    "cur05::1893": {
+      "chunk_preview": "Strategic Plan\nComprehensive School \nImprovement Plan (CSIP)\n\n2\nIn Clayton, strategic planning is not about moving from good to great. It \nis about moving from ",
+      "grade": 2,
+      "query": "strategic plan priorities"
+    },
+    "cur05::1898": {
+      "chunk_preview": "Vision Statement\nWe develop leaders who shape the world through \nindependence, creativity and critical thinking. Core Values\nWe model and promote\n  \n\u25a0Excellence",
+      "grade": 2,
+      "query": "strategic plan priorities"
+    },
     "cur05::1899": {
       "chunk_preview": "We \nwant to develop students who are not only academically prepared, \nbut also aware of how they can improve the world. We are a District \nwith a commitment \nto",
       "grade": 2,
@@ -408,6 +653,11 @@
     "cur05::1912": {
       "chunk_preview": "SEL & Wellness Committee \ngoals and implementation \nplan document\nDirector of Student \nSupport\n2026, 2027\nLocal funding\nGoal 3: \nWe will be dedicated to the per",
       "grade": 2,
+      "query": "strategic plan priorities"
+    },
+    "cur05::1913": {
+      "chunk_preview": "Key priorities include \ninstalling turf at Wydown Middle \nand adding a new press box \nand dugouts at Adzick Field. Additionally, the District is exploring \nopti",
+      "grade": 1,
       "query": "strategic plan priorities"
     },
     "cur05::1916": {
@@ -460,6 +710,21 @@
       "grade": 2,
       "query": "strategic plan priorities"
     },
+    "cur05::4694": {
+      "chunk_preview": "During fiscal year 2015-2016 the District again began spending down reserves in the amount of $1.7 million due to the \npayback of over $2.0 million in protested",
+      "grade": 1,
+      "query": "strategic plan priorities"
+    },
+    "cur05::4700": {
+      "chunk_preview": "Every year a large number of students are recognized as National Merit and Commended Scholars. Clayton\u2019s K-12 students \ncompare favorably in ability and achieve",
+      "grade": 3,
+      "query": "strategic plan priorities"
+    },
+    "cur05::4704": {
+      "chunk_preview": "The cash basis is used to enable \nthe District to more accurately budget revenue and expenses as the resources are expended or received. Budget Cycle \n  \nTeache",
+      "grade": 2,
+      "query": "strategic plan priorities"
+    },
     "cur05::4781": {
       "chunk_preview": "Accounts have been separated by DESE \ninto multiple accounts, combined with portions of other accounts, new accounts have \nbeen added and some accounts have bee",
       "grade": 3,
@@ -470,9 +735,29 @@
       "grade": 2,
       "query": "strategic plan priorities"
     },
+    "cur05::4899": {
+      "chunk_preview": "We use this profile to influence our \napproach to learning and challenge the mental models of what our schools should look like for our students. PROFILE OF THE",
+      "grade": 2,
+      "query": "strategic plan priorities"
+    },
+    "cur05::4900": {
+      "chunk_preview": "The \nobjectives provide clear direction and are reasonable in respect to timeline and scope. District personnel are \nresponsible for developing and implementing",
+      "grade": 3,
+      "query": "strategic plan priorities"
+    },
     "cur05::4990": {
       "chunk_preview": "TABLE OF CONTENTS \n \nBUDGET MESSAGE \n \n \n 1 \n \nINTRODUCTORY SECTION  \n 4 \n \nDistrict Entity \n \n \n \n  5 \nGovernance  \n \n \n \n  5 \n \nBoard of Education \n \n \n  5 \n ",
       "grade": 1,
+      "query": "strategic plan priorities"
+    },
+    "cur05::5002": {
+      "chunk_preview": "We use this profile to influence our \napproach to learning and challenge the mental models of what our schools should look like for our students. PROFILE OF THE",
+      "grade": 2,
+      "query": "strategic plan priorities"
+    },
+    "cur05::5003": {
+      "chunk_preview": "The \nobjectives provide clear direction and are reasonable in respect to timeline and scope. District personnel are \nresponsible for developing and implementing",
+      "grade": 3,
       "query": "strategic plan priorities"
     },
     "cur05::5098": {
@@ -483,6 +768,11 @@
     "cur05::5141": {
       "chunk_preview": "Strategic Plan Alignment Information \n \nCapital Improvement planned expenditures \n \nTax Base, Tax Rates & Tax Collections Information  \n \nEnrollment Information",
       "grade": 1,
+      "query": "strategic plan priorities"
+    },
+    "cur05::5152": {
+      "chunk_preview": "Annual Budget. \n \nStrategic Plan Alignment \nIn accordance with goals set forth in the district\u2019s strategic plan, expenditures are focused on \ninstruction, human",
+      "grade": 2,
       "query": "strategic plan priorities"
     },
     "cur05::6473": {
@@ -499,6 +789,11 @@
       "chunk_preview": "We will have action steps that are aspirational, attainable, and aligned to\nour resources. The strategic plan\u2019s data dashboard, which is an interactive tool on ",
       "grade": 2,
       "query": "strategic plan priorities"
+    },
+    "cur06::1150": {
+      "chunk_preview": "It's just, if you think about it, you're planning multiple lessons within one lesson. So you really have to come together as a PLC to help design that. And you ",
+      "grade": 0,
+      "query": "middle school performing arts and theater curriculum"
     },
     "cur06::1248": {
       "chunk_preview": "Learning for justice provides a deeper more critical approach. The word critical can be controversial. We're asking kids to assess the role of Native Americans,",
@@ -525,9 +820,29 @@
       "grade": 2,
       "query": "middle school performing arts and theater curriculum"
     },
+    "cur06::1576": {
+      "chunk_preview": "That's great. I think the courses that you mentioned like AMP that are new are so exciting to me and I think actually there are like Kim mentioned there's so ma",
+      "grade": 2,
+      "query": "middle school performing arts and theater curriculum"
+    },
+    "cur06::1833": {
+      "chunk_preview": "Um so that I think for in those first workshops the vision of being able to support the curriculum and your what you're already doing but what you're being hind",
+      "grade": 1,
+      "query": "middle school performing arts and theater curriculum"
+    },
+    "cur06::2015": {
+      "chunk_preview": "Goal 3\nCurriculum & \nProgramming\nRenovations / Upgrades\nStorage\nThe junior varsity teams need a designated storage \nspace for their equipment during the school ",
+      "grade": 1,
+      "query": "middle school performing arts and theater curriculum"
+    },
     "cur06::2036": {
       "chunk_preview": "91\n59.63%\n291\n18.03%\n88\n22.13%\n108\n56.76%\n277\n25.20%\n123\nTotal Respondents: 488\n \nANSWER CHOICES\nRESPONSES\nImprove air quality and controls of HVAC units and sy",
       "grade": 1,
+      "query": "middle school performing arts and theater curriculum"
+    },
+    "cur06::3400": {
+      "chunk_preview": "Wydown Middle School Counseling Curriculum (2024-25) \n  \nCOMPETENCIES & \nOUTCOMES  \n(CASEL & DESE) \nPROFILE  \nOF A  \nGRADUATE \n6TH \n7TH \n8TH \n1ST \nQUARTER \nTran",
+      "grade": 0,
       "query": "middle school performing arts and theater curriculum"
     },
     "cur06::3401": {
@@ -555,6 +870,11 @@
       "grade": 1,
       "query": "middle school performing arts and theater curriculum"
     },
+    "cur06::3423": {
+      "chunk_preview": "Concert Choir Chamber Choir(audition required)VocalJazz Ensemble(audition required)Chorale(audition required)1/1",
+      "grade": 2,
+      "query": "middle school performing arts and theater curriculum"
+    },
     "cur06::3427": {
       "chunk_preview": "6th Grade 7th Grade 8th Grade Drama 6MusicalTheatreMusicalTheatre 6Introduction to Technical TheatreIntroduction to Speech & DebateDramaDramaMusicalTheatreIntro",
       "grade": 3,
@@ -575,6 +895,11 @@
       "grade": 0,
       "query": "middle school performing arts and theater curriculum"
     },
+    "cur06::3434": {
+      "chunk_preview": "9th Grade 10th Grade           11th and 12th Grade  * must include American Government     (some electives offered on a rotating basis)Topics in World & US Hist",
+      "grade": 0,
+      "query": "middle school performing arts and theater curriculum"
+    },
     "cur06::3437": {
       "chunk_preview": "6th Grade 7th Grade 8th Grade 6th GradeFrench7th Grade French8th GradeFrench1/1",
       "grade": 0,
@@ -590,9 +915,24 @@
       "grade": 0,
       "query": "middle school performing arts and theater curriculum"
     },
+    "cur06::3450": {
+      "chunk_preview": "7th Grade7th  and 8th GradeBasic FACSExploringthe FACS1/1",
+      "grade": 0,
+      "query": "middle school performing arts and theater curriculum"
+    },
     "cur06::3709": {
       "chunk_preview": "- Kidsin the Middle Program",
       "grade": 1,
+      "query": "middle school performing arts and theater curriculum"
+    },
+    "cur06::5533": {
+      "chunk_preview": "So, those are done in the\nlessons. And with that, we took an\naverage from K through 8th grade on what\npercentage of our time we're working on\nthese areas. And f",
+      "grade": 0,
+      "query": "middle school performing arts and theater curriculum"
+    },
+    "cur06::5538": {
+      "chunk_preview": "And we\nstarted this about maybe six, seven\nyears ago where we actually have a half\nday dedicated just to our rising sixth\ngraders. the whole school is theirs. W",
+      "grade": 0,
       "query": "middle school performing arts and theater curriculum"
     },
     "cur06::6473": {
@@ -600,8 +940,23 @@
       "grade": 0,
       "query": "middle school performing arts and theater curriculum"
     },
+    "cur07::1084": {
+      "chunk_preview": "The state made a decision about up until that point. EOC's had been districts making decisions about best time to assess students. We at that point had our Alge",
+      "grade": 1,
+      "query": "assessment and grading guidelines"
+    },
+    "cur07::1085": {
+      "chunk_preview": "So to ground you in our annual performance report it's really broken into two parts. Performance is 70% of the score continuous improvement is 30%. I'm actually",
+      "grade": 2,
+      "query": "assessment and grading guidelines"
+    },
     "cur07::1360": {
       "chunk_preview": "So I think that's what we're trying to get to with the when we talked about the work that we still need to do. This idea of like the age appropriate technology ",
+      "grade": 1,
+      "query": "assessment and grading guidelines"
+    },
+    "cur07::1906": {
+      "chunk_preview": "Measurement: Student \nachievement data and \nprogram participation\nOur students see \nhistorically accurate \nrepresentations \nwhere our learning \ncommunity\u2019s cult",
       "grade": 1,
       "query": "assessment and grading guidelines"
     },
@@ -610,9 +965,24 @@
       "grade": 2,
       "query": "assessment and grading guidelines"
     },
+    "cur07::1909": {
+      "chunk_preview": "Supt of Teaching \nand Learning (ASTL) and \nDirector of Assessment \nand Professional \nLearning (DAPL) in \npartnership with \nPrincipals, District PDC\n2025, 2026\nL",
+      "grade": 1,
+      "query": "assessment and grading guidelines"
+    },
     "cur07::2043": {
       "chunk_preview": "Inspire. Empower.\u201d\n\n100\n\n101\n\n102\n\n103\n\n104\n\n105\n\n106\n\n107\n\n108\n\n109\n\n110\n\n111\n\n112\n\n113\n\n114\n\n115\n\n116\n\n117\nEXECUTIVE SUMMARIES\nThe executive summaries provide",
       "grade": 1,
+      "query": "assessment and grading guidelines"
+    },
+    "cur07::3399": {
+      "chunk_preview": "Dyslexia Screening Tools\nGeneral Reading\nOrthography\nPhonemic\nAwareness\nPhonics\nFluency\nVocabulary\nRapid Automatic\nNaming (RAN)\nK\nStar Early\nLiteracy\nTC Benchma",
+      "grade": 1,
+      "query": "assessment and grading guidelines"
+    },
+    "cur07::3401": {
+      "chunk_preview": "Wydown Middle School Counseling Curriculum (2024-25) \n  \nCOMPETENCIES & \nOUTCOMES  \n(CASEL & DESE) \nPROFILE  \nOF A  \nGRADUATE \n6TH \n7TH \n8TH \n1ST \nQUARTER \nTran",
+      "grade": 0,
       "query": "assessment and grading guidelines"
     },
     "cur07::3448": {
@@ -622,6 +992,16 @@
     },
     "cur07::4224": {
       "chunk_preview": "Assessment\nPlan",
+      "grade": 1,
+      "query": "assessment and grading guidelines"
+    },
+    "cur07::4468": {
+      "chunk_preview": "GOAL #1 \nWe will ensure all learners, regardless of their identity, feel safe and valued. Clayton students have a strong sense of self \nefficacy. (Measurement: ",
+      "grade": 1,
+      "query": "assessment and grading guidelines"
+    },
+    "cur07::4469": {
+      "chunk_preview": "GOAL #2 \nWe will commit to the educational growth of our learners through an \nequitable, personalized and individualized learning experience. Students have mult",
       "grade": 1,
       "query": "assessment and grading guidelines"
     },
@@ -650,9 +1030,19 @@
       "grade": 2,
       "query": "assessment and grading guidelines"
     },
+    "cur07::4485": {
+      "chunk_preview": "Students in grades K\n- 8\nTeachers use the\ninformation to plan\ninstruction for\nindividuals and groups of\nstudents and to make\ninstructional decisions.\n60 minutes",
+      "grade": 2,
+      "query": "assessment and grading guidelines"
+    },
     "cur07::4487": {
       "chunk_preview": "Teachers use the data (in\nconjunction with other\ndata points) to determine\nplacement in the gifted\nprogram. N/A\nFall, Spring\n11\n\nASSESSMENT\nNAME\nOVERVIEW/PURPOS",
       "grade": 2,
+      "query": "assessment and grading guidelines"
+    },
+    "cur07::4488": {
+      "chunk_preview": "Data can be\nused for qualification for\nthe Seal of Biliteracy.\n120 minutes\n5 and 8 -\nWinter\n9-12 - Spring\nPanorama\nFeedback survey focused on\nsocial emotional l",
+      "grade": 1,
       "query": "assessment and grading guidelines"
     },
     "cur07::4489": {
@@ -715,6 +1105,11 @@
       "grade": 0,
       "query": "food services and school meals program"
     },
+    "cur08::4736": {
+      "chunk_preview": "Debt Sevice\nCapital Proj. Purpose\nRevenues\nFund\nFund\nFund\nFund\nFederal Revenue\nSchool Lunch\n$180,000\n$180,000\nBreakfast Program\n$36,000\n$36,000\nEarly Childhood ",
+      "grade": 2,
+      "query": "food services and school meals program"
+    },
     "cur08::4779": {
       "chunk_preview": "2020-2021 \nBUDGET  \nJune 24, 2020\n\nTABLE OF CONTENTS \nBUDGET MESSAGE \n 1 \nINTRODUCTORY SECTION \n 4 \nDistrict Entity \n  5 \nGovernance  \n  5 \nBoard of Education \n",
       "grade": 0,
@@ -725,9 +1120,34 @@
       "grade": 2,
       "query": "food services and school meals program"
     },
+    "cur08::4831": {
+      "chunk_preview": "Debt Sevice\nCapital Proj. Purpose\nRevenues\nFund\nFund\nFund\nFund\nSchool District of Clayton\nRevised Estimated Prior Year Other Revenues By Fund\n2019-2020\nFederal ",
+      "grade": 2,
+      "query": "food services and school meals program"
+    },
+    "cur08::4834": {
+      "chunk_preview": "BDGT_FINAL*EXP_FUND                                                                         17:15:51 08 JUN 2020     Page     2\n                                ",
+      "grade": 2,
+      "query": "food services and school meals program"
+    },
+    "cur08::4876": {
+      "chunk_preview": "BDGT_FINAL*EXP_FUND_OPERATING                                                               17:46:12 08 JUN 2020     Page     2\n                                ",
+      "grade": 2,
+      "query": "food services and school meals program"
+    },
     "cur08::4890": {
       "chunk_preview": "2021-2022 \nBudget \nJune 2, 2021\n\nTABLE OF CONTENTS \nBUDGET MESSAGE \n 1 \nINTRODUCTORY SECTION \n 4 \nDistrict Entity \n  5 \nGovernance  \n  5 \nBoard of Education \n  ",
       "grade": 0,
+      "query": "food services and school meals program"
+    },
+    "cur08::4947": {
+      "chunk_preview": "Debt Sevice\nCapital Proj. Purpose\nRevenues\nFund\nFund\nFund\nFund\nSchool District of Clayton\nRevised Estimated Prior Year Other Revenues By Fund\n2020-2021\nFederal ",
+      "grade": 2,
+      "query": "food services and school meals program"
+    },
+    "cur08::4950": {
+      "chunk_preview": "BDGT_FINAL*EXP_FUND                                                                         08:59:21 13 MAY 2021     Page     2\n                                ",
+      "grade": 2,
       "query": "food services and school meals program"
     },
     "cur08::4989": {
@@ -745,8 +1165,18 @@
       "grade": 2,
       "query": "food services and school meals program"
     },
+    "cur08::5113": {
+      "chunk_preview": "Fund 1\nFund 2\nFund 3\nFund 4\nTotal\nGeneral\nSpecial\nDebt\nCapital\nAll\n(Incidental)\n(Teachers)\nService\nProjects\nFunds\nSchool District of Clayton\nFor Year Ending Jun",
+      "grade": 0,
+      "query": "food services and school meals program"
+    },
     "cur08::5115": {
       "chunk_preview": "Fund 1\nFund 2\nFund 3\nFund 4\nTotal\nGeneral\nSpecial\nDebt\nCapital\nAll\n(Incidental)\n(Teachers)\nService\nProjects\nFunds\nLOCAL REVENUE\nPers Prop Tax - Current\n1,452,00",
+      "grade": 2,
+      "query": "food services and school meals program"
+    },
+    "cur08::5117": {
+      "chunk_preview": "Fund 1\nFund 2\nFund 3\nFund 4\nTotal\nGeneral\nSpecial\nDebt\nCapital\nAll\n(Incidental)\n(Teachers)\nService\nProjects\nFunds\nSchool District of Clayton\nFor Year Ending Jun",
       "grade": 2,
       "query": "food services and school meals program"
     },
@@ -760,6 +1190,16 @@
       "grade": 0,
       "query": "food services and school meals program"
     },
+    "cur08::5168": {
+      "chunk_preview": "Fund 1\nFund 2\nFund 3\nFund 4\nTotal\nGeneral\nSpecial\nDebt\nCapital\nAll\n(Incidental)\n(Teachers)\nService\nProjects\nFunds\nSchool District of Clayton\nFor Year Ending Jun",
+      "grade": 0,
+      "query": "food services and school meals program"
+    },
+    "cur08::5169": {
+      "chunk_preview": "Fund 1\nFund 2\nFund 3\nFund 4\nTotal\nGeneral\nSpecial\nDebt\nCapital\nAll\n(Incidental)\n(Teachers)\nService\nProjects\nFunds\nSchool District of Clayton\nFor Year Ending Jun",
+      "grade": 0,
+      "query": "food services and school meals program"
+    },
     "cur08::5170": {
       "chunk_preview": "Fund 1\nFund 2\nFund 3\nFund 4\nTotal\nGeneral\nSpecial\nDebt\nCapital\nAll\n(Incidental)\n(Teachers)\nService\nProjects\nFunds\nLOCAL REVENUE\nPers Prop Tax - Current\n1,816,16",
       "grade": 2,
@@ -768,6 +1208,16 @@
     "cur08::5173": {
       "chunk_preview": "2023/24\n2022/23\n2021/22\n2020/21\n2019/20\nBudget\nBudget\nActual\nActual\nActual\nProposed\nOriginal\nLOCAL REVENUE\nPers Prop Tax - Current\n5,140,360\n     \n4,600,000\n   ",
       "grade": 2,
+      "query": "food services and school meals program"
+    },
+    "cur08::5177": {
+      "chunk_preview": "School District of Clayton\nFor Year Ending June 30, 2024\nProposed Expenditure Budget\nDescriptions\nOperating Funds\nView #6\nSpeech Pathology/Audiology\n112,430\n   ",
+      "grade": 2,
+      "query": "food services and school meals program"
+    },
+    "cur08::5187": {
+      "chunk_preview": "2023/24\n2022/23\n2021/22\n2020/21\n2019/20\nBudget\nBudget\nActual\nActual\nActual\nProposed\nSchool District of Clayton\nFor Year Ending June 30, 2024\nExpenditure Budget ",
+      "grade": 0,
       "query": "food services and school meals program"
     },
     "cur08::7151": {
@@ -800,6 +1250,21 @@
       "grade": 2,
       "query": "food services and school meals program"
     },
+    "cur08::7585": {
+      "chunk_preview": "SCHOOL DISTRICT OF CLAYTON\nSTATEMENT OF ACTIVITIES\nYear ended June 30, 2020\nProgram revenues\nCharges\nOperating\nBusiness-\nfor\ngrants and\nGovernmental\ntype\nFuncti",
+      "grade": 2,
+      "query": "food services and school meals program"
+    },
+    "cur08::7688": {
+      "chunk_preview": "SCHOOL DISTRICT OF CLAYTON \nSTATEMENT OF ACTIVITIES \nYear ended June 30, 2019 \nNet (expense) revenue \nProgram revenues \nand changes in net eosition \nCharges \nOp",
+      "grade": 2,
+      "query": "food services and school meals program"
+    },
+    "cur08::7799": {
+      "chunk_preview": "SCHOOL DISTRICT OF CLAYTON\nSTATEMENT OF ACTIVITIES\nYear ended June 30, 2025\nProgram revenues\nNet (expense) revenue\nand changes in net position\nFunction/Program\n",
+      "grade": 2,
+      "query": "food services and school meals program"
+    },
     "fin01::4715": {
       "chunk_preview": "2018-2019 \nRevised \n2019-2020 \nProposed \n \nVariance \n \nVariance \n \nBudget \nRevenue \n$ \n% \nProperty Taxes \n$33,011,830 \n$46,468,680 \n$13,456,850 \n40.76% \nTuition",
       "grade": 1,
@@ -810,9 +1275,34 @@
       "grade": 0,
       "query": "how much did the district spend on instruction"
     },
+    "fin01::4782": {
+      "chunk_preview": "While we reduced our \nexpenditures and made permanent changes to staffing and programs, we did it in a way that protected our instructional \ncore and prioritize",
+      "grade": 2,
+      "query": "how much did the district spend on instruction"
+    },
     "fin01::4807": {
       "chunk_preview": "2019-2020 \nRevised \n2020-2021 \nProposed \n \nVariance \n \nVariance \n \nBudget \nRevenue \n$ \n% \nProperty Taxes \n$48,823,800 \n$47,333,010 \n($1,490,790) \n-3.05% \nTuitio",
       "grade": 1,
+      "query": "how much did the district spend on instruction"
+    },
+    "fin01::4814": {
+      "chunk_preview": "District administration will continue to review the Family Center\u2019s fee structure to ensure tuition maintains \ncompetitiveness with market programs and covers t",
+      "grade": 0,
+      "query": "how much did the district spend on instruction"
+    },
+    "fin01::4833": {
+      "chunk_preview": "BDGT_FINAL*EXP_FUND                                                                         17:15:33 08 JUN 2020     Page     1\n                                ",
+      "grade": 2,
+      "query": "how much did the district spend on instruction"
+    },
+    "fin01::4973": {
+      "chunk_preview": "BDGT_FINAL*EXP_4YR                                                                          15:04:02 13 MAY 2021     Page     1\n                                ",
+      "grade": 2,
+      "query": "how much did the district spend on instruction"
+    },
+    "fin01::4979": {
+      "chunk_preview": "BDGT_FINAL*EXP_4YR_OPER                                                                     15:18:53 13 MAY 2021     Page     1\n                                ",
+      "grade": 2,
       "query": "how much did the district spend on instruction"
     },
     "fin01::5022": {
@@ -823,6 +1313,16 @@
     "fin01::5029": {
       "chunk_preview": "Historic funding levels and \nDistrict support are provided in the following chart and gap analysis: \n \n   \n2016- \n2017 \n2017- \n2018 \n2018- \n2019 \n2019- \n2020 \n2",
       "grade": 0,
+      "query": "how much did the district spend on instruction"
+    },
+    "fin01::5069": {
+      "chunk_preview": "BDGT_FINAL*EXP_4YR                                                                          15:49:46 10 MAY 2022     Page     1\n                                ",
+      "grade": 2,
+      "query": "how much did the district spend on instruction"
+    },
+    "fin01::5075": {
+      "chunk_preview": "BDGT_FINAL*EXP_4YR_OPER                                                                     15:58:42 10 MAY 2022     Page     1\n                                ",
+      "grade": 2,
       "query": "how much did the district spend on instruction"
     },
     "fin01::5110": {
@@ -895,13 +1395,68 @@
       "grade": 2,
       "query": "how much did the district spend on instruction"
     },
+    "fin01::7772": {
+      "chunk_preview": "Building-Level Expenditures Per Pupil (Line 32)\nDistrict-Level Expenditures Per Pupil (Line 33)\nTotal September Membership\n2,302.87\nBuilding\nTotal \nSeptember \nM",
+      "grade": 1,
+      "query": "how much did the district spend on instruction"
+    },
+    "fin01::7773": {
+      "chunk_preview": "Impact aid is considered local expenditures. Missouri Department of Elementary & Secondary Education\nSchool Finance Section\nPer Pupil Building Expenditures Summ",
+      "grade": 1,
+      "query": "how much did the district spend on instruction"
+    },
+    "fin01::7774": {
+      "chunk_preview": "Building-Level Expenditures Per Pupil (Line 32)\nDistrict-Level Expenditures Per Pupil (Line 33)\nTotal September Membership\n2,348.26\nBuilding\nTotal \nSeptember \nM",
+      "grade": 1,
+      "query": "how much did the district spend on instruction"
+    },
+    "fin01::7775": {
+      "chunk_preview": "Impact aid is considered local expenditures. Missouri Department of Elementary & Secondary Education\nSchool Finance Section\nPer Pupil Building Expenditures Summ",
+      "grade": 1,
+      "query": "how much did the district spend on instruction"
+    },
+    "fin01::7776": {
+      "chunk_preview": "Building-Level Expenditures Per Pupil (Line 32)\nDistrict-Level Expenditures Per Pupil (Line 33)\nTotal September Membership\n2,463.42\nBuilding\nTotal \nSeptember \nM",
+      "grade": 1,
+      "query": "how much did the district spend on instruction"
+    },
+    "fin01::7777": {
+      "chunk_preview": "Impact aid is considered local expenditures. Missouri Department of Elementary & Secondary Education\nSchool Finance Section\nPer Pupil Building Expenditures Summ",
+      "grade": 2,
+      "query": "how much did the district spend on instruction"
+    },
+    "fin01::7778": {
+      "chunk_preview": "Building-Level Expenditures Per Pupil\nDistrict-Level Expenditures Per Pupil\nTotal September Membership\n2,558.99\nBuilding\nTotal \nSeptember \nMembership\nFederal \nE",
+      "grade": 2,
+      "query": "how much did the district spend on instruction"
+    },
     "fin01::7799": {
       "chunk_preview": "SCHOOL DISTRICT OF CLAYTON\nSTATEMENT OF ACTIVITIES\nYear ended June 30, 2025\nProgram revenues\nNet (expense) revenue\nand changes in net position\nFunction/Program\n",
       "grade": 3,
       "query": "how much did the district spend on instruction"
     },
+    "fin02::130": {
+      "chunk_preview": "Approve the budget for 2023-2024, including expenditures sourced from federal grants, as presented. \nMotion by Chris Win, second by Stacy Siwak. \nFinal Resoluti",
+      "grade": 1,
+      "query": "general fund total expenditures fiscal year 2024"
+    },
     "fin02::4226": {
       "chunk_preview": "of Funds",
+      "grade": 0,
+      "query": "general fund total expenditures fiscal year 2024"
+    },
+    "fin02::4717": {
+      "chunk_preview": "Fund \n2018-2019 \n Original Budget \n2019-2020 \n Proposed Expenses \n \nVariance \nGeneral \n$20,362,750 \n$20,937,820 \n$575,070 \nSpecial Revenue \n$33,092,460 \n$33,679",
+      "grade": 0,
+      "query": "general fund total expenditures fiscal year 2024"
+    },
+    "fin02::4730": {
+      "chunk_preview": "Budgeted \nRevenues, \nExpenditures \nAnd Balances \n2019-2020\n43\n\nSpecial\nCapital\nSubtotal\nDebt\nSubtotal\nGeneral\nRevenue\nProjects\nOperating\nService\nDistrict\nBusine",
+      "grade": 0,
+      "query": "general fund total expenditures fiscal year 2024"
+    },
+    "fin02::4821": {
+      "chunk_preview": "Estimated  \nRevenues, \nExpenditures \nand Balances \n2019-2020 \n \n \n \n \n43\n\nSpecial\nCapital\nSubtotal\nDebt\nSubtotal\nGeneral\nRevenue\nProjects\nOperating\nService\nDist",
       "grade": 0,
       "query": "general fund total expenditures fiscal year 2024"
     },
@@ -910,13 +1465,43 @@
       "grade": 0,
       "query": "general fund total expenditures fiscal year 2024"
     },
+    "fin02::4829": {
+      "chunk_preview": "Revised Estimated \nPrior Year \nOther Revenues \nby Fund \n2019-2020\n53\n\nBudgeted\nGeneral\nSpecial Rev.\nDebt Sevice\nCapital Proj.\nPurpose\nRevenues\nFund\nFund\nFund\nFu",
+      "grade": 0,
+      "query": "general fund total expenditures fiscal year 2024"
+    },
+    "fin02::4832": {
+      "chunk_preview": "Total Expenditures \nFunction/Fund \n \n \n \n \n \n \n56\n\nBDGT_FINAL*EXP_FUND                                                                         17:15:33 08 JUN 2",
+      "grade": 0,
+      "query": "general fund total expenditures fiscal year 2024"
+    },
+    "fin02::4860": {
+      "chunk_preview": "BDGT_FINAL*EXP_FUND                                                                         17:33:56 08 JUN 2020     Page     1\n                                ",
+      "grade": 0,
+      "query": "general fund total expenditures fiscal year 2024"
+    },
     "fin02::4889": {
       "chunk_preview": "2021-2022 \nBudget \nJune 2, 2021",
       "grade": 0,
       "query": "general fund total expenditures fiscal year 2024"
     },
+    "fin02::4936": {
+      "chunk_preview": "Actual \nRevenues, \nExpenditures \nand Balances \n2019-2020\n43\n\nSpecial\nCapital\nSubtotal\nDebt\nSubtotal\nGeneral\nRevenue\nProjects\nOperating\nService\nDistrict\nBusiness",
+      "grade": 1,
+      "query": "general fund total expenditures fiscal year 2024"
+    },
+    "fin02::4937": {
+      "chunk_preview": "Estimated  \nRevenues, \nExpenditures \nand Balances \n2020-2021 \n \n \n \n \n45\n\nSpecial\nCapital\nSubtotal\nDebt\nSubtotal\nGeneral\nRevenue\nProjects\nOperating\nService\nDist",
+      "grade": 0,
+      "query": "general fund total expenditures fiscal year 2024"
+    },
     "fin02::4938": {
       "chunk_preview": "Budgeted \nRevenues, \nExpenditures \nAnd Balances \n2021-2022\n47\n\nSpecial\nCapital\nSubtotal\nDebt\nSubtotal\nGeneral\nRevenue\nProjects\nOperating\nService\nDistrict\nBusine",
+      "grade": 0,
+      "query": "general fund total expenditures fiscal year 2024"
+    },
+    "fin02::4948": {
+      "chunk_preview": "Total Expenditures \nFunction/Fund \n \n \n \n \n \n \n58\n\nBDGT_FINAL*EXP_FUND                                                                         08:58:57 13 MAY 2",
       "grade": 0,
       "query": "general fund total expenditures fiscal year 2024"
     },
@@ -940,6 +1525,21 @@
       "grade": 1,
       "query": "general fund total expenditures fiscal year 2024"
     },
+    "fin02::5044": {
+      "chunk_preview": "Revised Estimated \nPrior Year \nOther Revenues \nby Fund \n2021-2022\n55\n\nBudgeted\nGeneral\nSpecial Rev.\nDebt Sevice\nCapital Proj.\nPurpose\nRevenues\nFund\nFund\nFund\nFu",
+      "grade": 0,
+      "query": "general fund total expenditures fiscal year 2024"
+    },
+    "fin02::5068": {
+      "chunk_preview": "BDGT_FINAL*EXP_4YR_FUND\n08:52:24 11 MAY 2022     Page     1\nSCHOOL DISTRICT OF CLAYTON\nEXPENDITURES FOUR-YEAR COMPARISON BY FUND\nReport dates 07/01/2022 - thru ",
+      "grade": 1,
+      "query": "general fund total expenditures fiscal year 2024"
+    },
+    "fin02::5091": {
+      "chunk_preview": "meaning that planned expenditures do not exceed the combination of anticipated revenue \ncollections plus any beginning fund balances. During 2024-2025, Operatin",
+      "grade": 1,
+      "query": "general fund total expenditures fiscal year 2024"
+    },
     "fin02::5107": {
       "chunk_preview": "how expenditures are planned for 2024-2025.",
       "grade": 1,
@@ -947,6 +1547,21 @@
     },
     "fin02::5108": {
       "chunk_preview": "plan, as well as actual expenditures for 2022-2023, 2021-2022 and 2020-2021. Multi-year trends \nare easily discernable. Please be aware the pandemic years of 20",
+      "grade": 1,
+      "query": "general fund total expenditures fiscal year 2024"
+    },
+    "fin02::5115": {
+      "chunk_preview": "Fund 1\nFund 2\nFund 3\nFund 4\nTotal\nGeneral\nSpecial\nDebt\nCapital\nAll\n(Incidental)\n(Teachers)\nService\nProjects\nFunds\nLOCAL REVENUE\nPers Prop Tax - Current\n1,452,00",
+      "grade": 0,
+      "query": "general fund total expenditures fiscal year 2024"
+    },
+    "fin02::5118": {
+      "chunk_preview": "2024/25\n2023/24\n2022/23\n2021/22\n2020/21\nBudget\nBudget\nActual\nActual\nActual\nProposed\nOriginal\nLOCAL REVENUE\nPers Prop Tax - Current\n5,432,600\n     \n5,140,360\n   ",
+      "grade": 1,
+      "query": "general fund total expenditures fiscal year 2024"
+    },
+    "fin02::5145": {
+      "chunk_preview": "meaning that planned expenditures do not exceed the combination of anticipated revenue \ncollections plus any beginning fund balances. During 2023-2024, Operatin",
       "grade": 1,
       "query": "general fund total expenditures fiscal year 2024"
     },
@@ -962,6 +1577,16 @@
     },
     "fin02::5163": {
       "chunk_preview": "plan, as well as actual expenditures for 2021-2022, 2020-2021 and 2019-2020. Multi-year trends \nare easily discernable. Please be aware the pandemic years of 20",
+      "grade": 1,
+      "query": "general fund total expenditures fiscal year 2024"
+    },
+    "fin02::5170": {
+      "chunk_preview": "Fund 1\nFund 2\nFund 3\nFund 4\nTotal\nGeneral\nSpecial\nDebt\nCapital\nAll\n(Incidental)\n(Teachers)\nService\nProjects\nFunds\nLOCAL REVENUE\nPers Prop Tax - Current\n1,816,16",
+      "grade": 1,
+      "query": "general fund total expenditures fiscal year 2024"
+    },
+    "fin02::5172": {
+      "chunk_preview": "Fund 1\nFund 2\nFund 3\nFund 4\nTotal\nGeneral\nSpecial\nDebt\nCapital\nAll\n(Incidental)\n(Teachers)\nService\nProjects\nFunds\nSchool District of Clayton\nFor Year Ending Jun",
       "grade": 1,
       "query": "general fund total expenditures fiscal year 2024"
     },
@@ -990,6 +1615,11 @@
       "grade": 0,
       "query": "general fund total expenditures fiscal year 2024"
     },
+    "fin02::7691": {
+      "chunk_preview": "SCHOOL DISTRICT OF CLAYTON \nSTATEMENT OF REVENUES, EXPENDITURES AND \nCHANGES IN FUND BALANCES - GOVERNMENTAL FUNDS \nYear ended June 30, 2019 \nSpecial \nDebt \nCap",
+      "grade": 0,
+      "query": "general fund total expenditures fiscal year 2024"
+    },
     "fin02::7794": {
       "chunk_preview": "The Special\nRevenue Fund budgetary basis actual expenditures were near the final budgeted amounts. For the year\nended June 30, 2025, the combined General and Sp",
       "grade": 0,
@@ -1010,6 +1640,11 @@
       "grade": 3,
       "query": "ending fund balance and district reserves over time"
     },
+    "fin03::4727": {
+      "chunk_preview": "However, due to the successful passing of Proposition E, the District is projected to have \napproximately a $2.9 million surplus and grow the fund balance to ap",
+      "grade": 2,
+      "query": "ending fund balance and district reserves over time"
+    },
     "fin03::4771": {
       "chunk_preview": "ENCUMBRANCES \u2013 Purchase orders, contracts, and/or other commitments which are chargeable to an appropriation and \nfor which a part of the appropriation is reser",
       "grade": 1,
@@ -1023,6 +1658,11 @@
     "fin03::4818": {
       "chunk_preview": "The Board \nmay draw upon this fund\u2014just as a citizen will draw upon a savings account\u2014if the need arises. Because this revenue \nhas been collected through a vot",
       "grade": 3,
+      "query": "ending fund balance and district reserves over time"
+    },
+    "fin03::4819": {
+      "chunk_preview": "Due to the \nsuccessful passing of Proposition E, the District projects approximately a $2.8 million operating surplus and growing the fund \nbalance to approxima",
+      "grade": 2,
       "query": "ending fund balance and district reserves over time"
     },
     "fin03::4886": {
@@ -1060,8 +1700,23 @@
       "grade": 1,
       "query": "ending fund balance and district reserves over time"
     },
+    "fin03::5138": {
+      "chunk_preview": "NOTE: Tax Rates are preliminary and subject to change. NOTE: 2024/25 Est. revenue is subject to change w/ change in AV & rates\n\nTrends \nAs a general rule, expen",
+      "grade": 2,
+      "query": "ending fund balance and district reserves over time"
+    },
     "fin03::7138": {
       "chunk_preview": "The Debt\nService Fund\u2019s balance decreased $2.9 million.\n\uf0b7\nThe Capital Projects Fund had $5.0 million in revenues and $4.0 million in expenditures. The\nCapital P",
+      "grade": 1,
+      "query": "ending fund balance and district reserves over time"
+    },
+    "fin03::7244": {
+      "chunk_preview": "The Debt\nService Fund\u2019s balance increased $2.5 million.\n\uf0b7\nThe Capital Projects Fund had $6.2 million in revenues and $7.0 million in expenditures. The\nCapital P",
+      "grade": 1,
+      "query": "ending fund balance and district reserves over time"
+    },
+    "fin03::7353": {
+      "chunk_preview": "The Debt\nService Fund\u2019s balance increased $0.4 million.\n\uf0b7\nThe Capital Projects Fund had $4.4 million in revenues and $4.7 million in expenditures. The\nCapital P",
       "grade": 1,
       "query": "ending fund balance and district reserves over time"
     },
@@ -1080,6 +1735,11 @@
       "grade": 1,
       "query": "ending fund balance and district reserves over time"
     },
+    "fin03::7570": {
+      "chunk_preview": "The Debt Service Fund\u2019s balance increased $1.4 million.\n\uf0b7\nThe Capital Projects Fund had $2.8 million in revenues and $9.1 million in expenditures. The \nCapital ",
+      "grade": 1,
+      "query": "ending fund balance and district reserves over time"
+    },
     "fin03::7580": {
       "chunk_preview": "The additional revenue will maintain and strengthen the District\u2019s academic excellence and \nfiscal stability by eliminating the gap between revenues and expense",
       "grade": 2,
@@ -1090,8 +1750,18 @@
       "grade": 0,
       "query": "ending fund balance and district reserves over time"
     },
+    "fin03::7657": {
+      "chunk_preview": "SCHOOL DISTRICT OF CLAYTON\nNET PENSION LIABILITY - UNAUDITED \nYear ended June 30, 2020\nSchedule of Employer Contributions - PSRS\nYear ended\nContractually\nrequir",
+      "grade": 0,
+      "query": "ending fund balance and district reserves over time"
+    },
     "fin03::7673": {
       "chunk_preview": "The Debt Service Fund's \nbalance decreased $19 .5 million primarily due to the bond payment from escrowed cash. \n\u2022 \nThe Capital Projects Fund had $1.8 million i",
+      "grade": 1,
+      "query": "ending fund balance and district reserves over time"
+    },
+    "fin03::7680": {
+      "chunk_preview": "Additionally, the General Fund maintained a steady balance, the Special Revenue Fund \ndecreased by $3.0 million on planned expenditures and the Capital Projects",
       "grade": 1,
       "query": "ending fund balance and district reserves over time"
     },
@@ -1099,6 +1769,21 @@
       "chunk_preview": "The Debt\nService Fund\u2019s balance increased $0.6 million.\n\uf0b7\nThe Capital Projects Fund had $5.3 million in revenues and $5.6 million in expenditures. The\nCapital P",
       "grade": 1,
       "query": "ending fund balance and district reserves over time"
+    },
+    "fin03::7793": {
+      "chunk_preview": "Expenditures in the Capital Projects Fund increased by\napproximately $1.6 million in accordance with planned capital expenditures. The overall position of the\nD",
+      "grade": 1,
+      "query": "ending fund balance and district reserves over time"
+    },
+    "fin04::4723": {
+      "chunk_preview": "The $60,000 funding \nlevel projected for 2019-2020 is approximately $46,000 lower than the historic high of $106,854 received during the 2007-2008 \nschool year.",
+      "grade": 3,
+      "query": "debt service principal and interest payments"
+    },
+    "fin04::4815": {
+      "chunk_preview": "The $41,190 funding \nlevel projected for 2020-2021 is approximately $65,000 lower than the historic high of $106,854 received during the 2007-2008 \nschool year.",
+      "grade": 3,
+      "query": "debt service principal and interest payments"
     },
     "fin04::4816": {
       "chunk_preview": "In 2020-2021, the District will pay \n$8.97 million in principal and interest payments and is budgeting the receipt of $202,160 in subsidy income direct from the",
@@ -1125,8 +1810,23 @@
       "grade": 3,
       "query": "debt service principal and interest payments"
     },
+    "fin04::5111": {
+      "chunk_preview": "Expenditures are categorized by \nInstructional, Support Services, Community Services, Principal and Interest payments. Instructional costs \nconstitute the large",
+      "grade": 2,
+      "query": "debt service principal and interest payments"
+    },
     "fin04::5165": {
       "chunk_preview": "Expenditures are categorized by Salaries, \nEmployee Benefits, Purchased Services, Supplies, Capital Outlay, Principal and Interest payments. The cost \nof person",
+      "grade": 3,
+      "query": "debt service principal and interest payments"
+    },
+    "fin04::5187": {
+      "chunk_preview": "2023/24\n2022/23\n2021/22\n2020/21\n2019/20\nBudget\nBudget\nActual\nActual\nActual\nProposed\nSchool District of Clayton\nFor Year Ending June 30, 2024\nExpenditure Budget ",
+      "grade": 0,
+      "query": "debt service principal and interest payments"
+    },
+    "fin04::5188": {
+      "chunk_preview": "2023/24\n2022/23\n2021/22\n2020/21\n2019/20\nBudget\nBudget\nActual\nActual\nActual\nProposed\nSchool District of Clayton\nFor Year Ending June 30, 2024\nExpenditure Budget ",
       "grade": 3,
       "query": "debt service principal and interest payments"
     },
@@ -1185,6 +1885,11 @@
       "grade": 3,
       "query": "debt service principal and interest payments"
     },
+    "fin04::7660": {
+      "chunk_preview": "SCHOOL DISTRICT OF CLAYTON\nSCHEDULE OF REVENUES, EXPENDITURES AND\nCHANGES IN FUND BALANCE - BUDGET AND ACTUAL - \nCASH BASIS - DEBT SERVICE FUND - UNAUDITED\nYear",
+      "grade": 3,
+      "query": "debt service principal and interest payments"
+    },
     "fin04::7727": {
       "chunk_preview": "Compensated \nabsences are liquidated by the General Fund and Special Revenue Fund. Bonds payable \nGeneral obligation bonds outstanding at June 30, 2019 were as ",
       "grade": 3,
@@ -1220,8 +1925,48 @@
       "grade": 0,
       "query": "per-pupil expenditure by building"
     },
+    "fin05::1703": {
+      "chunk_preview": "LEVEL 3 \nTOTAL\nDESCRIPTION\nQTY\nUNIT\nPRICE\n LEVEL 2 \nTOTAL \nLevel 2 - Proposed Design 2\nDemo and General Conditions\n1\n                \nls\n$1,000,000\n$1,000,000\nR",
+      "grade": 0,
+      "query": "per-pupil expenditure by building"
+    },
+    "fin05::1705": {
+      "chunk_preview": "Wydown Middle School\nMany Level One Impacts\nTop Priorities:\nTurf Field with Track \nPhysical Education Expansion \nSSD Resource Suite\nClassroom Renovations\nRenov.",
+      "grade": 0,
+      "query": "per-pupil expenditure by building"
+    },
+    "fin05::1706": {
+      "chunk_preview": "Clayton High School\nTop Priorities:\nAMPED\nGeometry in Construction\nRobotics\nBlack Box & Lecture Hall\nStudent Services Suite \nSSD Resource Suite\nClassroom Renova",
+      "grade": 0,
+      "query": "per-pupil expenditure by building"
+    },
+    "fin05::1916": {
+      "chunk_preview": "2\nINCLUDED IN THIS MASTER PLAN\nVOLUME I\nIntroduction\nThe Importance of Facility Master Planning\b\n3\nProject Objective\b\n4\nSchool District of Clayton Master Plan G",
+      "grade": 0,
+      "query": "per-pupil expenditure by building"
+    },
     "fin05::1973": {
       "chunk_preview": "Additionally, the \nexisting restrooms also need to be renovated. SUMMARY OF DOT EXERCISE RESULTS\n\nCHALLENGES:\n\u2022\t The open floor plan is not \nconducive to learni",
+      "grade": 0,
+      "query": "per-pupil expenditure by building"
+    },
+    "fin05::2046": {
+      "chunk_preview": "Point \nValue\nAdmin\nErwin\nMeadows\nAverage\nPercent\nComments\n1.1 Size of academic learning areas meets \ndesirable standard specified in educational \nprogram\n30\n18\n",
+      "grade": 0,
+      "query": "per-pupil expenditure by building"
+    },
+    "fin05::2057": {
+      "chunk_preview": "Max\nAssessed Point Value\nElectrical and Mechanical \n Point \nValue\nAdmin\nErwin\nMeadows\nAverage\nPercent\nComments\n5.1 Site and buildings meet accessibility \nrequir",
+      "grade": 0,
+      "query": "per-pupil expenditure by building"
+    },
+    "fin05::2065": {
+      "chunk_preview": "Point \nValue\nAdmin\nErwin\nMeadows\nAverage\nPercent\nComments\n2.1\nSurrounding environment does not disrupt \nlearning\n30\n30\n27\n28\n28.3\n94%\nNice, quiet neighborhood.\n",
+      "grade": 0,
+      "query": "per-pupil expenditure by building"
+    },
+    "fin05::2071": {
+      "chunk_preview": "Max\nAssessed Point Value\nElectrical and Mechanical \nPoint \nValue\nAdmin\nErwin\nMeadows\nAverage\nPercent\nComments\n5.1\nSite and buildings meet accessibility \nrequire",
       "grade": 0,
       "query": "per-pupil expenditure by building"
     },
@@ -1242,6 +1987,11 @@
     },
     "fin05::2094": {
       "chunk_preview": "Additionally, the building lacks dedicated \nstudent support spaces, such as counseling or wellness areas, and there is insufficient green space \nfor outdoor ins",
+      "grade": 0,
+      "query": "per-pupil expenditure by building"
+    },
+    "fin05::2100": {
+      "chunk_preview": "Point \nValue\nAdmin\nErwin\nMeadows\nAverage\nPercent\nComments\n2.1 Surrounding environment does not disrupt \nlearning\n30\n30\n25\n30\n28.3\n94%\nQuiet neighborhood, plenty",
       "grade": 0,
       "query": "per-pupil expenditure by building"
     },
@@ -1295,8 +2045,28 @@
       "grade": 0,
       "query": "per-pupil expenditure by building"
     },
+    "fin05::4758": {
+      "chunk_preview": "Capital Improvement \nPlan Expenditures \nBy Location \n \n \n \n \n \n74\n\nFAMILY CENTER\nHVAC upgrades\n$15,000\nHeating boiler replacement\n$14,000\nLift station pumps for",
+      "grade": 1,
+      "query": "per-pupil expenditure by building"
+    },
     "fin05::4851": {
       "chunk_preview": "Capital Improvement \nPlan Expenditures \nBy Location \n \n \n \n \n \n77\n\nFAMILY CENTER\nEnergy efficient lighting upgrades\n$2,000\nConcrete repairs\n$40,000\nSyncronized ",
+      "grade": 1,
+      "query": "per-pupil expenditure by building"
+    },
+    "fin05::4967": {
+      "chunk_preview": "Capital Improvement \nPlan Expenditures \nBy Location \n \n \n \n \n \n79\n\nFAMILY CENTER\nEnergy efficient lighting upgrades\n$3,000\nCeiling tiles\n$1,500\nAsphalt sealing ",
+      "grade": 1,
+      "query": "per-pupil expenditure by building"
+    },
+    "fin05::4968": {
+      "chunk_preview": "FAMILY CENTER\nEnergy efficient lighting upgrades\n$3,000\nCeiling tiles\n$1,500\nAsphalt sealing and concrete repairs to lower lot\n$20,000\nTree Removal\n$7,500\nPlant",
+      "grade": 1,
+      "query": "per-pupil expenditure by building"
+    },
+    "fin05::5134": {
+      "chunk_preview": "Strategic\nCapital Improvement Investments\nPlan\nAlignment\nCaptain Elementary\nChair lift replacements\n98,800\n           \nGoal 1\nTechnology TIP\n83,000\n           \n",
       "grade": 1,
       "query": "per-pupil expenditure by building"
     },
@@ -1312,6 +2082,11 @@
     },
     "fin06::1401": {
       "chunk_preview": "Good evening everyone a Public hearing notice has been posted adequate notice of it has been given so I will call us to To order Okay so The 2025 property tax r",
+      "grade": 3,
+      "query": "property tax rate hearing and tax levy"
+    },
+    "fin06::1402": {
+      "chunk_preview": "They are the result of calculations That the state auditor provides us and they have been reviewed by the state auditor So at this point in time they are fully ",
       "grade": 3,
       "query": "property tax rate hearing and tax levy"
     },
@@ -1340,6 +2115,11 @@
       "grade": 3,
       "query": "property tax rate hearing and tax levy"
     },
+    "fin06::3694": {
+      "chunk_preview": "Action, Procedural: 5.01 Adjourn\n- Board of Education/Board of Alderman Joint Session\nThat the Board ofEducation willadjourn the joint meeting ofthe Board ofEdu",
+      "grade": 2,
+      "query": "property tax rate hearing and tax levy"
+    },
     "fin06::3696": {
       "chunk_preview": "- Tax Rate Hearing\nThe tax rate hearing of the School District of Clayton was called to order at 7:04 p.m. and held in the administrative boardroom at 2\nMark Tw",
       "grade": 2,
@@ -1355,8 +2135,28 @@
       "grade": 2,
       "query": "property tax rate hearing and tax levy"
     },
+    "fin06::4708": {
+      "chunk_preview": "An appeals process to the Board of Equalization can sometimes reduce \nassessments if it appears that the property value has been over-assessed. Special\nCapital\n",
+      "grade": 3,
+      "query": "property tax rate hearing and tax levy"
+    },
+    "fin06::4712": {
+      "chunk_preview": "Property tax abatements may be granted through special state laws that allow for the development or redevelopment of an \notherwise undevelopable property. Recen",
+      "grade": 3,
+      "query": "property tax rate hearing and tax levy"
+    },
     "fin06::7188": {
       "chunk_preview": "The District also receives sales tax collected by the state and remitted based on eligible pupils. The District's taxpayers have voted to permanently waive the ",
+      "grade": 2,
+      "query": "property tax rate hearing and tax levy"
+    },
+    "fin06::7189": {
+      "chunk_preview": "SCHOOL DISTRICT OF CLAYTON\nNOTES TO THE FINANCIAL STATEMENTS\nJune 30, 2024\nNOTE C \u2013 TAXES - CONTINUED\nThe assessed valuation of the tangible taxable property fo",
+      "grade": 2,
+      "query": "property tax rate hearing and tax levy"
+    },
+    "fin06::7228": {
+      "chunk_preview": "SCHOOL DISTRICT OF CLAYTON\nANNUAL FINANCIAL INFORMATION AND OPERATING DATA - UNAUDITED\nYear ended June 30, 2024\nTax Rates\nThe following table shows the adjusted",
       "grade": 2,
       "query": "property tax rate hearing and tax levy"
     },
@@ -1365,9 +2165,19 @@
       "grade": 3,
       "query": "property tax rate hearing and tax levy"
     },
+    "fin06::7336": {
+      "chunk_preview": "SCHOOL DISTRICT OF CLAYTON\nANNUAL FINANCIAL INFORMATION AND OPERATING DATA - UNAUDITED\nYear ended June 30, 2023\nTax Rates\nThe following table shows the adjusted",
+      "grade": 2,
+      "query": "property tax rate hearing and tax levy"
+    },
     "fin06::7407": {
       "chunk_preview": "The District's taxpayers have voted to\npermanently waive this property tax rollback. The assessed valuation of the tangible taxable property for the calendar ye",
       "grade": 3,
+      "query": "property tax rate hearing and tax levy"
+    },
+    "fin06::7447": {
+      "chunk_preview": "SCHOOL DISTRICT OF CLAYTON\nANNUAL FINANCIAL INFORMATION AND OPERATING DATA - UNAUDITED\nYear ended June 30, 2022\nTax Rates\nThe following table shows the adjusted",
+      "grade": 2,
       "query": "property tax rate hearing and tax levy"
     },
     "fin06::7515": {
@@ -1377,6 +2187,11 @@
     },
     "fin06::7516": {
       "chunk_preview": "SCHOOL DISTRICT OF CLAYTON\nNOTES TO THE FINANCIAL STATEMENTS\nJune 30, 2021\nNOTE C \u2013 TAXES - CONTINUED\nThe tax levy per $100 of the assessed valuation of tangibl",
+      "grade": 2,
+      "query": "property tax rate hearing and tax levy"
+    },
+    "fin06::7555": {
+      "chunk_preview": "SCHOOL DISTRICT OF CLAYTON\nANNUAL FINANCIAL INFORMATION AND OPERATING DATA - UNAUDITED\nYear ended June 30, 2021\nTax Rates\nThe following table shows the adjusted",
       "grade": 2,
       "query": "property tax rate hearing and tax levy"
     },
@@ -1390,9 +2205,19 @@
       "grade": 2,
       "query": "property tax rate hearing and tax levy"
     },
+    "fin06::7666": {
+      "chunk_preview": "SCHOOL DISTRICT OF CLAYTON\nANNUAL FINANCIAL INFORMATION AND OPERATING DATA - UNAUDITED\nYear ended June 30, 2020\nTax Rates\nThe following table shows the adjusted",
+      "grade": 2,
+      "query": "property tax rate hearing and tax levy"
+    },
     "fin06::7724": {
       "chunk_preview": "The \nDistrict is required to reduce its property tax levy by one-half the amount of sales tax estimated to be \nreceived in the subsequent calendar year. The ass",
       "grade": 2,
+      "query": "property tax rate hearing and tax levy"
+    },
+    "fin06::7760": {
+      "chunk_preview": "SCHOOL DISTRICT OF CLAYTON \nANNUAL FINANCIAL INFORMATION AND OPERATING DATA- UNAUDITED \nYear ended June 30, 2019 \nTax Rates \nThe following table shows the adjus",
+      "grade": 3,
       "query": "property tax rate hearing and tax levy"
     },
     "fin06::7836": {
@@ -1400,8 +2225,43 @@
       "grade": 3,
       "query": "property tax rate hearing and tax levy"
     },
+    "fin06::7876": {
+      "chunk_preview": "SCHOOL DISTRICT OF CLAYTON\nANNUAL FINANCIAL INFORMATION AND OPERATING DATA - UNAUDITED\nYear ended June 30, 2025\nTax Rates\nThe following table shows the adjusted",
+      "grade": 3,
+      "query": "property tax rate hearing and tax levy"
+    },
+    "fin07::4694": {
+      "chunk_preview": "During fiscal year 2015-2016 the District again began spending down reserves in the amount of $1.7 million due to the \npayback of over $2.0 million in protested",
+      "grade": 1,
+      "query": "capital projects fund spending"
+    },
     "fin07::4695": {
       "chunk_preview": "Total \nproposed maintenance Capital Improvement Plan (CIP) expenditures for 2019-2020 will include funding at the same \nlevel as 2018-2019 of $625,280 with an a",
+      "grade": 2,
+      "query": "capital projects fund spending"
+    },
+    "fin07::4716": {
+      "chunk_preview": "While these payments are not paid directly to the \nemployee, they are considered part of the cost of employment. \n \n6300-6399 Purchased Services \u2013 Amounts paid ",
+      "grade": 2,
+      "query": "capital projects fund spending"
+    },
+    "fin07::4717": {
+      "chunk_preview": "Fund \n2018-2019 \n Original Budget \n2019-2020 \n Proposed Expenses \n \nVariance \nGeneral \n$20,362,750 \n$20,937,820 \n$575,070 \nSpecial Revenue \n$33,092,460 \n$33,679",
+      "grade": 3,
+      "query": "capital projects fund spending"
+    },
+    "fin07::4720": {
+      "chunk_preview": "As a result, many projects get deferred over a period of years. Some of \nthese projects include: \n \n29\n\n\uf0b7 \nSafety and security improvements at every school. \n\uf0b7 ",
+      "grade": 2,
+      "query": "capital projects fund spending"
+    },
+    "fin07::4808": {
+      "chunk_preview": "While these payments are not paid directly to the \nemployee, they are considered part of the cost of employment. \n \n6300-6399 Purchased Services \u2013 Amounts paid ",
+      "grade": 2,
+      "query": "capital projects fund spending"
+    },
+    "fin07::4812": {
+      "chunk_preview": "As a result, many projects get deferred over a period of years. Some of \nthese projects include: \n \n31\n\n\uf0b7 \nSafety and security improvements at every school. \n\uf0b7 ",
       "grade": 2,
       "query": "capital projects fund spending"
     },
@@ -1420,6 +2280,16 @@
       "grade": 2,
       "query": "capital projects fund spending"
     },
+    "fin07::5023": {
+      "chunk_preview": "While these payments are not paid directly to the \nemployee, they are considered part of the cost of employment. \n \n6300-6399 Purchased Services \u2013 Amounts paid ",
+      "grade": 3,
+      "query": "capital projects fund spending"
+    },
+    "fin07::5166": {
+      "chunk_preview": "Expenditures are categorized by \nInstructional, Support Services, Community Services, Principal and Interest payments. Instructional costs \nconstitute the large",
+      "grade": 2,
+      "query": "capital projects fund spending"
+    },
     "fin07::7138": {
       "chunk_preview": "The Debt\nService Fund\u2019s balance decreased $2.9 million.\n\uf0b7\nThe Capital Projects Fund had $5.0 million in revenues and $4.0 million in expenditures. The\nCapital P",
       "grade": 2,
@@ -1428,6 +2298,11 @@
     "fin07::7140": {
       "chunk_preview": "Property taxes, voluntary student transfer aid, state foundation and categorical\ngrants, and state and federal grants finance most of these activities. Business",
       "grade": 1,
+      "query": "capital projects fund spending"
+    },
+    "fin07::7144": {
+      "chunk_preview": "Administration includes expenses associated with administrative and financial supervision of the District. Operation of plant activities involves maintaining sc",
+      "grade": 2,
       "query": "capital projects fund spending"
     },
     "fin07::7145": {
@@ -1460,8 +2335,18 @@
       "grade": 2,
       "query": "capital projects fund spending"
     },
+    "fin07::7460": {
+      "chunk_preview": "In our opinion, the \nsupplemental budgetary schedules are fairly stated, in all material respects, in relation to the basic financial \nstatements as a whole. Th",
+      "grade": 3,
+      "query": "capital projects fund spending"
+    },
     "fin07::7461": {
       "chunk_preview": "The Debt\nService Fund\u2019s balance decreased $0.9 million.\n\uf0b7\nThe Capital Projects Fund had $4.1 million in revenues and $5.2 million in expenditures. The\nCapital P",
+      "grade": 3,
+      "query": "capital projects fund spending"
+    },
+    "fin07::7569": {
+      "chunk_preview": "St. Louis, Missouri \nDecember 9, 2020\n\nSCHOOL DISTRICT OF CLAYTON\nMANAGEMENT'S DISCUSSION AND ANALYSIS - UNAUDITED\nYear ended June 30, 2020\nThe Management\u2019s Dis",
       "grade": 3,
       "query": "capital projects fund spending"
     },
@@ -1473,6 +2358,11 @@
     "fin07::7572": {
       "chunk_preview": "Property taxes, voluntary student transfer aid, state foundation and categorical\ngrants, and state and federal grants finance most of these activities. Business",
       "grade": 1,
+      "query": "capital projects fund spending"
+    },
+    "fin07::7581": {
+      "chunk_preview": "Total proposed maintenance Capital Improvement Plan (CIP) \nexpenditures for 2020-2021 will have an additional $200,000 in funding for a total allocation of $922",
+      "grade": 2,
       "query": "capital projects fund spending"
     },
     "fin07::7673": {
@@ -1499,6 +2389,11 @@
       "chunk_preview": "Expenditures in the Capital Projects Fund increased by\napproximately $1.6 million in accordance with planned capital expenditures. The overall position of the\nD",
       "grade": 2,
       "query": "capital projects fund spending"
+    },
+    "fin08::1689": {
+      "chunk_preview": "Interior Building Standards\n\nLong Range Improvement Costs by Scope (Capital Improvements)\nRed\nYellow\nGreen\nHVAC\n$18,786,495\n$4,258,800\n$12,051,000\n$35,096,295\nE",
+      "grade": 2,
+      "query": "operation of plant and facilities maintenance costs"
     },
     "fin08::2058": {
       "chunk_preview": "Point \nValue\nAdmin\nErwin\nMeadows\nAverage\nPercent\nComments\n6.1 Exterior windows, doors, and walls are of \nmaterials and finishes that require \nminimum maintenanc",
@@ -1550,8 +2445,38 @@
       "grade": 2,
       "query": "operation of plant and facilities maintenance costs"
     },
+    "fin08::4751": {
+      "chunk_preview": "BDGT_FINAL*EXP_FUND_OPERATING                                                               15:42:26 29 MAY 2019     Page     2\n                                ",
+      "grade": 2,
+      "query": "operation of plant and facilities maintenance costs"
+    },
+    "fin08::4753": {
+      "chunk_preview": "Operating Expenditures \nFunction/Object \n69\n\nBDGT_FINAL*EXP_OBJECT_OPERATING                                                                                    ",
+      "grade": 1,
+      "query": "operation of plant and facilities maintenance costs"
+    },
+    "fin08::4756": {
+      "chunk_preview": "Operating Expenditures \nLocation/Object \n \n \n \n \n \n72\n\nBDGT_FINAL*EXP_OBJECT_LOCATION_OPER                                                                      ",
+      "grade": 2,
+      "query": "operation of plant and facilities maintenance costs"
+    },
     "fin08::4758": {
       "chunk_preview": "Capital Improvement \nPlan Expenditures \nBy Location \n \n \n \n \n \n74\n\nFAMILY CENTER\nHVAC upgrades\n$15,000\nHeating boiler replacement\n$14,000\nLift station pumps for",
+      "grade": 2,
+      "query": "operation of plant and facilities maintenance costs"
+    },
+    "fin08::4844": {
+      "chunk_preview": "BDGT_FINAL*EXP_FUND_OPERATING                                                               17:20:26 08 JUN 2020     Page     2\n                                ",
+      "grade": 2,
+      "query": "operation of plant and facilities maintenance costs"
+    },
+    "fin08::4846": {
+      "chunk_preview": "Operating Expenditures \nFunction/Object \n72\n\nBDGT_FINAL*EXP_OBJECT_OPERATING                                                                                    ",
+      "grade": 1,
+      "query": "operation of plant and facilities maintenance costs"
+    },
+    "fin08::4849": {
+      "chunk_preview": "Operating Expenditures \nLocation/Object \n \n \n \n \n \n75\n\nBDGT_FINAL*EXP_OBJECT_LOCATION_OPER                                                                      ",
       "grade": 2,
       "query": "operation of plant and facilities maintenance costs"
     },
@@ -1565,6 +2490,11 @@
       "grade": 3,
       "query": "operation of plant and facilities maintenance costs"
     },
+    "fin08::4874": {
+      "chunk_preview": "BDGT_FINAL*ACTUAL_EXP_FUND_OPERATIN                                                         18:53:14 08 JUN 2020     Page     2\n                                ",
+      "grade": 3,
+      "query": "operation of plant and facilities maintenance costs"
+    },
     "fin08::4876": {
       "chunk_preview": "BDGT_FINAL*EXP_FUND_OPERATING                                                               17:46:12 08 JUN 2020     Page     2\n                                ",
       "grade": 3,
@@ -1575,8 +2505,33 @@
       "grade": 2,
       "query": "operation of plant and facilities maintenance costs"
     },
+    "fin08::4929": {
+      "chunk_preview": "Funding is allocated based on operational \nneeds. District administration will continue to review the Family Center\u2019s fee structure to ensure tuition maintains ",
+      "grade": 2,
+      "query": "operation of plant and facilities maintenance costs"
+    },
     "fin08::4960": {
       "chunk_preview": "BDGT_FINAL*EXP_FUND_OPERATING                                                               09:12:02 13 MAY 2021     Page     2\n                                ",
+      "grade": 2,
+      "query": "operation of plant and facilities maintenance costs"
+    },
+    "fin08::4961": {
+      "chunk_preview": "Operating Expenditures \nLocation/Fund \n \n \n72\n\nBDGT_FINAL*EXP_OPERATING_FUND_LOCAT                                                         09:23:56 13 MAY 2021 ",
+      "grade": 2,
+      "query": "operation of plant and facilities maintenance costs"
+    },
+    "fin08::4962": {
+      "chunk_preview": "Operating Expenditures \nFunction/Object \n74\n\nBDGT_FINAL*EXP_OBJECT_OPERATING                                                                                    ",
+      "grade": 1,
+      "query": "operation of plant and facilities maintenance costs"
+    },
+    "fin08::4964": {
+      "chunk_preview": "BDGT_FINAL*EXP_OBJECT_OPERATING                                                                                        09:25:37 13 MAY 2021     Page     2\n     ",
+      "grade": 3,
+      "query": "operation of plant and facilities maintenance costs"
+    },
+    "fin08::4965": {
+      "chunk_preview": "Operating Expenditures \nLocation/Object \n \n \n \n \n \n77\n\nBDGT_FINAL*EXP_OBJECT_LOCATION_OPER                                                                      ",
       "grade": 2,
       "query": "operation of plant and facilities maintenance costs"
     },
@@ -1592,6 +2547,21 @@
     },
     "fin08::4969": {
       "chunk_preview": "Capital Outlay - CIP Funds by Building\nSCHOOL DISTRICT OF CLAYTON\nDistrict Maintenance Facility\n2021-2022\nCLAYTON HIGH SCHOOL\nLighting control\n$1,200\nLighting u",
+      "grade": 2,
+      "query": "operation of plant and facilities maintenance costs"
+    },
+    "fin08::4980": {
+      "chunk_preview": "BDGT_FINAL*EXP_4YR_OPER                                                                     15:19:54 13 MAY 2021     Page     2\n                                ",
+      "grade": 3,
+      "query": "operation of plant and facilities maintenance costs"
+    },
+    "fin08::5028": {
+      "chunk_preview": "A contingency fund of $10,000 is maintained to handle unanticipated needs. Because many of \nTechnology\u2019s projects are completed during the summer months, projec",
+      "grade": 1,
+      "query": "operation of plant and facilities maintenance costs"
+    },
+    "fin08::5060": {
+      "chunk_preview": "Operating Expenditures \nLocation/Fund \n \n \n72\n\nBDGT_FINAL*EXP_OPERATING_FUND_LOCAT                                                         15:45:58 10 MAY 2022 ",
       "grade": 2,
       "query": "operation of plant and facilities maintenance costs"
     },
@@ -1612,6 +2582,11 @@
     },
     "gov01::4047": {
       "chunk_preview": "Approval to hire McPherson and Jacobson as the consulting superintendent search firm to work with our district for \nthe new superintendent search at a cost not ",
+      "grade": 1,
+      "query": "superintendent contract and evaluation"
+    },
+    "gov01::4109": {
+      "chunk_preview": "Superintendent, Dr. Sean Doherty, announced the Legislative Advocacy meetings will start up again in the 2021 year. The financial \ncommittee comprised of board ",
       "grade": 1,
       "query": "superintendent contract and evaluation"
     },
@@ -1665,6 +2640,11 @@
       "grade": 0,
       "query": "superintendent contract and evaluation"
     },
+    "gov01::4874": {
+      "chunk_preview": "BDGT_FINAL*ACTUAL_EXP_FUND_OPERATIN                                                         18:53:14 08 JUN 2020     Page     2\n                                ",
+      "grade": 0,
+      "query": "superintendent contract and evaluation"
+    },
     "gov01::4875": {
       "chunk_preview": "BDGT_FINAL*EXP_FUND_OPERATING                                                               17:45:53 08 JUN 2020     Page     1\n                                ",
       "grade": 0,
@@ -1675,9 +2655,49 @@
       "grade": 1,
       "query": "superintendent contract and evaluation"
     },
+    "gov01::4973": {
+      "chunk_preview": "BDGT_FINAL*EXP_4YR                                                                          15:04:02 13 MAY 2021     Page     1\n                                ",
+      "grade": 0,
+      "query": "superintendent contract and evaluation"
+    },
+    "gov01::4979": {
+      "chunk_preview": "BDGT_FINAL*EXP_4YR_OPER                                                                     15:18:53 13 MAY 2021     Page     1\n                                ",
+      "grade": 0,
+      "query": "superintendent contract and evaluation"
+    },
     "gov01::4999": {
       "chunk_preview": "They may contact the administration to clarify any \nitem. The Board votes on each action item after Board discussion. \n \n5\n\nThe superintendent is the chief exec",
       "grade": 1,
+      "query": "superintendent contract and evaluation"
+    },
+    "gov01::5048": {
+      "chunk_preview": "BDGT_FINAL*EXP_FUND                                                                         15:38:30 10 MAY 2022     Page     1\n                                ",
+      "grade": 0,
+      "query": "superintendent contract and evaluation"
+    },
+    "gov01::5058": {
+      "chunk_preview": "BDGT_FINAL*EXP_FUND_OPERATING                                                               15:44:35 10 MAY 2022     Page     1\n                                ",
+      "grade": 0,
+      "query": "superintendent contract and evaluation"
+    },
+    "gov01::5069": {
+      "chunk_preview": "BDGT_FINAL*EXP_4YR                                                                          15:49:46 10 MAY 2022     Page     1\n                                ",
+      "grade": 0,
+      "query": "superintendent contract and evaluation"
+    },
+    "gov01::5075": {
+      "chunk_preview": "BDGT_FINAL*EXP_4YR_OPER                                                                     15:58:42 10 MAY 2022     Page     1\n                                ",
+      "grade": 0,
+      "query": "superintendent contract and evaluation"
+    },
+    "gov01::5089": {
+      "chunk_preview": "Pamela Lyss-Lerman \nDirector \n \nThe Superintendent is the Chief Executive Officer of the District, supported by an administrative team. District Administration ",
+      "grade": 0,
+      "query": "superintendent contract and evaluation"
+    },
+    "gov01::5143": {
+      "chunk_preview": "Jason Growe \nDirector \n \nThe Superintendent is the Chief Executive Officer of the District, supported by an administrative team. District Administration \n \nNish",
+      "grade": 0,
       "query": "superintendent contract and evaluation"
     },
     "gov01::5154": {
@@ -1720,6 +2740,11 @@
       "grade": 2,
       "query": "resolution approving the annual budget"
     },
+    "gov02::288": {
+      "chunk_preview": "That the Board of Education approve the Fiscal Year 2024 CRSWC budget as submitted. \n \nMotion by Gary Pierson, second by Stacy Siwak. \nFinal Resolution: Motion ",
+      "grade": 2,
+      "query": "resolution approving the annual budget"
+    },
     "gov02::3484": {
       "chunk_preview": "That the Board of Education approve the Fiscal Year 2022 CRSWC budget as submitted. \n \nMotion by Stacy Siwak, second by Gary Pierson. \nFinal Resolution: Motion ",
       "grade": 3,
@@ -1730,9 +2755,19 @@
       "grade": 1,
       "query": "resolution approving the annual budget"
     },
+    "gov02::3552": {
+      "chunk_preview": "That the Board of Education approves a revision to the 2021-2022 expenditure budget to reflect total expenditures adjustments of \n$1,309,790 as presented. \n \nMo",
+      "grade": 2,
+      "query": "resolution approving the annual budget"
+    },
     "gov02::3553": {
       "chunk_preview": "That the Board of Education approve the 2021-2022 budget revisions as presented. \n \nMotion by Stacy Siwak, second by Gary Pierson. \nFinal Resolution: Motion Car",
       "grade": 2,
+      "query": "resolution approving the annual budget"
+    },
+    "gov02::3558": {
+      "chunk_preview": "That the Board of Education approve payment of current expenditures and investments for December 2021 as detailed below \n \nMotion by Stacy Siwak, second by Gary",
+      "grade": 1,
       "query": "resolution approving the annual budget"
     },
     "gov02::3655": {
@@ -1743,6 +2778,11 @@
     "gov02::3707": {
       "chunk_preview": "That the Board ofEducation approve the Fiscal Year 2023 CR5WCbudget as submitted.\nMotion by Stacy Siwak, second by Gary Pierson.\nFinal Resolution: Motion Fails\n",
       "grade": 2,
+      "query": "resolution approving the annual budget"
+    },
+    "gov02::3726": {
+      "chunk_preview": "That the Board ofEducation approve the Fiscal Year 2023 CRSWCbudget\nas submitted.\nMotion by Stacy Siwak, second by Gary Pierson.\nFinal Resolution: Motion Carrie",
+      "grade": 3,
       "query": "resolution approving the annual budget"
     },
     "gov02::3861": {
@@ -1760,6 +2800,11 @@
       "grade": 3,
       "query": "resolution approving the annual budget"
     },
+    "gov02::4004": {
+      "chunk_preview": "That the Board of Education approve the 2020-2021 budget revision requesting a $500,000 increase in General \nFund operating expenses to cover the District\u2019s por",
+      "grade": 2,
+      "query": "resolution approving the annual budget"
+    },
     "gov02::4031": {
       "chunk_preview": "That the Board of Education approve the 2020-2021 budget revision requesting a $555,300 increase to the 2020-\n2021 Capital Fund operating expense for the instal",
       "grade": 2,
@@ -1770,14 +2815,29 @@
       "grade": 1,
       "query": "resolution approving the annual budget"
     },
+    "gov02::4107": {
+      "chunk_preview": "That the Board of Education approve the payment of current expenditures and investments for November, 2020 as presented \n \nMotion by Gary Pierson, second by Amy",
+      "grade": 1,
+      "query": "resolution approving the annual budget"
+    },
     "gov02::4123": {
       "chunk_preview": "That the Board of Education approve the payment of current expenditures and investments for December, 2020 as presented below and \nattached \n \nMotion by Gary Pi",
+      "grade": 1,
+      "query": "resolution approving the annual budget"
+    },
+    "gov02::4152": {
+      "chunk_preview": "That the Board of Education approve payment of current expenditures and investments for January 2021 as shown \n \nMotion by Gary Pierson, second by Amy Rubin. \nF",
       "grade": 1,
       "query": "resolution approving the annual budget"
     },
     "gov02::4221": {
       "chunk_preview": "Budget\nThat the Board ofEducation approve the 2021-2022\nbudget as presented.\nMotion by Stacy Siwak, second by Gary Pierson.\nFinal Resolution: Motion Carries\nYes",
       "grade": 3,
+      "query": "resolution approving the annual budget"
+    },
+    "gov02::4797": {
+      "chunk_preview": "Budgets are then built for the upcoming year based upon these District-wide prioritized \nrequests. The final ZBB budget is then balanced given funding constrain",
+      "grade": 1,
       "query": "resolution approving the annual budget"
     },
     "gov02::5085": {
@@ -1808,6 +2868,41 @@
     "gov03::11": {
       "chunk_preview": "Action, Procedural: 3.01 Election of President \nThat the Board of Education elect a president. \nMs. Stacy Siwak was nominated for President by Chris Win. \nThere",
       "grade": 3,
+      "query": "board officer elections and board president"
+    },
+    "gov03::125": {
+      "chunk_preview": "Board of Education Business Meeting \nSchool District of Clayton \nJune 5, 2024 Meeting Minutes \n \nMembers Present: \n \nMs. Stacy Siwak \u2013President \nMs. Kim Hurst \u2013",
+      "grade": 1,
+      "query": "board officer elections and board president"
+    },
+    "gov03::168": {
+      "chunk_preview": "Seven (7) Candidates returned applicationsbefore the deadline. Candidates addressed the\nmembers of the Board with a statement.\nEach candidate\nwas allowed 3 minu",
+      "grade": 1,
+      "query": "board officer elections and board president"
+    },
+    "gov03::179": {
+      "chunk_preview": "Board of Education Business Meeting \nSchool District of Clayton \nNovember 20, 2024 Meeting Minutes \n \nMembers Present: \nMs. Stacy Siwak \u2013President \nMs. Kim Hurs",
+      "grade": 1,
+      "query": "board officer elections and board president"
+    },
+    "gov03::227": {
+      "chunk_preview": "Approve the revisions to Policy BBB-2: School Board Elections  as proposed in one reading due to timeline needs. \nMotion by Chris Win, second by Kim Hurst. \nFin",
+      "grade": 1,
+      "query": "board officer elections and board president"
+    },
+    "gov03::229": {
+      "chunk_preview": "Mr. Leo Human shared information about the Wydown Fall Play \u201c12 Angry Jurors\u201d. Mr. Human also provided \nan update on the Legislative Advisory Committee meeting.",
+      "grade": 1,
+      "query": "board officer elections and board president"
+    },
+    "gov03::230": {
+      "chunk_preview": "Board of Education Business Meeting \nSchool District of Clayton \nOctober 9, 2024 Meeting Minutes \n \nMembers Present: \nMs. Stacy Siwak \u2013President \nMs. Kim Hurst ",
+      "grade": 1,
+      "query": "board officer elections and board president"
+    },
+    "gov03::292": {
+      "chunk_preview": "Joint Board of Education/Board of Aldermen Business Meeting \nSchool District of Clayton \nSeptember 4, 2024 Meeting Minutes \n \n \nMembers Present: \n \nMs. Stacy Si",
+      "grade": 1,
       "query": "board officer elections and board president"
     },
     "gov03::3596": {
@@ -1843,6 +2938,21 @@
     "gov03::3917": {
       "chunk_preview": "Action, Procedural: 3.01 Election of President\nMr. Jason Wilson self\u2014nominatedfor President.\nMs. Kim Hurst nominated Amy Rubin for President.\nThe votes\nwere as ",
       "grade": 3,
+      "query": "board officer elections and board president"
+    },
+    "gov03::4066": {
+      "chunk_preview": "Board president, Joe Miller, left the meeting at 8:57 p.m. and returned at 8:59 p.m.\n\nPage 3 of 4 \nBoard of Education Meeting \nOctober 28, 2020 \nPage 3 \nThat th",
+      "grade": 1,
+      "query": "board officer elections and board president"
+    },
+    "gov03::4101": {
+      "chunk_preview": "Joe Miller, president, updated the community about the Board of Education candidate filing for the April, 2021 election.",
+      "grade": 1,
+      "query": "board officer elections and board president"
+    },
+    "gov03::4175": {
+      "chunk_preview": "Information, Procedural: 2.01 Uncontested Election \nThis year we only had our two incumbents apply for re-election. Therefore, no election was held. Amy Rubin a",
+      "grade": 2,
       "query": "board officer elections and board president"
     },
     "gov03::4176": {
@@ -1905,6 +3015,61 @@
       "grade": 2,
       "query": "consent agenda approval of meeting minutes"
     },
+    "gov04::132": {
+      "chunk_preview": "Resolution: Motion to approve consent agenda items 5.02 through 5.11. \nThat the Board of Education approve the Tuition Support structure as presented. \nMotion b",
+      "grade": 2,
+      "query": "consent agenda approval of meeting minutes"
+    },
+    "gov04::145": {
+      "chunk_preview": "Resolution: That the Board of Education approve the consent agenda for agenda items 6.02 through 6.10. \nThat the Board of Education approve the consent agenda f",
+      "grade": 2,
+      "query": "consent agenda approval of meeting minutes"
+    },
+    "gov04::162": {
+      "chunk_preview": "Motion to approve consent agenda items 8.02 through 8.10. \nMotion by Chris Win, second by Jason Growe. \nFinal Resolution: Motion Carries \nYes: Kimberly Hurst, S",
+      "grade": 2,
+      "query": "consent agenda approval of meeting minutes"
+    },
+    "gov04::177": {
+      "chunk_preview": "Motion to approve consent agenda items 2.01 to 2.04 \n\u2022 \n2.02 District Website Hosting Agreement with Finalsite \n\u2022 \n2.03 Personnel \n\u2022 \n2.04 Meeting Minutes \nMoti",
+      "grade": 3,
+      "query": "consent agenda approval of meeting minutes"
+    },
+    "gov04::18": {
+      "chunk_preview": "Resolution: Motion to approve consent agenda items 7.02 through 7.09. \nMotion by Chris Win, second by Kimberly Hurst. \nFinal Resolution: Motion Carries \nYes: Ki",
+      "grade": 2,
+      "query": "consent agenda approval of meeting minutes"
+    },
+    "gov04::193": {
+      "chunk_preview": "Motion to approve consent agenda items 9.02 through 9.08. \nMotion by Chris Win, second by Kim Hurst. \nFinal Resolution: Motion Carries \nYes: Kimberly Hurst, Sta",
+      "grade": 2,
+      "query": "consent agenda approval of meeting minutes"
+    },
+    "gov04::203": {
+      "chunk_preview": "That the Board of Education approve the consent agenda. \n \nMotion by Gary Pierson, second by Stacy Siwak. \nFinal Resolution: Motion Carries \nYes: Amy Rubin, Kim",
+      "grade": 2,
+      "query": "consent agenda approval of meeting minutes"
+    },
+    "gov04::215": {
+      "chunk_preview": "That the Board of Education approve the consent agenda. \nMotion by Gary Pierson, second by Stacy Siwak. \nFinal Resolution: Motion Carries \nYes: Amy Rubin, Kimbe",
+      "grade": 2,
+      "query": "consent agenda approval of meeting minutes"
+    },
+    "gov04::228": {
+      "chunk_preview": "Motion to approve consent agenda items 9.02 through 9.08. \nMotion by Chris Win, second by Kim Hurst. \nFinal Resolution: Motion Carries \nYes: Kimberly Hurst, Sta",
+      "grade": 2,
+      "query": "consent agenda approval of meeting minutes"
+    },
+    "gov04::239": {
+      "chunk_preview": "Motion to approve consent agenda items 8.02 through 8.03. \nMotion by Chris Win, second by Kim Hurst. \nFinal Resolution: Motion Carries \nYes: Kimberly Hurst, Sta",
+      "grade": 2,
+      "query": "consent agenda approval of meeting minutes"
+    },
+    "gov04::3487": {
+      "chunk_preview": "Action (Consent), Minutes: 10.03 Approval of Minutes - August 18, 2021 \n \nMotion by Stacy Siwak, second by Gary Pierson. \nFinal Resolution: Motion Carries \nYes:",
+      "grade": 3,
+      "query": "consent agenda approval of meeting minutes"
+    },
     "gov04::3506": {
       "chunk_preview": "Motion to approve consent agenda items 3.02 to 3.06",
       "grade": 2,
@@ -1933,6 +3098,11 @@
     "gov04::3908": {
       "chunk_preview": "10.09\nResolution: That the Board of Education approve the consent\nagenda for agenda items 10.02 through 10.09\nThat the Board of Education approve the consent\nag",
       "grade": 2,
+      "query": "consent agenda approval of meeting minutes"
+    },
+    "gov04::3932": {
+      "chunk_preview": "11.04.\nMotion to approve consent\nagenda\nitems 11.02 through 11.04.\nMotion by Gary Pierson, second by Stacy Siwak.\nFinal Resolution: Motion Carries\nYes: Amy Rubi",
+      "grade": 3,
       "query": "consent agenda approval of meeting minutes"
     },
     "gov04::4151": {
@@ -1970,6 +3140,11 @@
       "grade": 2,
       "query": "consent agenda approval of meeting minutes"
     },
+    "gov04::4439": {
+      "chunk_preview": "8.10\nMotion to approve\nconsent\nagenda items 8. 02 through 8.10.\nMotion by Chris Win, second by Jason Growe.\nFinal Resolution: Motion Carries\nYes: Kimberly Hurst",
+      "grade": 3,
+      "query": "consent agenda approval of meeting minutes"
+    },
     "gov04::60": {
       "chunk_preview": "Ms. Siwak spoke about agenda item 7.04\nMs. Hurst spoke about the financial agenda items.\nThat the Board of Education approve the consent\nagenda items 7.02 throu",
       "grade": 2,
@@ -2000,6 +3175,11 @@
       "grade": 3,
       "query": "consent agenda approval of meeting minutes"
     },
+    "gov04::87": {
+      "chunk_preview": "Approve the consent agenda items 8.02 through 8.06. \n \n\uf0b7 \n8.02 October 2023 Financial Reporting \n\uf0b7 \n8.03 October 2023 Disbursement Report \n\uf0b7 \n8.04 Participants ",
+      "grade": 2,
+      "query": "consent agenda approval of meeting minutes"
+    },
     "gov05::1693": {
       "chunk_preview": "Survey\nSelect top 5\n\nAt the final step of the master planning process, the Joint Steering Committee and Subcommittee meetings provided a forum \nfor discussion a",
       "grade": 0,
@@ -2020,6 +3200,16 @@
       "grade": 0,
       "query": "closed session topics"
     },
+    "gov05::3479": {
+      "chunk_preview": "Action, Procedural: 4.01 Adjourn - Board of Education/Board of Alderman Joint Session \nThat the Board of Education will adjourn the joint meeting of the Board o",
+      "grade": 0,
+      "query": "closed session topics"
+    },
+    "gov05::3577": {
+      "chunk_preview": "Action, Procedural: 10.01 Adjournment\nThat the Board ofEducation adjourn.\nMotion by Stacy Siwak, second by Gary Pierson.\nFinal Resolution: Motion Carries\nYes: A",
+      "grade": 0,
+      "query": "closed session topics"
+    },
     "gov05::3624": {
       "chunk_preview": "to Community\nEngagement\nAction, Procedural: 8.01 Adjourn\nto Executive Session\nMotion to adjourn to Executive Session. Following Executive Session, the board wil",
       "grade": 1,
@@ -2028,6 +3218,11 @@
     "gov05::3690": {
       "chunk_preview": "Notice to the public that an executive session was held.",
       "grade": 1,
+      "query": "closed session topics"
+    },
+    "gov05::3694": {
+      "chunk_preview": "Action, Procedural: 5.01 Adjourn\n- Board of Education/Board of Alderman Joint Session\nThat the Board ofEducation willadjourn the joint meeting ofthe Board ofEdu",
+      "grade": 0,
       "query": "closed session topics"
     },
     "gov05::3934": {
@@ -2040,9 +3235,29 @@
       "grade": 1,
       "query": "closed session topics"
     },
+    "gov05::4056": {
+      "chunk_preview": "Action, Procedural: 3.01 Adjourn to Executive Session \nMotion to adjourn the working session and pursuant to RSMO 610.021(3),(13) the Board of Education will me",
+      "grade": 2,
+      "query": "closed session topics"
+    },
     "gov05::4072": {
       "chunk_preview": "Action, Procedural: 12.01 Adjournment \nThat the Board of Education adjourn back to executive session. \nMotion by Gary Pierson, second by Amy Rubin. \nFinal Resol",
       "grade": 1,
+      "query": "closed session topics"
+    },
+    "gov05::4092": {
+      "chunk_preview": "Action, Procedural: 3.01 Adjourn to Executive Session \nMotion to adjourn the working session and pursuant to RSMO 610.021(3),(13) the Board of Education will me",
+      "grade": 2,
+      "query": "closed session topics"
+    },
+    "gov05::4230": {
+      "chunk_preview": "Action, Procedural:\n10.01 Adjournment\nThat the Board ofEducation adjourn\nto executive session.\nMotion by Stacy Siwak, second by Gary Pierson.\nFinal Resolution: ",
+      "grade": 1,
+      "query": "closed session topics"
+    },
+    "gov05::4232": {
+      "chunk_preview": "Information,\nProcedural:\n1.01 Statement\nof Adequate\nNotice\nThe meeting\nwas called to order at 6:34 p.m. and was held via the virtual platform, Zoom.\nWe move tha",
+      "grade": 0,
       "query": "closed session topics"
     },
     "gov05::4417": {
@@ -2080,6 +3295,11 @@
       "grade": 3,
       "query": "closed session topics"
     },
+    "gov05::4556": {
+      "chunk_preview": "Closed meetings and closed records authorized when, \nexceptions. Except to the extent disclosure is otherwise required by law, a public govern\u00ad\nmental body is a",
+      "grade": 3,
+      "query": "closed session topics"
+    },
     "gov05::4565": {
       "chunk_preview": "only to the extent necessary for the specific reason announced to justify the \nclosed meeting or vote. Public governmental bodies shall not discuss any \nbusines",
       "grade": 2,
@@ -2110,14 +3330,44 @@
       "grade": 0,
       "query": "bond ballot measure board action"
     },
+    "gov06::217": {
+      "chunk_preview": "Action, Procedural: 9.01 Adjournment \nThe meeting adjourned at 8:34 p.m. \nMotion by Gary Pierson, second by Stacy Siwak. \nFinal Resolution: Motion Carries \nYes:",
+      "grade": 0,
+      "query": "bond ballot measure board action"
+    },
+    "gov06::279": {
+      "chunk_preview": "To adopt the agenda as posted. \n \nMotion by Gary Pierson, second by Amy Rubin. \nFinal Resolution: Motion Carries \nYes: Amy Rubin, Kimberly Hurst, Stacy Siwak, G",
+      "grade": 0,
+      "query": "bond ballot measure board action"
+    },
+    "gov06::34": {
+      "chunk_preview": "Action, Procedural: 10.01 Adjournment \nThat the Board of Education adjourn. \nMotion by Chris Win, second by Jason Growe. \nFinal Resolution: Motion Carries \nYes:",
+      "grade": 0,
+      "query": "bond ballot measure board action"
+    },
     "gov06::3485": {
       "chunk_preview": "That the Board of Education approve the carrier recommendations and respective rates representing an overall increase of 3.4% for the \n2022 calendar year as pre",
+      "grade": 0,
+      "query": "bond ballot measure board action"
+    },
+    "gov06::3491": {
+      "chunk_preview": "Action, Procedural: 14.01 Adjournment \nThat the Board of Education adjourn. \n \nMotion by Stacy Siwak, second by Gary Pierson. \nFinal Resolution: Motion Carries ",
       "grade": 0,
       "query": "bond ballot measure board action"
     },
     "gov06::3531": {
       "chunk_preview": "That the Board of Education authorize the solicitation of bids for the second phase safety and building improvements that will take place \nduring the summer of ",
       "grade": 2,
+      "query": "bond ballot measure board action"
+    },
+    "gov06::3538": {
+      "chunk_preview": "Action, Procedural: 12.01 Adjournment \nThat the Board of Education adjourn. \n \nMotion by Stacy Siwak, second by Gary Pierson. \nFinal Resolution: Motion Carries ",
+      "grade": 0,
+      "query": "bond ballot measure board action"
+    },
+    "gov06::3561": {
+      "chunk_preview": "Action, Procedural: 12.01 Adjournment \nThat the Board of Education adjourn. \n \nMotion by Stacy Siwak, second by Gary Pierson. \nFinal Resolution: Motion Carries ",
+      "grade": 0,
       "query": "bond ballot measure board action"
     },
     "gov06::3567": {
@@ -2133,6 +3383,11 @@
     "gov06::3634": {
       "chunk_preview": "to the Board",
       "grade": 0,
+      "query": "bond ballot measure board action"
+    },
+    "gov06::3646": {
+      "chunk_preview": "'\nAction (Consent), Minutes: 8.06 Meeting\nMinutes\n\u2014 April 20, 2022\nMotion by Stacy Siwak, second by Gary Pierson.\nFinal Resolution: Motion Carries\nYes: Amy Rubi",
+      "grade": 1,
       "query": "bond ballot measure board action"
     },
     "gov06::3703": {
@@ -2157,6 +3412,11 @@
     },
     "gov06::3805": {
       "chunk_preview": "to the Board",
+      "grade": 0,
+      "query": "bond ballot measure board action"
+    },
+    "gov06::3839": {
+      "chunk_preview": "Action, Procedural: 4.01 Adjournment\nThat the Board of Education adjourn.\nMotion by Stacy Siwak, second by Gary Pierson.\nFinal Resolution: Motion Carries\nYes: A",
       "grade": 0,
       "query": "bond ballot measure board action"
     },
@@ -2185,6 +3445,26 @@
       "grade": 0,
       "query": "bond ballot measure board action"
     },
+    "gov06::4012": {
+      "chunk_preview": "Action, Procedural: 12.01 Adjournment \nThat the Board of Education adjourn. \n  \nMotion by Gary Pierson, second by Amy Rubin. \nFinal Resolution: Motion Carries \n",
+      "grade": 0,
+      "query": "bond ballot measure board action"
+    },
+    "gov06::4037": {
+      "chunk_preview": "Action, Procedural: 16.01 Adjournment \nThat the Board of Education adjourn. \nMotion by Gary Pierson, second by Amy Rubin. \nFinal Resolution: Motion Carries \nYes",
+      "grade": 0,
+      "query": "bond ballot measure board action"
+    },
+    "gov06::4052": {
+      "chunk_preview": "Action, Procedural: 12.01 Adjournment \nThat the Board of Education adjourn. \n \nMotion by Joe Miller, second by Amy Rubin. \nFinal Resolution: Motion Carries \nYes",
+      "grade": 0,
+      "query": "bond ballot measure board action"
+    },
+    "gov06::4088": {
+      "chunk_preview": "Action, Procedural: 11.01 Adjournment \nThat the Board of Education adjourn. \n \nMotion by Gary Pierson, second by Amy Rubin. \nFinal Resolution: Motion Carries \nY",
+      "grade": 0,
+      "query": "bond ballot measure board action"
+    },
     "gov06::4091": {
       "chunk_preview": "That the Board of Education accept the revised contract with Bond Architects, Inc. as presented. \nMotion by Gary Pierson, second by Amy Rubin. \nFinal Resolution",
       "grade": 2,
@@ -2195,13 +3475,63 @@
       "grade": 2,
       "query": "bond ballot measure board action"
     },
+    "gov06::4126": {
+      "chunk_preview": "Action, Procedural: 13.01 Adjournment \nThat the Board of Education adjourn. \n \nMotion by Gary Pierson, second by Amy Rubin. \nFinal Resolution: Motion Carries \nY",
+      "grade": 0,
+      "query": "bond ballot measure board action"
+    },
+    "gov06::4142": {
+      "chunk_preview": "Action, Procedural: 10.01 Adjournment \nThat the Board of Education adjourn. \n \nMotion by Gary Pierson, second by Amy Rubin. \nFinal Resolution: Motion Carries \nY",
+      "grade": 0,
+      "query": "bond ballot measure board action"
+    },
+    "gov06::4172": {
+      "chunk_preview": "Action, Procedural: 12.01 Adjournment \nThat the Board of Education adjourn. \n \nMotion by Gary Pierson, second by Amy Rubin. \nFinal Resolution: Motion Carries \nY",
+      "grade": 0,
+      "query": "bond ballot measure board action"
+    },
+    "gov06::4195": {
+      "chunk_preview": "Action, Procedural: 11.01 Adjournment\nThat the Board of Education adjourn.\nMotion by Stacy Siwak, second by Gary Pierson.\nFinal Resolution: Motion Carries\nYes: ",
+      "grade": 0,
+      "query": "bond ballot measure board action"
+    },
+    "gov06::4207": {
+      "chunk_preview": "Action (Consent), Minutes: 9.03 Meeting Minutes -May 12, 2021 \n \nMotion by Stacy Siwak, second by Gary Pierson. \nFinal Resolution: Motion Carries \nYes: Amy Rubi",
+      "grade": 1,
+      "query": "bond ballot measure board action"
+    },
+    "gov06::4211": {
+      "chunk_preview": "Action, Procedural: 13.01 Adjournment \nThat the Board of Education adjourn. \n \nMotion by Stacy Siwak, second by Gary Pierson. \nFinal Resolution: Motion Carries ",
+      "grade": 0,
+      "query": "bond ballot measure board action"
+    },
     "gov06::4217": {
       "chunk_preview": "to the Board",
       "grade": 0,
       "query": "bond ballot measure board action"
     },
+    "gov06::4421": {
+      "chunk_preview": "Action, Procedural: 6.01 Adjournment \nThat the Board of Education adjourn. \nMotion by Chris Win, second by Stacy Siwak. \nFinal Resolution: Motion Carries \nYes: ",
+      "grade": 0,
+      "query": "bond ballot measure board action"
+    },
     "gov07::169": {
       "chunk_preview": "Board of Education Retreat \nSchool District of Clayton \nNovember 15, 2023 Meeting Minutes \n \nMembers Present: \n \nMs. Amy Rubin \u2013 President  \nMs. Stacy Siwak \u2013Vi",
+      "grade": 1,
+      "query": "board retreat goals and priorities"
+    },
+    "gov07::1695": {
+      "chunk_preview": "Accessibility & Inclusiveness \n\u2022\nIncrease quality of accessibility routes and features. Curriculum & Programming\n\u2022\nIncrease quantity of flexible spaces, large a",
+      "grade": 1,
+      "query": "board retreat goals and priorities"
+    },
+    "gov07::1921": {
+      "chunk_preview": "Involving parents, students, staff and Clayton residents, the District ensures diverse\nperspectives and needs are considered when identifying and prioritizing f",
+      "grade": 1,
+      "query": "board retreat goals and priorities"
+    },
+    "gov07::1922": {
+      "chunk_preview": "10\nLRFMP Schedule:\nMay:   Kickoff meeting and BOE introduction\nJune:   Conduct building assessments\nJune:   Building tours with principals\nJuly:    Prep and fie",
       "grade": 1,
       "query": "board retreat goals and priorities"
     },
@@ -2220,9 +3550,24 @@
       "grade": 2,
       "query": "board retreat goals and priorities"
     },
+    "gov07::2003": {
+      "chunk_preview": "58\nDOT EXERCISES\n\n59\nTHE FAMILY\nCENTER\nFC\nThere were three priorities that received the most votes by the subcommittee at the \nFamily Center. One of these was t",
+      "grade": 1,
+      "query": "board retreat goals and priorities"
+    },
+    "gov07::214": {
+      "chunk_preview": "Board members received an update regarding Strategic Plan Goal 1: A Place for Everyone. The plan, along with district policy, serves \nas a guide to the District",
+      "grade": 1,
+      "query": "board retreat goals and priorities"
+    },
     "gov07::250": {
       "chunk_preview": "to the Board",
       "grade": 0,
+      "query": "board retreat goals and priorities"
+    },
+    "gov07::3520": {
+      "chunk_preview": "The Board of Education and administrators\nmet with students to discuss Goal 3 of ourstrategic\nPlan.\nAmy Rubin,Board President\nStacy Siwak, Boar\ncretary\nDate: Ma",
+      "grade": 1,
       "query": "board retreat goals and priorities"
     },
     "gov07::3567": {
@@ -2233,6 +3578,11 @@
     "gov07::3634": {
       "chunk_preview": "to the Board",
       "grade": 0,
+      "query": "board retreat goals and priorities"
+    },
+    "gov07::3661": {
+      "chunk_preview": "Action, Procedural: 9.01 Adjournment - Business Meeting \nThat the Board of Education adjourn the business meeting and move into a board retreat \n \nMotion by Sta",
+      "grade": 1,
       "query": "board retreat goals and priorities"
     },
     "gov07::3663": {
@@ -2300,8 +3650,63 @@
       "grade": 1,
       "query": "board retreat goals and priorities"
     },
+    "gov07::4682": {
+      "chunk_preview": "The Board worked in small groups with the Central Office administration to review the document and to process any clarifying questions and suggestions. The info",
+      "grade": 2,
+      "query": "board retreat goals and priorities"
+    },
+    "gov07::4683": {
+      "chunk_preview": "With input of varied stakeholders, we created the Clayton Profile of a Graduate describing the attributes we want for our students - while also supporting our D",
+      "grade": 2,
+      "query": "board retreat goals and priorities"
+    },
+    "gov07::4684": {
+      "chunk_preview": "Since then, a subcommittee of the Board and the administration reconvened and decided on the final refinements of the goals and objectives. The Board of Educati",
+      "grade": 2,
+      "query": "board retreat goals and priorities"
+    },
+    "gov07::4693": {
+      "chunk_preview": "TABLE OF CONTENTS \n \nBUDGET MESSAGE \n \n \n 1 \n \nINTRODUCTORY SECTION  \n 5 \n \nDistrict Entity \n \n \n \n  6 \nGovernance  \n \n \n \n  6 \n \nBoard of Education \n \n \n  6 \n ",
+      "grade": 1,
+      "query": "board retreat goals and priorities"
+    },
+    "gov07::843": {
+      "chunk_preview": "That's why this is current goal three objectives. So I'm glad to hear that you're looking to revise those for anyone listening. It is typical in a strategic pla",
+      "grade": 2,
+      "query": "board retreat goals and priorities"
+    },
+    "gov07::845": {
+      "chunk_preview": "So as as they stated, the CSIP is an evergreen model, so the objectives continuously change. Last year, Molina looked at goal two and we adjusted those objectiv",
+      "grade": 2,
+      "query": "board retreat goals and priorities"
+    },
     "gov08::1389": {
       "chunk_preview": "And I don't even know if it's appropriate. That's the other. That's why I asked the question. So we all I think it's a great question. But are we all okay leavi",
+      "grade": 1,
+      "query": "board policy on public comment"
+    },
+    "gov08::3623": {
+      "chunk_preview": "at Board Meetings\nNo public comments\nwere presented\nat this meeting.",
+      "grade": 1,
+      "query": "board policy on public comment"
+    },
+    "gov08::3681": {
+      "chunk_preview": "at Board Meetings\nNo public comments\nwere presented\nat this meeting.",
+      "grade": 1,
+      "query": "board policy on public comment"
+    },
+    "gov08::3738": {
+      "chunk_preview": "at Board Meetings\nThere were no public comments\npresented\nat this meeting.\n\nBoard of Education Meeting\nSeptember\n28, 2022\nPage 4",
+      "grade": 1,
+      "query": "board policy on public comment"
+    },
+    "gov08::3760": {
+      "chunk_preview": "at Board Meetings\nFour public comments\nwere presented\nto the board:\nIan Mackay spoke about the banning of books.\nRene Freels spoke about transgender\nyouth in ne",
+      "grade": 1,
+      "query": "board policy on public comment"
+    },
+    "gov08::3767": {
+      "chunk_preview": "at Board Meetings\nThere were no public comments\npresented at this meeting.\n\nBoard of Education Meeting\nOctober 26, 2022\nPage 2",
       "grade": 1,
       "query": "board policy on public comment"
     },
@@ -2315,9 +3720,24 @@
       "grade": 0,
       "query": "board policy on public comment"
     },
+    "gov08::3992": {
+      "chunk_preview": "The following people submitted public comments which were submitted electronically and read by Chris Tennill.  \nPam Washington - notice of Board of Education me",
+      "grade": 1,
+      "query": "board policy on public comment"
+    },
+    "gov08::4010": {
+      "chunk_preview": "There were three public comments presented:  \nLaura Horwitz commented about board meeting structure and anti-racial/anti-bias. \nAngela Flotken commented about C",
+      "grade": 1,
+      "query": "board policy on public comment"
+    },
     "gov08::4217": {
       "chunk_preview": "to the Board",
       "grade": 0,
+      "query": "board policy on public comment"
+    },
+    "gov08::4428": {
+      "chunk_preview": "at Board Meetings\nNo public comments\nwere submitted.",
+      "grade": 1,
       "query": "board policy on public comment"
     },
     "gov08::4431": {
@@ -2392,6 +3812,11 @@
     },
     "gov08::7916": {
       "chunk_preview": "3.1 \nPublic Participation at Board Meetings \nNo public comments were submitted.",
+      "grade": 1,
+      "query": "board policy on public comment"
+    },
+    "gov08::7941": {
+      "chunk_preview": "2.1 \nPublic Participation at Board Meetings \nNo public comments were submitted.",
       "grade": 1,
       "query": "board policy on public comment"
     },
