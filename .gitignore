@@ -24,6 +24,9 @@ Thumbs.db
 # Data (local only, not committed)
 data/
 
+# Eval reports are regenerated (queries.json + judgments.json are committed)
+eval/results/
+
 # Tools
 .serena/
 .gstack/

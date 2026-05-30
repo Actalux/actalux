@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "note": "Retrieval eval query set, grounded in actual corpus content (finance, governance, curriculum). Edit freely. 'expect_empty' marks integrity probes that should surface NO relevant result (e.g. closed-session content is never published).",
+  "queries": [
+    {"id": "fin01", "domain": "finance", "query": "how much did the district spend on instruction"},
+    {"id": "fin02", "domain": "finance", "query": "general fund total expenditures fiscal year 2024"},
+    {"id": "fin03", "domain": "finance", "query": "ending fund balance and district reserves over time"},
+    {"id": "fin04", "domain": "finance", "query": "debt service principal and interest payments"},
+    {"id": "fin05", "domain": "finance", "query": "per-pupil expenditure by building"},
+    {"id": "fin06", "domain": "finance", "query": "property tax rate hearing and tax levy"},
+    {"id": "fin07", "domain": "finance", "query": "capital projects fund spending"},
+    {"id": "fin08", "domain": "finance", "query": "operation of plant and facilities maintenance costs"},
+
+    {"id": "gov01", "domain": "governance", "query": "superintendent contract and evaluation"},
+    {"id": "gov02", "domain": "governance", "query": "resolution approving the annual budget"},
+    {"id": "gov03", "domain": "governance", "query": "board officer elections and board president"},
+    {"id": "gov04", "domain": "governance", "query": "consent agenda approval of meeting minutes"},
+    {"id": "gov05", "domain": "governance", "query": "closed session topics", "expect_empty": true},
+    {"id": "gov06", "domain": "governance", "query": "bond ballot measure board action"},
+    {"id": "gov07", "domain": "governance", "query": "board retreat goals and priorities"},
+    {"id": "gov08", "domain": "governance", "query": "board policy on public comment"},
+
+    {"id": "cur01", "domain": "curriculum", "query": "high school math curriculum map grades 9-12"},
+    {"id": "cur02", "domain": "curriculum", "query": "Spanish curriculum elementary grades"},
+    {"id": "cur03", "domain": "curriculum", "query": "RIT to Khan Academy alignment"},
+    {"id": "cur04", "domain": "curriculum", "query": "Long Range Facilities Master Plan"},
+    {"id": "cur05", "domain": "curriculum", "query": "strategic plan priorities"},
+    {"id": "cur06", "domain": "curriculum", "query": "middle school performing arts and theater curriculum"},
+    {"id": "cur07", "domain": "curriculum", "query": "assessment and grading guidelines"},
+    {"id": "cur08", "domain": "curriculum", "query": "food services and school meals program"}
+  ]
+}
