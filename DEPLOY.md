@@ -77,41 +77,49 @@ at 1 GB; if you see OOM restarts under load (`fly logs` shows the kill), bump it
 fly scale memory 2048
 ```
 
-The on-disk **image** is large (~17.5 GB) because torch pulls its CUDA Linux
-build — see "CPU-only torch" below, which is the remaining pre-production task.
+The on-disk image is ~1.8 GB (torch is the bulk at ~620 MB; see "CPU-only
+torch" below for how the CUDA stack is kept out). Note: `docker images` may
+report ~4 GB for a buildx image because of attestation/manifest-list
+double-counting — `docker image inspect` and the deployed footprint are the
+real ~1.8 GB.
 
 ## Notes / follow-ups
 
 - **Supabase free-tier resume.** The free tier pauses on inactivity; the
   existing keepalive cron still applies. A live, always-on app with real
   traffic largely keeps the database warm on its own.
-- **CPU-only torch — REQUIRED before production (still open).** torch pulls its
-  CUDA Linux build plus the `nvidia-cu13` libraries (cuDNN, cuSPARSELt, NCCL,
-  nvSHMEM) — together the bulk of the ~17.5 GB image — even though this host has
-  no GPU. A CPU build cuts the image to ~2–3 GB.
+- **CPU-only torch — how `requirements-cpu.txt` works.** torch would otherwise
+  pull its CUDA Linux build plus the `nvidia-cu13` libraries (cuDNN, cuSPARSELt,
+  NCCL, nvSHMEM) — together ~13 GB this GPU-less host never uses. The image
+  installs from `requirements-cpu.txt`, a CPU-pinned dependency set compiled
+  for the Linux deploy target, so torch resolves to `2.12.0+cpu` with no CUDA.
 
-  The clean declarative fix (a `pytorch-cpu` index + `[tool.uv.sources]` torch
-  override) **silently no-ops on the repo's uv (0.8.15)**: torch's latest is
-  2.12.0, the PyTorch CPU index can't satisfy that exact version (the `+cpu`
-  local-version mismatch), so uv falls back to PyPI's CUDA wheel with zero
-  warning. Verified 2026-05-30 — the lock came back with 0 references to the CPU
-  index. Working options, in rough order of cleanliness:
+  This is a separate artifact from `uv.lock` by necessity: torch 2.12 declares
+  the `nvidia-cu13` packages as Linux-marked *dependencies*, so the declarative
+  `[tool.uv.sources]` index override can't strip them from the lock, and uv's
+  `--torch-backend` flag exists only on `uv pip` (install/compile), not on
+  `uv lock`/`uv sync`. `uv.lock` stays CUDA-flavored and governs dev — on macOS
+  torch is CPU-only regardless, so dev is unaffected; the eval reranker keeps
+  its `uv.lock` torch. Only the Linux image needs the override.
 
-  1. **Upgrade uv** (newer releases support markers in index sources) and use a
-     Linux-scoped source:
-     `torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]`.
-  2. **Pin torch** to a version the CPU index actually carries (e.g. an explicit
-     `torch==2.x.y` that exists at download.pytorch.org/whl/cpu) alongside the
-     explicit index source, then `uv lock`.
-  3. **Install in the Dockerfile** via `uv export --frozen` → `uv pip install
-     --torch-backend cpu -r requirements.txt`, keeping the lock CUDA-flavored
-     but overriding torch's backend at image-build time.
+  **Regenerate `requirements-cpu.txt` whenever `pyproject.toml` deps change:**
 
-  This is **repo-wide**, not deploy-only: torch is also the eval reranker's
-  dependency (`src/actalux/eval/rerank.py`), so changing its version/build
-  affects that path too — pick the option and validate the embedder still
-  produces identical vectors (same model, CPU build → numerically equivalent)
-  AND that the eval reranker still loads before committing the lock change.
+  ```bash
+  uv pip compile pyproject.toml \
+    --torch-backend=cpu \
+    --python-platform=x86_64-unknown-linux-gnu \
+    --python-version=3.11 \
+    -o requirements-cpu.txt
+  ```
+
+  (The compile picks the latest compatible torch, so the deploy may run a newer
+  torch patch than `uv.lock`'s — both are torch 2.x with the same bge inference
+  behavior. Pin torch in `pyproject.toml` if you need them identical.)
+- **Reranker (Phase 2).** Not in this image. When wired, it will be an optional
+  `ACTALUX_RERANK=off|api` stage calling the ZeroEntropy hosted API after
+  `hybrid_search`, default off (RRF fallback). The API serves the zerank-2
+  family, not the locally-evaluated zerank-1-small, so it gets its own eval-arm
+  validation first.
 - **Reranker (Phase 2).** Not in this image. When wired, it will be an optional
   `ACTALUX_RERANK=off|api` stage calling the ZeroEntropy hosted API after
   `hybrid_search`, default off (RRF fallback). The API serves the zerank-2
