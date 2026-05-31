@@ -178,6 +178,17 @@ BUDGET_QUERIES = [
 # --- Routes ---
 
 
+@app.get("/healthz")
+def healthz() -> dict[str, str]:
+    """Liveness probe for the platform health check.
+
+    Deliberately DB- and config-free so a paused Supabase free tier can't mark
+    the app unhealthy and trigger restarts. It only reports that the process is
+    up and serving.
+    """
+    return {"status": "ok"}
+
+
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request) -> HTMLResponse:
     """Landing page with search box."""

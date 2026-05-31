@@ -15,6 +15,13 @@ client = TestClient(app, raise_server_exceptions=False)
 class TestStaticPages:
     """Pages that render without database access."""
 
+    def test_healthz_is_db_free_and_ok(self) -> None:
+        # The platform health check must not depend on config or the DB, so a
+        # paused Supabase free tier can't mark the app unhealthy.
+        response = client.get("/healthz")
+        assert response.status_code == 200
+        assert response.json() == {"status": "ok"}
+
     def test_home_page(self) -> None:
         response = client.get("/")
         assert response.status_code == 200

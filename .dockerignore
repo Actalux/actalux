@@ -1,0 +1,25 @@
+# Keep the deploy image lean: ship only what the web app needs at runtime.
+# The local virtualenv is the wrong architecture for the Linux image and is
+# rebuilt inside the container, so it must never be copied in.
+.venv/
+.git/
+.github/
+
+# Crawled documents, manifests, and the eval corpus/models — not used by the
+# running web app (ingest + eval are separate, run elsewhere).
+data/
+eval/
+tests/
+
+# Caches and tooling state.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.serena/
+.gstack/
+.DS_Store
+
+# Local-only docs and scratch (governance/spec docs aren't needed at runtime).
+HANDOFF.md
+design-preview.html
