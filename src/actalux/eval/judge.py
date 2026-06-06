@@ -92,3 +92,93 @@ def grade_relevance(query: str, passage: str, api_key: str, model: str = JUDGE_M
     if not match:
         raise ValueError(f"judge returned no 0-3 digit: {text!r}")
     return int(match.group())
+
+
+# --- Answer-quality judge (synthesis eval) ---------------------------------
+#
+# Grades the generated summary, not retrieval. All three dimensions are judged
+# ONLY against the quotes the answer was given, so the score isolates synthesis
+# quality from retrieval recall (recall is measured separately by the relevance
+# judge above). A cross-model judge (Claude grading an OpenAI-written answer)
+# avoids self-preference bias.
+
+ANSWER_DIMENSIONS = ("faithfulness", "completeness", "directness")
+
+ANSWER_GRADE_SYSTEM = """\
+You grade the quality of an AI-generated answer for Actalux, a nonprofit that \
+makes Clayton, MO school district public records searchable. The answer must \
+ground every claim in the provided source quotes and cite them like [#q003f].
+
+Grade THREE dimensions, each an integer 0-3, judging the ANSWER ONLY against \
+the provided quotes (never outside knowledge):
+
+faithfulness -- are the answer's claims supported by the quotes it cites?
+  3 = every claim is directly supported by its cited quote; nothing invented.
+  2 = mostly supported; one minor unsupported detail or loose citation.
+  1 = a notable claim is not supported by its citation.
+  0 = significant unsupported or fabricated claims.
+
+completeness -- does the answer capture the key relevant information PRESENT IN \
+THE QUOTES for this query? Judge only against the supplied quotes, not what the \
+full archive might contain.
+  3 = uses the relevant quotes well; covers the main points they contain.
+  2 = covers most; misses a secondary available point.
+  1 = misses important information that the quotes contain.
+  0 = barely uses the relevant quotes.
+
+directness -- does it answer the question asked, plainly and without filler?
+  3 = directly and clearly answers the query.
+  2 = answers but with hedging or filler.
+  1 = partial or evasive.
+  0 = does not answer the query (or says nothing was found when quotes exist).
+
+Output ONLY a JSON object, no prose:
+{"faithfulness": <0-3>, "completeness": <0-3>, "directness": <0-3>}\
+"""
+
+ANSWER_GRADE_USER = """\
+Query: {query}
+
+Provided source quotes (the only evidence the answer was allowed to use):
+{quotes}
+
+AI-generated answer:
+{answer}
+
+Grades (JSON only):"""
+
+_JSON_OBJ_RE = re.compile(r"\{.*\}", re.DOTALL)
+
+
+def grade_answer(
+    query: str, answer: str, quotes: str, api_key: str, model: str = JUDGE_MODEL
+) -> dict[str, int]:
+    """Grade a generated answer on faithfulness/completeness/directness (each 0-3).
+
+    Raises on an API error or an unparseable response so the caller skips the
+    query (reduced coverage) rather than scoring on a hole.
+    """
+    client = anthropic.Anthropic(api_key=api_key)
+    resp = client.messages.create(
+        model=model,
+        max_tokens=64,
+        system=ANSWER_GRADE_SYSTEM,
+        messages=[
+            {
+                "role": "user",
+                "content": ANSWER_GRADE_USER.format(query=query, quotes=quotes, answer=answer),
+            }
+        ],
+    )
+    text = "".join(b.text for b in resp.content if isinstance(b, TextBlock)).strip()
+    match = _JSON_OBJ_RE.search(text)
+    if not match:
+        raise ValueError(f"answer judge returned no JSON object: {text!r}")
+    parsed = json.loads(match.group())
+    scores = {}
+    for dim in ANSWER_DIMENSIONS:
+        value = parsed.get(dim)
+        if not isinstance(value, int) or not 0 <= value <= 3:
+            raise ValueError(f"answer judge {dim!r} not a 0-3 int: {parsed!r}")
+        scores[dim] = value
+    return scores

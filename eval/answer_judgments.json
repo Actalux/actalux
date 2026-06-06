@@ -1,0 +1,170 @@
+{
+  "cur01": {
+    "gpt-5-mini": {
+      "completeness": 2,
+      "directness": 2,
+      "faithfulness": 1
+    }
+  },
+  "cur02": {
+    "gpt-5-mini": {
+      "completeness": 1,
+      "directness": 1,
+      "faithfulness": 1
+    }
+  },
+  "cur03": {
+    "gpt-5-mini": {
+      "completeness": 3,
+      "directness": 3,
+      "faithfulness": 2
+    }
+  },
+  "cur04": {
+    "gpt-5-mini": {
+      "completeness": 2,
+      "directness": 2,
+      "faithfulness": 1
+    }
+  },
+  "cur05": {
+    "gpt-5-mini": {
+      "completeness": 2,
+      "directness": 2,
+      "faithfulness": 1
+    }
+  },
+  "cur06": {
+    "gpt-5-mini": {
+      "completeness": 3,
+      "directness": 3,
+      "faithfulness": 3
+    }
+  },
+  "cur07": {
+    "gpt-5-mini": {
+      "completeness": 2,
+      "directness": 2,
+      "faithfulness": 2
+    }
+  },
+  "cur08": {
+    "gpt-5-mini": {
+      "completeness": 2,
+      "directness": 2,
+      "faithfulness": 1
+    }
+  },
+  "fin01": {
+    "gpt-5-mini": {
+      "completeness": 2,
+      "directness": 3,
+      "faithfulness": 2
+    }
+  },
+  "fin02": {
+    "gpt-5-mini": {
+      "completeness": 1,
+      "directness": 1,
+      "faithfulness": 0
+    }
+  },
+  "fin03": {
+    "gpt-5-mini": {
+      "completeness": 2,
+      "directness": 2,
+      "faithfulness": 1
+    }
+  },
+  "fin04": {
+    "gpt-5-mini": {
+      "completeness": 2,
+      "directness": 2,
+      "faithfulness": 1
+    }
+  },
+  "fin05": {
+    "gpt-5-mini": {
+      "completeness": 1,
+      "directness": 1,
+      "faithfulness": 2
+    }
+  },
+  "fin06": {
+    "gpt-5-mini": {
+      "completeness": 2,
+      "directness": 2,
+      "faithfulness": 1
+    }
+  },
+  "fin07": {
+    "gpt-5-mini": {
+      "completeness": 3,
+      "directness": 3,
+      "faithfulness": 2
+    }
+  },
+  "fin08": {
+    "gpt-5-mini": {
+      "completeness": 1,
+      "directness": 1,
+      "faithfulness": 0
+    }
+  },
+  "gov01": {
+    "gpt-5-mini": {
+      "completeness": 3,
+      "directness": 1,
+      "faithfulness": 3
+    }
+  },
+  "gov02": {
+    "gpt-5-mini": {
+      "completeness": 2,
+      "directness": 3,
+      "faithfulness": 3
+    }
+  },
+  "gov03": {
+    "gpt-5-mini": {
+      "completeness": 3,
+      "directness": 3,
+      "faithfulness": 3
+    }
+  },
+  "gov04": {
+    "gpt-5-mini": {
+      "completeness": 3,
+      "directness": 2,
+      "faithfulness": 1
+    }
+  },
+  "gov05": {
+    "gpt-5-mini": {
+      "completeness": 2,
+      "directness": 2,
+      "faithfulness": 1
+    }
+  },
+  "gov06": {
+    "gpt-5-mini": {
+      "completeness": 2,
+      "directness": 2,
+      "faithfulness": 2
+    }
+  },
+  "gov07": {
+    "gpt-5-mini": {
+      "completeness": 2,
+      "directness": 2,
+      "faithfulness": 2
+    }
+  },
+  "gov08": {
+    "gpt-5-mini": {
+      "completeness": 2,
+      "directness": 3,
+      "faithfulness": 1
+    }
+  }
+}
