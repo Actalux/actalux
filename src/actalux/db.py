@@ -47,6 +47,7 @@ def insert_document(client: Client, doc: Document) -> int:
         "content": doc.content,
         "content_hash": doc.content_hash,
         "source_portal": doc.source_portal,
+        "video_id": doc.video_id,
         "version": doc.version,
     }
     if doc.replaces_id is not None:
@@ -116,6 +117,11 @@ def update_document_checked(client: Client, doc_id: int) -> None:
 
     now = datetime.now(UTC).isoformat()
     client.table("documents").update({"last_checked_at": now}).eq("id", doc_id).execute()
+
+
+def set_document_video_id(client: Client, doc_id: int, video_id: str) -> None:
+    """Set a document's YouTube video_id (writer -- needs the service key under RLS)."""
+    client.table("documents").update({"video_id": video_id}).eq("id", doc_id).execute()
 
 
 # --- Chunks ---

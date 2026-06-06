@@ -1,8 +1,10 @@
 {# Source pane: native-format view of the document a result points at.
+   YouTube doc with a video_id -> embedded player + transcript context below.
    PDF source_url -> browser-native iframe viewer.
-   Non-PDF (.txt YouTube transcripts, .html curriculum pages) -> scraped
+   Otherwise (.txt transcripts with no video, .html curriculum pages) -> scraped
    markdown context with the cited passage highlighted. #}
 {% set ctx_chunk = chunk %}
+{% set is_video = document.video_id %}
 {% set is_pdf = document.source_url and document.source_url.lower().endswith('.pdf') %}
 <div class="reader-head">
   <div>
@@ -24,13 +26,32 @@
   <span>{{ ctx_chunk.id | chunk_hash_id }}</span>
 </div>
 
-{% if is_pdf %}
+{% if is_video %}
+{# Lazy facade: only a poster thumbnail loads until the viewer clicks play, then
+   it swaps to the real (nocookie) iframe -- no YouTube connection before then. #}
+<div class="video-embed" style="margin-top: var(--s-4);">
+  <button type="button" class="yt-facade" data-video="{{ document.video_id | urlencode }}"
+          aria-label="Play the board meeting video"
+          style="position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; padding: 0; border: 0; background: #000; cursor: pointer;">
+    <img src="https://i.ytimg.com/vi/{{ document.video_id | urlencode }}/hqdefault.jpg" alt=""
+         loading="lazy" style="width: 100%; height: 100%; object-fit: cover; display: block;">
+    <span aria-hidden="true" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;">
+      <span style="display: flex; align-items: center; justify-content: center; width: 72px; height: 50px; background: var(--accent); color: #fff; font-size: 22px;">&#9654;</span>
+    </span>
+  </button>
+</div>
+{% elif is_pdf %}
 <iframe class="pdf-frame"
         src="{{ document.source_url | safe_url }}"
         title="{{ document.meeting_title or 'Source PDF' }}"
         loading="lazy"></iframe>
-{% else %}
+{% endif %}
+
+{% if not is_pdf %}
 <div class="doc-page" style="padding-top: var(--s-4);">
+  {% if is_video %}
+  <div class="reader-meta-bar" style="margin-bottom: var(--s-3);"><span>Transcript — cited passage highlighted</span></div>
+  {% endif %}
   {% for c in context %}
     {% if c.id == ctx_chunk.id %}
       <p><span class="cited">{{ c.content }}</span></p>
@@ -43,7 +64,8 @@
 
 <div style="margin-top: var(--s-5); padding-top: var(--s-4); border-top: 1px solid var(--rule); display: flex; gap: var(--s-3); flex-wrap: wrap;">
   {% if document %}<a class="btn btn-primary" href="/document/{{ document.id }}">Open full document</a>{% endif %}
-  {% if document.source_url %}<a class="btn" href="{{ document.source_url | safe_url }}" target="_blank" rel="noopener">View original source</a>{% endif %}
+  {% if is_video %}<a class="btn" href="https://www.youtube.com/watch?v={{ document.video_id | urlencode }}" target="_blank" rel="noopener">Watch on YouTube</a>{% endif %}
+  {% if document.source_url %}<a class="btn" href="{{ document.source_url | safe_url }}" target="_blank" rel="noopener">{% if is_video %}Transcript file{% else %}View original source{% endif %}</a>{% endif %}
   <a class="btn btn-ghost" href="https://github.com/Actalux/actalux/issues/new?title=Error+report+{{ ctx_chunk.id | chunk_hash_id | urlencode }}" target="_blank" rel="noopener">Report an error →</a>
 </div>
 
@@ -57,6 +79,25 @@
       var offset = cited.offsetTop - container.offsetTop - 60;
       container.scrollTo({ top: Math.max(0, offset), behavior: 'auto' });
     }
+  })();
+</script>
+{% endif %}
+
+{% if is_video %}
+<script>
+  (function () {
+    var fac = document.querySelector('#source-col .yt-facade') || document.querySelector('.yt-facade');
+    if (!fac) return;
+    fac.addEventListener('click', function () {
+      var id = fac.getAttribute('data-video');
+      var frame = document.createElement('iframe');
+      frame.src = 'https://www.youtube-nocookie.com/embed/' + id + '?autoplay=1';
+      frame.title = 'Board meeting video';
+      frame.setAttribute('style', 'width:100%;aspect-ratio:16/9;border:0;');
+      frame.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen');
+      frame.setAttribute('allowfullscreen', '');
+      fac.replaceWith(frame);
+    });
   })();
 </script>
 {% endif %}

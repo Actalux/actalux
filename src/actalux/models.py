@@ -26,6 +26,7 @@ class Document:
     content: str
     content_hash: str = ""
     source_portal: str = ""  # "diligent", "claytonschools", "youtube", "manual"
+    video_id: str = ""  # YouTube video id for board-meeting docs; "" for non-video docs
     version: int = 1
     replaces_id: int | None = None
     last_checked_at: datetime | None = None
