@@ -30,7 +30,7 @@
 
     {% if document.source_url %}
       <span class="label">Source</span>
-      <span class="value"><a href="{{ document.source_url }}" target="_blank" rel="noopener" style="color: var(--accent); word-break: break-all;">Open original →</a></span>
+      <span class="value"><a href="{{ document.source_url | safe_url }}" target="_blank" rel="noopener" style="color: var(--accent); word-break: break-all;">Open original →</a></span>
     {% endif %}
 
     {% if document.version %}
@@ -52,7 +52,7 @@
   <aside class="doc-toc">
     <span class="label">Actions</span>
     <a href="/search?q={{ document.meeting_title or '' }}">Find quotes from this doc</a>
-    {% if document.source_url %}<a href="{{ document.source_url }}" target="_blank" rel="noopener">Open source file</a>{% endif %}
+    {% if document.source_url %}<a href="{{ document.source_url | safe_url }}" target="_blank" rel="noopener">Open source file</a>{% endif %}
     <a href="https://github.com/Actalux/actalux/issues/new?title=Error+report+doc+{{ document.id }}" target="_blank" rel="noopener">Report an error</a>
 
     <span class="label" style="margin-top: var(--s-5);">Browse</span>

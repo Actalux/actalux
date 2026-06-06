@@ -15,13 +15,12 @@ from typing import Any
 from openai import OpenAI
 
 from actalux.errors import SummaryError
-from actalux.models import chunk_hash_id
 
 logger = logging.getLogger(__name__)
 
 HASH_ID_RE = re.compile(r"#q[0-9a-f]{4,}")
 DEFAULT_MODEL = "gpt-5-mini"
-MAX_TOKENS = 1024  # results/match summary budget
+MAX_TOKENS = 1024  # results summary budget
 DOC_SUMMARY_MAX_TOKENS = 120  # one-sentence per-document summary
 
 SYSTEM_PROMPT = """\
@@ -270,24 +269,6 @@ In one sentence (under 25 words), say what this document is. Use plain \
 language. No citations needed (this is descriptive of the document itself).\
 """
 
-MATCH_SUMMARY_SYSTEM = """\
-You explain why a search result matched a citizen's query for the Clayton, \
-MO school district public records archive. Be factual and neutral. Cite \
-the passage's hash ID like [#q003f]. Do not editorialize.\
-"""
-
-MATCH_SUMMARY_USER = """\
-Query: {query}
-
-Matched passage (cite as {hash_id}):
-{content}
-
-In one sentence (under 30 words), say what this passage tells the reader \
-about "{query}". End the sentence with the citation in brackets, like \
-[#q003f]. If the passage is not actually relevant to the query, say so \
-briefly without a citation.\
-"""
-
 
 def generate_doc_summary(
     title: str,
@@ -324,42 +305,3 @@ def generate_doc_summary(
         raise
     except Exception as exc:
         raise SummaryError(f"doc summary call failed: {exc}") from exc
-
-
-def generate_match_summary(
-    query: str,
-    chunk_id: int,
-    content: str,
-    api_key: str,
-    model: str = DEFAULT_MODEL,
-) -> str:
-    """One-sentence explanation of why a passage matched, with verified citation.
-
-    Returns "" if the model produced no claim with a verifiable citation.
-    """
-    if not query.strip() or not content.strip():
-        return ""
-    hash_id = chunk_hash_id(chunk_id)
-    user_message = MATCH_SUMMARY_USER.format(
-        query=query,
-        hash_id=hash_id,
-        content=content[:4000],
-    )
-    try:
-        client = OpenAI(api_key=api_key)
-        response = client.chat.completions.create(
-            model=model,
-            max_tokens=180,
-            messages=[
-                {"role": "system", "content": MATCH_SUMMARY_SYSTEM},
-                {"role": "user", "content": user_message},
-            ],
-        )
-        text = (response.choices[0].message.content or "").strip()
-    except Exception as exc:
-        raise SummaryError(f"match summary call failed: {exc}") from exc
-
-    verified, _stats = _verify_citations(text, {hash_id})
-    if verified == "Could not generate a verified summary for this query.":
-        return ""
-    return verified

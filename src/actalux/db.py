@@ -69,6 +69,19 @@ def get_document(client: Client, doc_id: int) -> dict[str, Any] | None:
     return result.data[0] if result.data else None
 
 
+def get_documents(client: Client, doc_ids: list[int]) -> dict[int, dict[str, Any]]:
+    """Fetch many documents by ID in one round-trip, keyed by ID.
+
+    Used to enrich search results without an N+1 query per result. Returns
+    only the documents that exist; missing IDs are simply absent from the map.
+    """
+    if not doc_ids:
+        return {}
+    unique_ids = list(dict.fromkeys(doc_ids))
+    result = client.table("documents").select("*").in_("id", unique_ids).execute()
+    return {row["id"]: row for row in (result.data or [])}
+
+
 def find_document_by_source(
     client: Client, source_file: str, source_portal: str = ""
 ) -> dict[str, Any] | None:
