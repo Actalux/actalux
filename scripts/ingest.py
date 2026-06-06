@@ -225,7 +225,9 @@ def ingest_directory(data_dir: Path) -> None:
          (date and title are inferred from each filename)
     """
     config = load_config()
-    client = get_client(config.supabase_url, config.supabase_key)
+    # Ingest writes documents/chunks/etc., so it uses the service key, which
+    # bypasses RLS (the publishable key is read + corrections only).
+    client = get_client(config.supabase_url, config.supabase_service_key)
 
     meeting_dirs = sorted(
         [d for d in data_dir.iterdir() if d.is_dir()],
@@ -534,7 +536,9 @@ def ingest_from_manifest(manifest_path: Path) -> None:
     import json
 
     config = load_config()
-    client = get_client(config.supabase_url, config.supabase_key)
+    # Ingest writes documents/chunks/etc., so it uses the service key, which
+    # bypasses RLS (the publishable key is read + corrections only).
+    client = get_client(config.supabase_url, config.supabase_service_key)
 
     manifest = json.loads(manifest_path.read_text())
     data_dir = manifest_path.parent

@@ -44,7 +44,8 @@ def infer_portal(source_file: str) -> str:
 
 def main() -> None:
     config = load_config()
-    client = get_client(config.supabase_url, config.supabase_key)
+    # Writer: use the service key (bypasses RLS).
+    client = get_client(config.supabase_url, config.supabase_service_key)
 
     cols = "id, source_file, content, content_hash, source_portal"
     result = client.table("documents").select(cols).execute()

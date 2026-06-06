@@ -11,7 +11,13 @@ class Config:
     """Immutable application configuration."""
 
     supabase_url: str = field(default_factory=lambda: os.environ["ACTALUX_SUPABASE_URL"])
+    # Publishable key: RLS-enforced, safe for the public web app.
     supabase_key: str = field(default_factory=lambda: os.environ["ACTALUX_SUPABASE_KEY"])
+    # Service (secret) key: bypasses RLS. Used only by ingest/backfill/load
+    # writers, never by the web app, so the web host doesn't need to carry it.
+    supabase_service_key: str = field(
+        default_factory=lambda: os.environ.get("ACTALUX_SUPABASE_SERVICE_KEY", "")
+    )
     buttondown_api_key: str = field(
         default_factory=lambda: os.environ.get("BUTTONDOWN_API_KEY", "")
     )

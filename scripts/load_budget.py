@@ -747,7 +747,8 @@ def main() -> int:
         return 0
 
     cfg = load_config()
-    client = get_client(cfg.supabase_url, cfg.supabase_key)
+    # Writer: use the service key (bypasses RLS).
+    client = get_client(cfg.supabase_url, cfg.supabase_service_key)
 
     # Replace: this file is the single source of truth for budget_line_items.
     deleted = client.table("budget_line_items").delete().gte("id", 0).execute()

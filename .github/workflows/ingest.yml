@@ -37,6 +37,8 @@ jobs:
       # the app/scripts read ACTALUX_-prefixed env vars, so map them here.
       ACTALUX_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       ACTALUX_SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      # Ingest writes through the service (secret) key, which bypasses RLS.
+      ACTALUX_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
       ACTALUX_SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
     steps:
       - uses: actions/checkout@v4

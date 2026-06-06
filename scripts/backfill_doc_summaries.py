@@ -61,7 +61,8 @@ def main() -> int:
     if not cfg.openai_api_key:
         logger.error("OPENAI_API_KEY not set; aborting")
         return 1
-    client = get_client(cfg.supabase_url, cfg.supabase_key)
+    # Writer: use the service key (bypasses RLS).
+    client = get_client(cfg.supabase_url, cfg.supabase_service_key)
 
     res = (
         client.table("documents")

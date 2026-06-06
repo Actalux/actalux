@@ -15,16 +15,22 @@ from actalux.models import BudgetLineItem, Chunk, Correction, Document, IngestRu
 
 logger = logging.getLogger(__name__)
 
-_client: Client | None = None
+_clients: dict[tuple[str, str], Client] = {}
 
 
 def get_client(url: str, key: str) -> Client:
-    """Get or create the Supabase client. Cached after first call."""
-    global _client
-    if _client is not None:
-        return _client
-    _client = create_client(url, key)
-    return _client
+    """Get or create a Supabase client, cached per (url, key).
+
+    Cached by key, not as a single global, so the publishable-key (web) and
+    service-key (ingest) clients can coexist without one silently overwriting
+    the other.
+    """
+    cache_key = (url, key)
+    client = _clients.get(cache_key)
+    if client is None:
+        client = create_client(url, key)
+        _clients[cache_key] = client
+    return client
 
 
 # --- Documents ---
@@ -253,16 +259,21 @@ def upsert_speaker(client: Client, name: str, role: str = "") -> int:
 # --- Corrections ---
 
 
-def insert_correction(client: Client, correction: Correction) -> int:
-    """Insert an error report."""
+def insert_correction(client: Client, correction: Correction) -> None:
+    """Insert a user-submitted error report.
+
+    Uses returning="minimal" so the insert needs only the anon INSERT policy on
+    corrections, not SELECT: the public must be able to file a report without
+    being able to read others' reports (which carry reporter emails). The caller
+    only needs the insert to succeed, so nothing is returned.
+    """
     data = {
         "chunk_id": correction.chunk_id,
         "description": correction.description,
         "reporter_email": correction.reporter_email,
         "status": "open",
     }
-    result = client.table("corrections").insert(data).execute()
-    return result.data[0]["id"]
+    client.table("corrections").insert(data, returning="minimal").execute()
 
 
 # --- Ingest Runs ---
