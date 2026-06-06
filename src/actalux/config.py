@@ -24,6 +24,19 @@ class Config:
     anthropic_api_key: str = field(default_factory=lambda: os.environ.get("ANTHROPIC_API_KEY", ""))
     openai_api_key: str = field(default_factory=lambda: os.environ.get("OPENAI_API_KEY", ""))
     summary_model: str = "gpt-5-mini"
+    # ZeroEntropy hosted reranker. Key gates the API call; zerank-1-small is the
+    # Apache-2.0 model that won the retrieval eval (+24% nDCG@10; see eval/README.md).
+    zeroentropy_api_key: str = field(
+        default_factory=lambda: os.environ.get("ZEROENTROPY_API_KEY", "")
+    )
+    rerank_model: str = "zerank-1-small"
+    # "off" (RRF only, default) or "api" (rerank the RRF pool via ZeroEntropy).
+    # Default off so the reranker is a deliberate, deploy-time opt-in (set
+    # ACTALUX_RERANK=api in the web host's secrets) with no surprise cost/latency.
+    rerank_mode: str = field(default_factory=lambda: os.environ.get("ACTALUX_RERANK", "off"))
+    # RRF candidates reranked before truncating to search_max_results. Reranking
+    # a deeper pool is what lets the cross-encoder lift a buried-but-relevant hit.
+    rerank_pool_size: int = 50
     embedding_model: str = "BAAI/bge-small-en-v1.5"
     embedding_dim: int = 384
     chunk_target_words: int = 200

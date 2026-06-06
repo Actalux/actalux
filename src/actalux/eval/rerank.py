@@ -25,8 +25,12 @@ weights. The CLI enforces this; combine separate runs with --combined-report.
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+
+from actalux.errors import RerankError
+from actalux.search.rerank import rerank_results
 
 if TYPE_CHECKING:
     from sentence_transformers import CrossEncoder
@@ -138,3 +142,67 @@ def _score_pairs(model: CrossEncoder, query: str, passages: list[str], chunk: in
         for j, i in enumerate(idxs):
             scores[i] = float(raw[j])
     return scores
+
+
+# --- Hosted API reranker arm (delegates to the production client) ----------
+#
+# The production reranker lives in actalux.search.rerank -- the same GPU-backed
+# ZeroEntropy endpoint, model, doc cap, and latency tier that live search uses.
+# This arm runs that exact client over the eval pool, so the harness measures
+# the production configuration rather than a parallel implementation. (The local
+# CPU path above is too slow for interactive search, ~244 ms/passage; the hosted
+# endpoint returns in ~100-300 ms.)
+
+API_ARM_NAME = "zerank-1-small-api"
+
+# Memo: (model, query, pool chunk_ids) -> reordered pool. The harness calls each
+# arm twice per query (judge union, then scoring); this makes that one API
+# request, keyed on chunk_ids so distinct pools never collide.
+_api_pool_cache: dict[tuple[str, str, tuple[int, ...]], list[SearchResult]] = {}
+
+
+_EVAL_RETRY_ATTEMPTS = 6
+_EVAL_RETRY_BACKOFF = 8.0  # seconds; the byte/min ratelimit clears within a minute
+
+
+def rerank_pool_api(
+    query: str,
+    pool: list[SearchResult],
+    api_key: str,
+    model: str = "zerank-1-small",
+) -> list[SearchResult]:
+    """Reorder `pool` via the production ZeroEntropy reranker (memoized)."""
+    if not pool:
+        return []
+    cache_key = (model, query, tuple(r.chunk_id for r in pool))
+    reordered = _api_pool_cache.get(cache_key)
+    if reordered is None:
+        reordered = _rerank_patient(query, pool, api_key, model)
+        _api_pool_cache[cache_key] = reordered
+    return reordered
+
+
+def _rerank_patient(
+    query: str, pool: list[SearchResult], api_key: str, model: str
+) -> list[SearchResult]:
+    """Call the production reranker, but wait out ratelimits instead of failing.
+
+    Reranking 24 queries back-to-back trips the API's per-minute byte ratelimit
+    that a single interactive search never would. The production client fast-
+    fails (correctly) on that; here we retry RerankError with a long backoff so a
+    full eval run completes rather than crashing mid-batch.
+    """
+    for attempt in range(_EVAL_RETRY_ATTEMPTS):
+        try:
+            return rerank_results(query, pool, api_key, model)
+        except RerankError:
+            if attempt == _EVAL_RETRY_ATTEMPTS - 1:
+                raise
+            logger.warning(
+                "eval rerank hit a limit; backing off %.0fs (attempt %d/%d)",
+                _EVAL_RETRY_BACKOFF,
+                attempt + 1,
+                _EVAL_RETRY_ATTEMPTS,
+            )
+            time.sleep(_EVAL_RETRY_BACKOFF)
+    raise RerankError("unreachable")  # loop either returns or re-raises

@@ -98,6 +98,12 @@ def main() -> None:
         "'zerank-2' (one per process; combine separate runs with --combined-report)",
     )
     parser.add_argument(
+        "--api-rerank",
+        action="store_true",
+        help="add the ZeroEntropy hosted-API reranker arm (zerank-1-small) "
+        "alongside the RRF baseline; needs ZEROENTROPY_API_KEY",
+    )
+    parser.add_argument(
         "--combined-report",
         action="store_true",
         help="build the multi-arm report from persisted rankings + judgments "
@@ -126,6 +132,14 @@ def main() -> None:
     cfg = load_config()
     if not args.no_judge and not cfg.anthropic_api_key:
         parser.error("ANTHROPIC_API_KEY not set; use --no-judge or run under doppler.")
+
+    if args.api_rerank:
+        if not cfg.zeroentropy_api_key:
+            parser.error("ZEROENTROPY_API_KEY not set; needed for --api-rerank.")
+        ze_key, ze_model = cfg.zeroentropy_api_key, cfg.rerank_model
+        arms[rerank.API_ARM_NAME] = lambda query, pool, k=ze_key, m=ze_model: (
+            rerank.rerank_pool_api(query, pool, k, m)
+        )
 
     client = get_client(cfg.supabase_url, cfg.supabase_key)
     model = load_model(cfg.embedding_model)

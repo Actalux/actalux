@@ -39,7 +39,8 @@ from actalux.db import (
 from actalux.errors import SearchError, SummaryError
 from actalux.ingest.embedder import load_model
 from actalux.models import Correction, chunk_hash_id
-from actalux.search.hybrid import SearchFilters, hybrid_search
+from actalux.search.hybrid import Reranker, SearchFilters, hybrid_search
+from actalux.search.rerank import rerank_results
 from actalux.search.summarize import generate_summary
 from actalux.web.charts import (
     aggregate_by_year,
@@ -164,6 +165,19 @@ def _embed_query(query: str) -> list[float]:
     return vector.tolist()
 
 
+def _reranker() -> Reranker | None:
+    """Build the search reranker from config, or None for RRF-only retrieval.
+
+    Active only when ACTALUX_RERANK=api and a ZeroEntropy key is present, so a
+    missing key or the default "off" mode degrades to RRF rather than erroring.
+    """
+    cfg = _get_config()
+    if cfg.rerank_mode != "api" or not cfg.zeroentropy_api_key:
+        return None
+    key, model = cfg.zeroentropy_api_key, cfg.rerank_model
+    return lambda query, results: rerank_results(query, results, key, model)
+
+
 def _get_cached_topic(topic: str) -> list[Any] | None:
     """Return cached results if still valid, else None."""
     if topic not in _topic_cache:
@@ -233,7 +247,7 @@ def _run_search(
     client = _get_db()
     try:
         query_embedding = _embed_query(q)
-        results = hybrid_search(client, q, query_embedding, filters)
+        results = hybrid_search(client, q, query_embedding, filters, reranker=_reranker())
     except SearchError:
         logger.exception("Search failed for query: %s", q)
         results = []
@@ -285,7 +299,9 @@ def _budget_quote_sections() -> list[dict[str, Any]]:
     for query_text in BUDGET_QUERIES:
         try:
             query_embedding = _embed_query(query_text)
-            results = hybrid_search(client, query_text, query_embedding, max_results=5)
+            results = hybrid_search(
+                client, query_text, query_embedding, max_results=5, reranker=_reranker()
+            )
             enriched = _enrich_results(client, results)
             sections.append({"query": query_text, "results": enriched})
         except SearchError:
@@ -570,7 +586,9 @@ async def summarize(
     client = _get_db()
     try:
         query_embedding = _embed_query(q)
-        results = hybrid_search(client, q, query_embedding, filters, max_results=10)
+        results = hybrid_search(
+            client, q, query_embedding, filters, max_results=10, reranker=_reranker()
+        )
         enriched = _enrich_results(client, results)
         summary = generate_summary(q, enriched, cfg.openai_api_key, cfg.summary_model)
     except (SearchError, SummaryError):

@@ -25,6 +25,14 @@ class SearchError(ActaluxError):
     """Search query failed (DB timeout, connection error)."""
 
 
+class RerankError(ActaluxError):
+    """Hosted reranker call failed (API error, timeout, ratelimit exhausted).
+
+    Always caught at the search boundary so it falls back to RRF order -- a
+    reranker outage must never break search, only forgo the reorder.
+    """
+
+
 class SummaryError(ActaluxError):
     """LLM summary generation failed (API error, citation verification failure)."""
 

@@ -7,13 +7,14 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
 from supabase import Client
 
-from actalux.errors import SearchError
+from actalux.errors import RerankError, SearchError
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,13 @@ RRF_K = 60
 SEMANTIC_CANDIDATES = 50
 KEYWORD_CANDIDATES = 50
 MAX_RESULTS = 20
+RERANK_POOL_SIZE = 50  # RRF candidates reranked before truncating to max_results
 SIMILARITY_THRESHOLD = 0.35
+
+# Reorders an RRF candidate pool for a query. Raises RerankError on failure so
+# the search boundary can fall back to RRF order (a reranker outage must never
+# break search). Built by the web layer from config; None = RRF-only.
+Reranker = Callable[[str, list["SearchResult"]], list["SearchResult"]]
 
 
 @dataclass(frozen=True)
@@ -53,11 +60,16 @@ def hybrid_search(
     query_embedding: list[float],
     filters: SearchFilters | None = None,
     max_results: int = MAX_RESULTS,
+    *,
+    reranker: Reranker | None = None,
+    rerank_pool_size: int = RERANK_POOL_SIZE,
 ) -> list[SearchResult]:
     """Run hybrid search: semantic + keyword, combined with RRF.
 
-    Both retrieval paths run independently, then results are merged
-    using reciprocal rank fusion (k=60).
+    Both retrieval paths run independently, then results are merged using
+    reciprocal rank fusion (k=60). When `reranker` is given, a deeper pool is
+    fused (so the cross-encoder can lift a buried-but-relevant hit) and reordered
+    before truncating to `max_results`; a reranker failure falls back to RRF order.
     """
     if not query.strip():
         return []
@@ -68,17 +80,40 @@ def hybrid_search(
     semantic_rows = _semantic_search(client, query_embedding, f)
     keyword_rows = _keyword_search(client, query, f)
 
-    results = _reciprocal_rank_fusion(semantic_rows, keyword_rows, max_results)
+    fuse_count = max(max_results, rerank_pool_size) if reranker is not None else max_results
+    results = _reciprocal_rank_fusion(semantic_rows, keyword_rows, fuse_count)
+
+    reranked = False
+    if reranker is not None and results:
+        results = _apply_reranker(reranker, query, results)
+        reranked = True
+    results = results[:max_results]
 
     elapsed_ms = (time.monotonic() - start) * 1000
     logger.info(
-        "Hybrid search: %d semantic + %d keyword -> %d results (%.0fms)",
+        "Hybrid search: %d semantic + %d keyword -> %d results (rerank=%s, %.0fms)",
         len(semantic_rows),
         len(keyword_rows),
         len(results),
+        reranked,
         elapsed_ms,
     )
     return results
+
+
+def _apply_reranker(
+    reranker: Reranker, query: str, results: list[SearchResult]
+) -> list[SearchResult]:
+    """Reorder `results` via `reranker`, falling back to RRF order on failure.
+
+    A reranker outage (API down, timeout, ratelimit) must degrade to plain RRF
+    search, never raise -- so RerankError is caught here at the boundary.
+    """
+    try:
+        return reranker(query, results)
+    except RerankError as exc:
+        logger.warning("rerank failed (%s); falling back to RRF order", exc)
+        return results
 
 
 def _semantic_search(

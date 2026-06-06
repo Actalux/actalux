@@ -100,9 +100,38 @@ scripts/eval_retrieval.py --rerankers zerank-2          # full run, persists ran
 scripts/eval_retrieval.py --rerankers zerank-1-small    # full run, persists rankings
 scripts/eval_retrieval.py --combined-report             # merge → eval/results/combined_*.md
 
+# hosted-API reranker — the PRODUCTION path (zerank-1-small via ZeroEntropy);
+# needs ZEROENTROPY_API_KEY; calls the same client search/hybrid.py uses
+scripts/eval_retrieval.py --api-rerank                  # full run, persists rankings
+
 scripts/eval_retrieval.py --spot-check 20        # review cached grades
 ```
 
 Reports land in `eval/results/` (`baseline_*.md`, `rerank_*.md`, `combined_*.md`).
 `queries.json`, `judgments.json`, and `rankings.json` are committed (reproducible
 labels + arm orderings); `results/` reports are regenerated, not committed.
+
+## Production reranker (decided)
+
+The production retrieval path reranks the fused RRF pool with **zerank-1-small
+via the ZeroEntropy hosted API** (`src/actalux/search/rerank.py`), wired into
+`hybrid_search` behind `ACTALUX_RERANK=off|api` (default off; a reranker outage
+falls back to RRF order). CPU self-hosting was ruled out on latency
+(~244 ms/passage, see `bench_rerank_latency.py`); the hosted endpoint serves the
+same Apache-2.0 weights GPU-backed in ~100-300 ms. The eval's `--api-rerank` arm
+calls that exact client (same model, doc cap, and `latency="fast"` tier), so the
+harness measures the production configuration, not a parallel implementation.
+
+**Validated 2026-06-06** over the 24-query set (judge: claude-sonnet-4-6), RRF
+baseline vs `zerank-1-small-api`:
+
+| arm | nDCG@10 | MRR | recall@10 |
+|---|---|---|---|
+| rrf_only | 0.720 | 0.847 | 0.481 |
+| zerank-1-small-api | 0.889 | 0.875 | 0.571 |
+
+**+23% nDCG@10, +19% recall@10.** The lift is largest where RRF failed outright
+(e.g. "per-pupil expenditure by building" 0.000 → 0.907). One query regressed
+("bond ballot measure board action", 0.787 → 0.509); everything else held or
+improved. This reproduces the earlier self-hosted finding, confirming the gain
+transfers to the hosted API.
