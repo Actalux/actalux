@@ -20,8 +20,9 @@ from actalux.models import chunk_hash_id
 logger = logging.getLogger(__name__)
 
 HASH_ID_RE = re.compile(r"#q[0-9a-f]{4,}")
-DEFAULT_MODEL = "gpt-4o-mini"
-MAX_TOKENS = 1024
+DEFAULT_MODEL = "gpt-5-mini"
+MAX_TOKENS = 1024  # results/match summary budget
+DOC_SUMMARY_MAX_TOKENS = 120  # one-sentence per-document summary
 
 SYSTEM_PROMPT = """\
 You are a civic records assistant for Actalux, a nonprofit that makes local \
@@ -89,7 +90,7 @@ def generate_summary(
     # Build the quotes block for the prompt
     quotes_block = _build_quotes_block(results)
 
-    # Call Claude
+    # Call the LLM
     raw_text = _call_llm(query, quotes_block, api_key, model)
 
     # Verify citations
@@ -131,8 +132,29 @@ def _build_quotes_block(results: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def _completion_kwargs(
+    model: str, messages: list[dict[str, str]], max_tokens: int
+) -> dict[str, Any]:
+    """Build chat-completion kwargs.
+
+    OpenAI GPT-5 / o-series are reasoning models: they spend the output-token
+    budget on hidden reasoning and can return empty content on short tasks, so
+    request minimal reasoning. That param is OpenAI-reasoning-specific, so it is
+    added only for those models -- 4o-mini and non-OpenAI models reject it.
+    """
+    kwargs: dict[str, Any] = {
+        "model": model,
+        "max_completion_tokens": max_tokens,
+        "messages": messages,
+    }
+    # Strip any "provider/" prefix (e.g. OpenRouter's "openai/gpt-5-mini").
+    if model.split("/")[-1].lower().startswith(("gpt-5", "o1", "o3", "o4")):
+        kwargs["reasoning_effort"] = "minimal"
+    return kwargs
+
+
 def _call_llm(query: str, quotes_block: str, api_key: str, model: str) -> str:
-    """Call OpenAI to generate a citation-backed summary."""
+    """Call the LLM to generate a citation-backed summary."""
     user_message = USER_PROMPT_TEMPLATE.format(
         query=query,
         quotes_block=quotes_block,
@@ -140,14 +162,11 @@ def _call_llm(query: str, quotes_block: str, api_key: str, model: str) -> str:
 
     try:
         client = OpenAI(api_key=api_key)
-        response = client.chat.completions.create(
-            model=model,
-            max_tokens=MAX_TOKENS,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_message},
-            ],
-        )
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_message},
+        ]
+        response = client.chat.completions.create(**_completion_kwargs(model, messages, MAX_TOKENS))
         text = response.choices[0].message.content
         if not text:
             raise SummaryError("LLM returned empty content")
@@ -290,13 +309,12 @@ def generate_doc_summary(
     )
     try:
         client = OpenAI(api_key=api_key)
+        messages = [
+            {"role": "system", "content": DOC_SUMMARY_SYSTEM},
+            {"role": "user", "content": user_message},
+        ]
         response = client.chat.completions.create(
-            model=model,
-            max_tokens=120,
-            messages=[
-                {"role": "system", "content": DOC_SUMMARY_SYSTEM},
-                {"role": "user", "content": user_message},
-            ],
+            **_completion_kwargs(model, messages, DOC_SUMMARY_MAX_TOKENS)
         )
         text = (response.choices[0].message.content or "").strip()
         if not text:

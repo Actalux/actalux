@@ -35,14 +35,17 @@ shell history or on a command line:
 ```bash
 doppler secrets download --no-file --format env \
   --project mac --config dev | \
-grep -E '^(ACTALUX_SUPABASE_URL|ACTALUX_SUPABASE_KEY|ANTHROPIC_API_KEY)=' | \
+grep -E '^(ACTALUX_SUPABASE_URL|ACTALUX_SUPABASE_KEY|OPENAI_API_KEY)=' | \
 fly secrets import
 ```
 
-Only `ACTALUX_SUPABASE_URL` and `ACTALUX_SUPABASE_KEY` are required at startup.
-`ANTHROPIC_API_KEY` powers the citation-backed summaries; add `OPENAI_API_KEY`
-and `BUTTONDOWN_API_KEY` to the `grep` set if/when those features are live.
-`ACTALUX_PII_GUARD` is ingest-only and not needed on the web host.
+Only `ACTALUX_SUPABASE_URL` and `ACTALUX_SUPABASE_KEY` (the publishable key)
+are required at startup. `OPENAI_API_KEY` powers the citation-backed summaries
+(`gpt-4o-mini` via the OpenAI SDK) -- omit it and the summary feature silently
+disables itself. Swap it for a dedicated, spend-capped key before relying on it
+in public. Add `BUTTONDOWN_API_KEY` to the `grep` set if/when that feature is
+live. `ANTHROPIC_API_KEY` is eval-only (the judge), not used by the web app;
+`ACTALUX_PII_GUARD` is ingest-only -- neither is needed on the web host.
 
 Deploy:
 
