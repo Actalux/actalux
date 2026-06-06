@@ -37,15 +37,24 @@ def _words(text: str) -> set[str]:
 
 
 def _pick_video(doc_title: str, candidates: list[dict]) -> dict:
-    """Choose the same-date video whose title best overlaps the doc title.
+    """Choose the same-date video whose title best matches the doc title.
 
-    With one candidate this is a no-op; with several (same-date regular vs joint
-    meeting) the word-overlap routes "joint" docs to the joint video, etc.
+    With one candidate this is a no-op. With several (same-date regular vs joint
+    meeting) use Jaccard similarity, not raw overlap: a regular-meeting title is a
+    subset of the joint-meeting title, so raw overlap ties and would mis-route the
+    regular doc to the joint video. Jaccard divides by the union, so the joint
+    video's extra words ("joint", "alderman") penalize it for the regular doc.
     """
     if len(candidates) == 1:
         return candidates[0]
     doc_words = _words(doc_title)
-    return max(candidates, key=lambda v: len(doc_words & _words(v.get("title", ""))))
+
+    def jaccard(video: dict) -> float:
+        video_words = _words(video.get("title", ""))
+        union = doc_words | video_words
+        return len(doc_words & video_words) / len(union) if union else 0.0
+
+    return max(candidates, key=jaccard)
 
 
 def main() -> None:
