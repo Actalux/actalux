@@ -151,6 +151,11 @@
       "directness": 2,
       "faithfulness": 1
     },
+    "gpt-5-mini+finance": {
+      "completeness": 3,
+      "directness": 3,
+      "faithfulness": 3
+    },
     "gpt-5-mini@medium": {
       "completeness": 1,
       "directness": 3,
@@ -177,6 +182,11 @@
       "completeness": 1,
       "directness": 2,
       "faithfulness": 0
+    },
+    "gpt-5-mini+finance": {
+      "completeness": 3,
+      "directness": 2,
+      "faithfulness": 2
     },
     "gpt-5-mini@medium": {
       "completeness": 1,
@@ -205,6 +215,11 @@
       "directness": 2,
       "faithfulness": 1
     },
+    "gpt-5-mini+finance": {
+      "completeness": 3,
+      "directness": 3,
+      "faithfulness": 3
+    },
     "openai/gpt-5": {
       "completeness": 2,
       "directness": 3,
@@ -226,6 +241,11 @@
       "completeness": 2,
       "directness": 2,
       "faithfulness": 1
+    },
+    "gpt-5-mini+finance": {
+      "completeness": 3,
+      "directness": 3,
+      "faithfulness": 3
     },
     "openai/gpt-5": {
       "completeness": 2,
@@ -249,6 +269,11 @@
       "directness": 3,
       "faithfulness": 3
     },
+    "gpt-5-mini+finance": {
+      "completeness": 2,
+      "directness": 2,
+      "faithfulness": 2
+    },
     "openai/gpt-5": {
       "completeness": 2,
       "directness": 2,
@@ -269,6 +294,11 @@
     "gpt-5-mini": {
       "completeness": 2,
       "directness": 3,
+      "faithfulness": 1
+    },
+    "gpt-5-mini+finance": {
+      "completeness": 2,
+      "directness": 2,
       "faithfulness": 1
     },
     "openai/gpt-5": {
@@ -293,6 +323,11 @@
       "directness": 3,
       "faithfulness": 1
     },
+    "gpt-5-mini+finance": {
+      "completeness": 3,
+      "directness": 3,
+      "faithfulness": 3
+    },
     "openai/gpt-5": {
       "completeness": 2,
       "directness": 3,
@@ -314,6 +349,11 @@
       "completeness": 1,
       "directness": 1,
       "faithfulness": 0
+    },
+    "gpt-5-mini+finance": {
+      "completeness": 3,
+      "directness": 3,
+      "faithfulness": 3
     },
     "openai/gpt-5": {
       "completeness": 0,

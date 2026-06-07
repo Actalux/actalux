@@ -33,12 +33,12 @@ from actalux.db import (
     get_chunk_with_context,
     get_client,
     get_document,
-    get_documents,
     insert_correction,
 )
 from actalux.errors import SearchError, SummaryError
 from actalux.ingest.embedder import load_model
 from actalux.models import Correction, chunk_hash_id
+from actalux.search.answer import assemble_evidence, enrich_results
 from actalux.search.hybrid import Reranker, SearchFilters, hybrid_search
 from actalux.search.rerank import rerank_results
 from actalux.search.summarize import generate_summary
@@ -252,7 +252,7 @@ def _run_search(
         logger.exception("Search failed for query: %s", q)
         results = []
 
-    enriched = _enrich_results(client, results)
+    enriched = enrich_results(client, results)
     template = "partials/search_results.html" if is_htmx else "search.html"
 
     return templates.TemplateResponse(request, template, {"results": enriched, "query": q})
@@ -302,7 +302,7 @@ def _budget_quote_sections() -> list[dict[str, Any]]:
             results = hybrid_search(
                 client, query_text, query_embedding, max_results=5, reranker=_reranker()
             )
-            enriched = _enrich_results(client, results)
+            enriched = enrich_results(client, results)
             sections.append({"query": query_text, "results": enriched})
         except SearchError:
             logger.exception("Budget topic query failed: %s", query_text)
@@ -586,10 +586,13 @@ async def summarize(
     client = _get_db()
     try:
         query_embedding = _embed_query(q)
-        results = hybrid_search(
-            client, q, query_embedding, filters, max_results=10, reranker=_reranker()
+        # Finance figure queries are answered from the structured budget_line_items
+        # table (each figure citeable to its source chunk); everything else falls
+        # back to text retrieval. See actalux.search.answer.assemble_evidence.
+        enriched, route = assemble_evidence(
+            client, q, query_embedding, filters=filters, reranker=_reranker(), max_results=10
         )
-        enriched = _enrich_results(client, results)
+        logger.info("summarize route=%s for query: %s", route, q)
         summary = generate_summary(q, enriched, cfg.openai_api_key, cfg.summary_model)
     except (SearchError, SummaryError):
         logger.exception("Summary generation failed for: %s", q)
@@ -637,31 +640,3 @@ def _render_citation_links(text: str, results: list[dict[str, Any]]) -> str:
         last = match.end()
     parts.append(str(escape(text[last:])))
     return "".join(parts)
-
-
-def _enrich_results(client: Any, results: list[Any]) -> list[dict[str, Any]]:
-    """Add document metadata (meeting_date, meeting_title) to search results."""
-    docs = get_documents(client, [r.document_id for r in results])
-    enriched: list[dict[str, Any]] = []
-
-    for r in results:
-        doc_id = r.document_id
-        doc = docs.get(doc_id, {})
-        chunk_hash = chunk_hash_id(r.chunk_id)
-        enriched.append(
-            {
-                "chunk_id": r.chunk_id,
-                "hash_id": chunk_hash,
-                "content": r.content,
-                "section": r.section,
-                "speaker": r.speaker,
-                "rrf_score": round(r.rrf_score, 4),
-                "meeting_date": doc.get("meeting_date", ""),
-                "meeting_title": doc.get("meeting_title", ""),
-                "document_id": doc_id,
-                "document_type": doc.get("document_type", ""),
-                "summary": doc.get("summary", ""),
-            }
-        )
-
-    return enriched

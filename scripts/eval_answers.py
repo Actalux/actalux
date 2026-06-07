@@ -53,6 +53,12 @@ def main() -> None:
     parser.add_argument(
         "--regenerate", action="store_true", help="regenerate answers even if cached"
     )
+    parser.add_argument(
+        "--finance-routing",
+        action="store_true",
+        help="answer finance figure queries from the structured budget table "
+        "(arm labelled '<model>+finance'); off reproduces the text-only baseline",
+    )
     parser.add_argument("--out", type=Path, default=None, help="report path (eval/results/)")
     args = parser.parse_args()
 
@@ -73,8 +79,11 @@ def main() -> None:
         gen_key, base_url = cfg.openai_api_key, None
 
     # Cache/report label: distinguish a reasoning variant of the same model so it
-    # doesn't collide with the base model's cached answers.
+    # doesn't collide with the base model's cached answers. The "+finance" arm is
+    # the structured-finance routing variant, kept separate from the text baseline.
     model_id = summary_model if args.reasoning == "minimal" else f"{summary_model}@{args.reasoning}"
+    if args.finance_routing:
+        model_id = f"{model_id}+finance"
 
     # Reranker on when a key exists, matching production (ACTALUX_RERANK is "off"
     # locally, but the deployed app reranks -- the eval should reflect that).
@@ -97,6 +106,7 @@ def main() -> None:
         model_id=model_id,
         base_url=base_url,
         reasoning_effort=args.reasoning,
+        finance_routing=args.finance_routing,
         limit=args.limit,
         query_ids=query_ids,
         regenerate=args.regenerate,

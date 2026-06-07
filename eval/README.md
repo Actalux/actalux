@@ -135,3 +135,44 @@ baseline vs `zerank-1-small-api`:
 ("bond ballot measure board action", 0.787 → 0.509); everything else held or
 improved. This reproduces the earlier self-hosted finding, confirming the gain
 transfers to the hosted API.
+
+## Answer quality
+
+A second eval (`answer_quality.py`, CLI `scripts/eval_answers.py`) scores the
+generated *answer*, not retrieval. For each query it runs the production answer
+path (`search/answer.py:assemble_evidence` → `generate_summary`) and an LLM judge
+(claude-sonnet-4-6) grades the answer **0–3** on faithfulness, completeness, and
+directness — each judged only against the quotes the answer was given, so the
+score isolates synthesis from recall. Answers + grades cache per
+`(query_id, model_id)`, so `--model` A/Bs reuse prior work.
+
+### Structured-finance routing (decided)
+
+A model A/B (Lever 1) showed no summary model fixes finance faithfulness — it sat
+near 1/3 across gpt-5-mini, Haiku, and Gemini — because the answer was read out
+of fragmented OCR'd budget-table chunks. The fix is not a better reader but a
+better source: a figure-shaped finance query is routed to the structured
+`budget_line_items` table (`search/finance.py`), where every figure is parsed,
+audited, and carries a verbatim `source_quote` + the `chunk_id` it came from, so
+the answer still cites a real source chunk. Function/fund-balance figures are
+summed across funds per year (the same all-funds aggregation the public Budget
+page uses) so the LLM reports a clean total rather than re-summing column
+fragments. The router is deliberately conservative: per-pupil and tax-levy asks
+have no structured figure and stay on the text path.
+
+The eval's `--finance-routing` flag exercises the production decision (arm
+labelled `<model>+finance`).
+
+**Validated 2026-06-07** over the 8 finance queries (model gpt-5-mini, judge
+claude-sonnet-4-6), text baseline vs `+finance`:
+
+| arm | faithfulness | completeness | directness |
+|---|---|---|---|
+| gpt-5-mini (text) | 1.00 | — | — |
+| gpt-5-mini+finance | 2.50 | 2.75 | 2.62 |
+
+On the **6 queries that route to structured data**, mean faithfulness went
+**0.67 → 2.83**; e.g. "operation of plant" 0/1/1 → 3/3/3, "instruction" 1/1/2 →
+3/3/3, with zero citation drop. The 2 text-path queries (per-pupil, tax levy)
+are unchanged within judge noise — the router correctly leaves them alone. This
+is the structural gain Lever 1 predicted no model swap could deliver.

@@ -21,12 +21,11 @@ from typing import Any
 
 from supabase import Client
 
-from actalux.db import get_documents
 from actalux.errors import SummaryError
 from actalux.eval import judge
 from actalux.eval.harness import load_queries
-from actalux.models import chunk_hash_id
-from actalux.search.hybrid import Reranker, hybrid_search
+from actalux.search.answer import assemble_evidence
+from actalux.search.hybrid import Reranker
 from actalux.search.summarize import Summary, generate_summary
 
 logger = logging.getLogger(__name__)
@@ -53,25 +52,6 @@ class AnswerRow:
     scores: dict[str, int]  # faithfulness / completeness / directness
 
 
-def _enrich(client: Client, results: list[Any]) -> list[dict[str, Any]]:
-    """Shape SearchResults into the dicts generate_summary + the judge expect."""
-    docs = get_documents(client, [r.document_id for r in results])
-    enriched: list[dict[str, Any]] = []
-    for r in results:
-        doc = docs.get(r.document_id, {})
-        enriched.append(
-            {
-                "hash_id": chunk_hash_id(r.chunk_id),
-                "content": r.content,
-                "section": r.section,
-                "speaker": r.speaker,
-                "meeting_date": doc.get("meeting_date", ""),
-                "meeting_title": doc.get("meeting_title", ""),
-            }
-        )
-    return enriched
-
-
 def _quotes_block(enriched: list[dict[str, Any]]) -> str:
     """Render the quotes the judge sees -- the only evidence the answer could use."""
     lines: list[str] = []
@@ -93,13 +73,24 @@ def generate_answer(
     *,
     base_url: str | None = None,
     reasoning_effort: str = "minimal",
+    finance_routing: bool = False,
 ) -> tuple[Summary, list[dict[str, Any]]]:
-    """Run the production summary path; return the Summary and the quotes it saw."""
+    """Run the production answer path; return the Summary and the quotes it saw.
+
+    With ``finance_routing`` on, figure-shaped finance queries are served from the
+    structured budget table (matching production); off reproduces the text-only
+    baseline. Routing through ``assemble_evidence`` keeps the eval on the exact
+    production path.
+    """
     embedding = embed_model.encode(query, normalize_embeddings=True).tolist()
-    results = hybrid_search(
-        client, query, embedding, max_results=SUMMARY_MAX_RESULTS, reranker=reranker
+    enriched, _route = assemble_evidence(
+        client,
+        query,
+        embedding,
+        reranker=reranker,
+        max_results=SUMMARY_MAX_RESULTS,
+        finance_routing=finance_routing,
     )
-    enriched = _enrich(client, results)
     summary = generate_summary(
         query,
         enriched,
@@ -131,6 +122,7 @@ def run(
     model_id: str | None = None,
     base_url: str | None = None,
     reasoning_effort: str = "minimal",
+    finance_routing: bool = False,
     limit: int | None = None,
     query_ids: set[str] | None = None,
     regenerate: bool = False,
@@ -167,6 +159,7 @@ def run(
                     reranker,
                     base_url=base_url,
                     reasoning_effort=reasoning_effort,
+                    finance_routing=finance_routing,
                 )
             except SummaryError as exc:  # skip-and-report; a bad arm shouldn't crash the run
                 logger.warning("answer generation failed for %s (%s): %s", qid, model_id, exc)
