@@ -6,6 +6,8 @@
 {% set ctx_chunk = chunk %}
 {% set is_video = document.video_id %}
 {% set is_pdf = document.source_url and document.source_url.lower().endswith('.pdf') %}
+{# Video cue offset (seconds) for the cited chunk; 0 when not a video or unaligned. #}
+{% set cue = ctx_chunk.start_seconds if (is_video and ctx_chunk.start_seconds) else 0 %}
 <div class="reader-head">
   <div>
     <div class="kicker">{{ document.document_type or 'Record' }}{% if document.source_portal %} · {{ document.source_portal }}{% endif %}</div>
@@ -23,6 +25,7 @@
   {% if document.source_portal %}<span>Portal: {{ document.source_portal }}</span>{% endif %}
   {% if ctx_chunk.section %}<span>Section: {{ ctx_chunk.section }}</span>{% endif %}
   {% if ctx_chunk.speaker %}<span>Speaker: {{ ctx_chunk.speaker }}</span>{% endif %}
+  {% if cue %}<span>Cue: {{ cue // 60 }}:{{ '%02d' % (cue % 60) }}</span>{% endif %}
   <span>{{ ctx_chunk.id | chunk_hash_id }}</span>
 </div>
 
@@ -30,8 +33,8 @@
 {# Lazy facade: only a poster thumbnail loads until the viewer clicks play, then
    it swaps to the real (nocookie) iframe -- no YouTube connection before then. #}
 <div class="video-embed" style="margin-top: var(--s-4);">
-  <button type="button" class="yt-facade" data-video="{{ document.video_id | urlencode }}"
-          aria-label="Play the board meeting video"
+  <button type="button" class="yt-facade" data-video="{{ document.video_id | urlencode }}" data-start="{{ cue }}"
+          aria-label="Play the board meeting video{% if cue %} from the cited moment{% endif %}"
           style="position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; padding: 0; border: 0; background: #000; cursor: pointer;">
     <img src="https://i.ytimg.com/vi/{{ document.video_id | urlencode }}/hqdefault.jpg" alt=""
          loading="lazy" style="width: 100%; height: 100%; object-fit: cover; display: block;">
@@ -64,7 +67,7 @@
 
 <div style="margin-top: var(--s-5); padding-top: var(--s-4); border-top: 1px solid var(--rule); display: flex; gap: var(--s-3); flex-wrap: wrap;">
   {% if document %}<a class="btn btn-primary" href="/document/{{ document.id }}">Open full document</a>{% endif %}
-  {% if is_video %}<a class="btn" href="https://www.youtube.com/watch?v={{ document.video_id | urlencode }}" target="_blank" rel="noopener">Watch on YouTube</a>{% endif %}
+  {% if is_video %}<a class="btn" href="https://www.youtube.com/watch?v={{ document.video_id | urlencode }}{% if cue %}&t={{ cue }}s{% endif %}" target="_blank" rel="noopener">Watch on YouTube{% if cue %} at cue{% endif %}</a>{% endif %}
   {% if document.source_url %}<a class="btn" href="{{ document.source_url | safe_url }}" target="_blank" rel="noopener">{% if is_video %}Transcript file{% else %}View original source{% endif %}</a>{% endif %}
   <a class="btn btn-ghost" href="https://github.com/Actalux/actalux/issues/new?title=Error+report+{{ ctx_chunk.id | chunk_hash_id | urlencode }}" target="_blank" rel="noopener">Report an error →</a>
 </div>
@@ -90,8 +93,11 @@
     if (!fac) return;
     fac.addEventListener('click', function () {
       var id = fac.getAttribute('data-video');
+      var start = parseInt(fac.getAttribute('data-start') || '0', 10);
+      var src = 'https://www.youtube-nocookie.com/embed/' + id + '?autoplay=1';
+      if (start > 0) { src += '&start=' + start; }
       var frame = document.createElement('iframe');
-      frame.src = 'https://www.youtube-nocookie.com/embed/' + id + '?autoplay=1';
+      frame.src = src;
       frame.title = 'Board meeting video';
       frame.setAttribute('style', 'width:100%;aspect-ratio:16/9;border:0;');
       frame.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen');

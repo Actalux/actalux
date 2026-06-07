@@ -124,6 +124,11 @@ def set_document_video_id(client: Client, doc_id: int, video_id: str) -> None:
     client.table("documents").update({"video_id": video_id}).eq("id", doc_id).execute()
 
 
+def set_chunk_start_seconds(client: Client, chunk_id: int, start_seconds: int) -> None:
+    """Set a chunk's video start offset (writer -- needs the service key under RLS)."""
+    client.table("chunks").update({"start_seconds": start_seconds}).eq("id", chunk_id).execute()
+
+
 # --- Chunks ---
 
 

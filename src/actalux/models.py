@@ -45,6 +45,7 @@ class Chunk:
     speaker: str = ""
     chunk_index: int = 0
     embedding: list[float] = field(default_factory=list)
+    start_seconds: int | None = None  # video offset for YouTube transcript chunks
     id: int | None = None
 
     @property
