@@ -68,12 +68,17 @@ def generate_summary(
     results: list[dict[str, Any]],
     api_key: str,
     model: str = DEFAULT_MODEL,
+    *,
+    base_url: str | None = None,
+    reasoning_effort: str = "minimal",
 ) -> Summary:
     """Generate a citation-backed summary from search results.
 
     Each sentence in the output cites a hash ID. After generation,
     citations are verified against the actual result set. Sentences
-    with invalid citations are removed.
+    with invalid citations are removed. `base_url` targets an OpenAI-compatible
+    gateway (e.g. OpenRouter) for model A/B; `reasoning_effort` tunes OpenAI
+    reasoning models.
     """
     if not results:
         return Summary(
@@ -90,7 +95,7 @@ def generate_summary(
     quotes_block = _build_quotes_block(results)
 
     # Call the LLM
-    raw_text = _call_llm(query, quotes_block, api_key, model)
+    raw_text = _call_llm(query, quotes_block, api_key, model, base_url, reasoning_effort)
 
     # Verify citations
     verified_text, stats = _verify_citations(raw_text, valid_ids)
@@ -132,40 +137,57 @@ def _build_quotes_block(results: list[dict[str, Any]]) -> str:
 
 
 def _completion_kwargs(
-    model: str, messages: list[dict[str, str]], max_tokens: int
+    model: str,
+    messages: list[dict[str, str]],
+    max_tokens: int,
+    reasoning_effort: str = "minimal",
 ) -> dict[str, Any]:
-    """Build chat-completion kwargs.
+    """Build chat-completion kwargs, normalizing across model families.
 
-    OpenAI GPT-5 / o-series are reasoning models: they spend the output-token
-    budget on hidden reasoning and can return empty content on short tasks, so
-    request minimal reasoning. That param is OpenAI-reasoning-specific, so it is
-    added only for those models -- 4o-mini and non-OpenAI models reject it.
+    OpenAI GPT-5 / o-series are reasoning models: they take `max_completion_tokens`
+    plus `reasoning_effort` (without minimal effort they spend the whole budget on
+    hidden reasoning and return empty content on short tasks). Every other model --
+    gpt-4o-mini, and Claude/Gemini reached via OpenRouter -- takes plain
+    `max_tokens` and rejects `reasoning_effort`. The "provider/" prefix
+    (OpenRouter's "openai/gpt-5-mini") is stripped before the family check.
     """
-    kwargs: dict[str, Any] = {
-        "model": model,
-        "max_completion_tokens": max_tokens,
-        "messages": messages,
-    }
-    # Strip any "provider/" prefix (e.g. OpenRouter's "openai/gpt-5-mini").
-    if model.split("/")[-1].lower().startswith(("gpt-5", "o1", "o3", "o4")):
-        kwargs["reasoning_effort"] = "minimal"
+    is_openai_reasoning = model.split("/")[-1].lower().startswith(("gpt-5", "o1", "o3", "o4"))
+    kwargs: dict[str, Any] = {"model": model, "messages": messages}
+    if is_openai_reasoning:
+        kwargs["max_completion_tokens"] = max_tokens
+        kwargs["reasoning_effort"] = reasoning_effort
+    else:
+        kwargs["max_tokens"] = max_tokens
     return kwargs
 
 
-def _call_llm(query: str, quotes_block: str, api_key: str, model: str) -> str:
-    """Call the LLM to generate a citation-backed summary."""
+def _call_llm(
+    query: str,
+    quotes_block: str,
+    api_key: str,
+    model: str,
+    base_url: str | None = None,
+    reasoning_effort: str = "minimal",
+) -> str:
+    """Call the LLM to generate a citation-backed summary.
+
+    `base_url` lets the OpenAI-SDK client target an OpenAI-compatible gateway
+    (e.g. OpenRouter) so the summary model can be swapped without a rewrite.
+    """
     user_message = USER_PROMPT_TEMPLATE.format(
         query=query,
         quotes_block=quotes_block,
     )
 
     try:
-        client = OpenAI(api_key=api_key)
+        client = OpenAI(api_key=api_key, base_url=base_url)
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_message},
         ]
-        response = client.chat.completions.create(**_completion_kwargs(model, messages, MAX_TOKENS))
+        response = client.chat.completions.create(
+            **_completion_kwargs(model, messages, MAX_TOKENS, reasoning_effort)
+        )
         text = response.choices[0].message.content
         if not text:
             raise SummaryError("LLM returned empty content")

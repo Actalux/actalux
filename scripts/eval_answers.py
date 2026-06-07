@@ -37,7 +37,19 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Answer-quality eval (synthesis).")
     parser.add_argument("--limit", type=int, default=None, help="only the first N queries")
     parser.add_argument("--query-ids", type=str, default="", help="comma list of query ids")
-    parser.add_argument("--model", type=str, default="", help="summary model (default: config)")
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="",
+        help="summary model (default: config). A provider-prefixed id (e.g. "
+        "'openai/gpt-5', 'anthropic/claude-haiku-4.5') routes via OpenRouter.",
+    )
+    parser.add_argument(
+        "--reasoning",
+        type=str,
+        default="minimal",
+        help="reasoning_effort for OpenAI reasoning models (minimal/low/medium/high)",
+    )
     parser.add_argument(
         "--regenerate", action="store_true", help="regenerate answers even if cached"
     )
@@ -51,6 +63,19 @@ def main() -> None:
         parser.error("ANTHROPIC_API_KEY not set (the answer judge); run under doppler.")
 
     summary_model = args.model or cfg.summary_model
+    # A provider-prefixed model id routes via OpenRouter (one key, many models);
+    # a bare id (e.g. "gpt-5-mini") hits OpenAI directly.
+    if "/" in summary_model:
+        if not cfg.openrouter_api_key:
+            parser.error("OPENROUTER_API_KEY not set; needed for a provider-prefixed --model.")
+        gen_key, base_url = cfg.openrouter_api_key, "https://openrouter.ai/api/v1"
+    else:
+        gen_key, base_url = cfg.openai_api_key, None
+
+    # Cache/report label: distinguish a reasoning variant of the same model so it
+    # doesn't collide with the base model's cached answers.
+    model_id = summary_model if args.reasoning == "minimal" else f"{summary_model}@{args.reasoning}"
+
     # Reranker on when a key exists, matching production (ACTALUX_RERANK is "off"
     # locally, but the deployed app reranks -- the eval should reflect that).
     reranker = None
@@ -65,23 +90,26 @@ def main() -> None:
     rows = answer_quality.run(
         client,
         embed_model,
-        cfg.openai_api_key,
+        gen_key,
         cfg.anthropic_api_key,
         summary_model,
         reranker,
+        model_id=model_id,
+        base_url=base_url,
+        reasoning_effort=args.reasoning,
         limit=args.limit,
         query_ids=query_ids,
         regenerate=args.regenerate,
     )
 
-    body = answer_quality.render_markdown(rows, summary_model, judge.JUDGE_MODEL)
+    body = answer_quality.render_markdown(rows, model_id, judge.JUDGE_MODEL)
     print("\n" + body)
 
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    safe_model = summary_model.replace("/", "-")
+    safe_model = model_id.replace("/", "-").replace("@", "-")
     out = args.out or (RESULTS_DIR / f"answers_{safe_model}_{stamp}.md")
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(f"<!-- generated {stamp} | model={summary_model} -->\n\n" + body)
+    out.write_text(f"<!-- generated {stamp} | model={model_id} -->\n\n" + body)
     print(f"\nReport written to {out}")
 
 

@@ -1,5 +1,15 @@
 {
   "cur01": {
+    "anthropic/claude-haiku-4.5": {
+      "completeness": 2,
+      "directness": 2,
+      "faithfulness": 2
+    },
+    "google/gemini-2.5-flash": {
+      "completeness": 2,
+      "directness": 2,
+      "faithfulness": 1
+    },
     "gpt-5-mini": {
       "completeness": 2,
       "directness": 2,
@@ -7,6 +17,16 @@
     }
   },
   "cur02": {
+    "anthropic/claude-haiku-4.5": {
+      "completeness": 1,
+      "directness": 2,
+      "faithfulness": 0
+    },
+    "google/gemini-2.5-flash": {
+      "completeness": 1,
+      "directness": 1,
+      "faithfulness": 0
+    },
     "gpt-5-mini": {
       "completeness": 1,
       "directness": 1,
@@ -14,13 +34,33 @@
     }
   },
   "cur03": {
-    "gpt-5-mini": {
-      "completeness": 3,
+    "anthropic/claude-haiku-4.5": {
+      "completeness": 1,
       "directness": 3,
       "faithfulness": 2
+    },
+    "google/gemini-2.5-flash": {
+      "completeness": 2,
+      "directness": 3,
+      "faithfulness": 1
+    },
+    "gpt-5-mini": {
+      "completeness": 2,
+      "directness": 3,
+      "faithfulness": 1
     }
   },
   "cur04": {
+    "anthropic/claude-haiku-4.5": {
+      "completeness": 1,
+      "directness": 2,
+      "faithfulness": 0
+    },
+    "google/gemini-2.5-flash": {
+      "completeness": 2,
+      "directness": 2,
+      "faithfulness": 1
+    },
     "gpt-5-mini": {
       "completeness": 2,
       "directness": 2,
@@ -28,27 +68,67 @@
     }
   },
   "cur05": {
-    "gpt-5-mini": {
+    "anthropic/claude-haiku-4.5": {
       "completeness": 2,
+      "directness": 2,
+      "faithfulness": 1
+    },
+    "google/gemini-2.5-flash": {
+      "completeness": 2,
+      "directness": 2,
+      "faithfulness": 1
+    },
+    "gpt-5-mini": {
+      "completeness": 1,
       "directness": 2,
       "faithfulness": 1
     }
   },
   "cur06": {
-    "gpt-5-mini": {
-      "completeness": 3,
+    "anthropic/claude-haiku-4.5": {
+      "completeness": 2,
       "directness": 3,
-      "faithfulness": 3
+      "faithfulness": 1
+    },
+    "google/gemini-2.5-flash": {
+      "completeness": 2,
+      "directness": 2,
+      "faithfulness": 1
+    },
+    "gpt-5-mini": {
+      "completeness": 2,
+      "directness": 3,
+      "faithfulness": 1
     }
   },
   "cur07": {
-    "gpt-5-mini": {
+    "anthropic/claude-haiku-4.5": {
+      "completeness": 2,
+      "directness": 3,
+      "faithfulness": 1
+    },
+    "google/gemini-2.5-flash": {
       "completeness": 2,
       "directness": 2,
+      "faithfulness": 1
+    },
+    "gpt-5-mini": {
+      "completeness": 2,
+      "directness": 3,
       "faithfulness": 2
     }
   },
   "cur08": {
+    "anthropic/claude-haiku-4.5": {
+      "completeness": 1,
+      "directness": 2,
+      "faithfulness": 0
+    },
+    "google/gemini-2.5-flash": {
+      "completeness": 2,
+      "directness": 3,
+      "faithfulness": 0
+    },
     "gpt-5-mini": {
       "completeness": 2,
       "directness": 2,
@@ -56,69 +136,219 @@
     }
   },
   "fin01": {
-    "gpt-5-mini": {
+    "anthropic/claude-haiku-4.5": {
       "completeness": 2,
       "directness": 3,
-      "faithfulness": 2
+      "faithfulness": 1
+    },
+    "google/gemini-2.5-flash": {
+      "completeness": 3,
+      "directness": 3,
+      "faithfulness": 1
+    },
+    "gpt-5-mini": {
+      "completeness": 1,
+      "directness": 2,
+      "faithfulness": 1
+    },
+    "gpt-5-mini@medium": {
+      "completeness": 1,
+      "directness": 3,
+      "faithfulness": 3
+    },
+    "openai/gpt-5": {
+      "completeness": 2,
+      "directness": 3,
+      "faithfulness": 1
     }
   },
   "fin02": {
+    "anthropic/claude-haiku-4.5": {
+      "completeness": 1,
+      "directness": 1,
+      "faithfulness": 0
+    },
+    "google/gemini-2.5-flash": {
+      "completeness": 0,
+      "directness": 1,
+      "faithfulness": 0
+    },
     "gpt-5-mini": {
+      "completeness": 1,
+      "directness": 2,
+      "faithfulness": 0
+    },
+    "gpt-5-mini@medium": {
+      "completeness": 1,
+      "directness": 2,
+      "faithfulness": 0
+    },
+    "openai/gpt-5": {
       "completeness": 1,
       "directness": 1,
       "faithfulness": 0
     }
   },
   "fin03": {
+    "anthropic/claude-haiku-4.5": {
+      "completeness": 2,
+      "directness": 2,
+      "faithfulness": 1
+    },
+    "google/gemini-2.5-flash": {
+      "completeness": 2,
+      "directness": 2,
+      "faithfulness": 1
+    },
     "gpt-5-mini": {
       "completeness": 2,
       "directness": 2,
       "faithfulness": 1
-    }
-  },
-  "fin04": {
-    "gpt-5-mini": {
+    },
+    "openai/gpt-5": {
       "completeness": 2,
-      "directness": 2,
-      "faithfulness": 1
-    }
-  },
-  "fin05": {
-    "gpt-5-mini": {
-      "completeness": 1,
-      "directness": 1,
-      "faithfulness": 2
-    }
-  },
-  "fin06": {
-    "gpt-5-mini": {
-      "completeness": 2,
-      "directness": 2,
-      "faithfulness": 1
-    }
-  },
-  "fin07": {
-    "gpt-5-mini": {
-      "completeness": 3,
       "directness": 3,
       "faithfulness": 2
     }
   },
+  "fin04": {
+    "anthropic/claude-haiku-4.5": {
+      "completeness": 1,
+      "directness": 2,
+      "faithfulness": 1
+    },
+    "google/gemini-2.5-flash": {
+      "completeness": 2,
+      "directness": 2,
+      "faithfulness": 1
+    },
+    "gpt-5-mini": {
+      "completeness": 2,
+      "directness": 2,
+      "faithfulness": 1
+    },
+    "openai/gpt-5": {
+      "completeness": 2,
+      "directness": 3,
+      "faithfulness": 1
+    }
+  },
+  "fin05": {
+    "anthropic/claude-haiku-4.5": {
+      "completeness": 2,
+      "directness": 3,
+      "faithfulness": 3
+    },
+    "google/gemini-2.5-flash": {
+      "completeness": 3,
+      "directness": 3,
+      "faithfulness": 3
+    },
+    "gpt-5-mini": {
+      "completeness": 3,
+      "directness": 3,
+      "faithfulness": 3
+    },
+    "openai/gpt-5": {
+      "completeness": 2,
+      "directness": 2,
+      "faithfulness": 1
+    }
+  },
+  "fin06": {
+    "anthropic/claude-haiku-4.5": {
+      "completeness": 2,
+      "directness": 2,
+      "faithfulness": 1
+    },
+    "google/gemini-2.5-flash": {
+      "completeness": 2,
+      "directness": 2,
+      "faithfulness": 1
+    },
+    "gpt-5-mini": {
+      "completeness": 2,
+      "directness": 3,
+      "faithfulness": 1
+    },
+    "openai/gpt-5": {
+      "completeness": 3,
+      "directness": 3,
+      "faithfulness": 1
+    }
+  },
+  "fin07": {
+    "anthropic/claude-haiku-4.5": {
+      "completeness": 2,
+      "directness": 3,
+      "faithfulness": 1
+    },
+    "google/gemini-2.5-flash": {
+      "completeness": 1,
+      "directness": 3,
+      "faithfulness": 2
+    },
+    "gpt-5-mini": {
+      "completeness": 2,
+      "directness": 3,
+      "faithfulness": 1
+    },
+    "openai/gpt-5": {
+      "completeness": 2,
+      "directness": 3,
+      "faithfulness": 1
+    }
+  },
   "fin08": {
+    "anthropic/claude-haiku-4.5": {
+      "completeness": 0,
+      "directness": 3,
+      "faithfulness": 0
+    },
+    "google/gemini-2.5-flash": {
+      "completeness": 0,
+      "directness": 2,
+      "faithfulness": 0
+    },
     "gpt-5-mini": {
       "completeness": 1,
       "directness": 1,
       "faithfulness": 0
+    },
+    "openai/gpt-5": {
+      "completeness": 0,
+      "directness": 3,
+      "faithfulness": 0
     }
   },
   "gov01": {
+    "anthropic/claude-haiku-4.5": {
+      "completeness": 2,
+      "directness": 1,
+      "faithfulness": 3
+    },
+    "google/gemini-2.5-flash": {
+      "completeness": 2,
+      "directness": 1,
+      "faithfulness": 1
+    },
     "gpt-5-mini": {
-      "completeness": 3,
+      "completeness": 2,
       "directness": 1,
       "faithfulness": 3
     }
   },
   "gov02": {
+    "anthropic/claude-haiku-4.5": {
+      "completeness": 2,
+      "directness": 3,
+      "faithfulness": 3
+    },
+    "google/gemini-2.5-flash": {
+      "completeness": 1,
+      "directness": 2,
+      "faithfulness": 1
+    },
     "gpt-5-mini": {
       "completeness": 2,
       "directness": 3,
@@ -126,20 +356,50 @@
     }
   },
   "gov03": {
+    "anthropic/claude-haiku-4.5": {
+      "completeness": 2,
+      "directness": 3,
+      "faithfulness": 2
+    },
+    "google/gemini-2.5-flash": {
+      "completeness": 2,
+      "directness": 3,
+      "faithfulness": 2
+    },
     "gpt-5-mini": {
       "completeness": 3,
       "directness": 3,
-      "faithfulness": 3
+      "faithfulness": 2
     }
   },
   "gov04": {
+    "anthropic/claude-haiku-4.5": {
+      "completeness": 2,
+      "directness": 2,
+      "faithfulness": 1
+    },
+    "google/gemini-2.5-flash": {
+      "completeness": 3,
+      "directness": 3,
+      "faithfulness": 1
+    },
     "gpt-5-mini": {
       "completeness": 3,
-      "directness": 2,
+      "directness": 3,
       "faithfulness": 1
     }
   },
   "gov05": {
+    "anthropic/claude-haiku-4.5": {
+      "completeness": 1,
+      "directness": 2,
+      "faithfulness": 2
+    },
+    "google/gemini-2.5-flash": {
+      "completeness": 2,
+      "directness": 2,
+      "faithfulness": 2
+    },
     "gpt-5-mini": {
       "completeness": 2,
       "directness": 2,
@@ -147,23 +407,53 @@
     }
   },
   "gov06": {
+    "anthropic/claude-haiku-4.5": {
+      "completeness": 1,
+      "directness": 2,
+      "faithfulness": 1
+    },
+    "google/gemini-2.5-flash": {
+      "completeness": 1,
+      "directness": 2,
+      "faithfulness": 1
+    },
     "gpt-5-mini": {
       "completeness": 2,
       "directness": 2,
-      "faithfulness": 2
+      "faithfulness": 1
     }
   },
   "gov07": {
+    "anthropic/claude-haiku-4.5": {
+      "completeness": 3,
+      "directness": 3,
+      "faithfulness": 3
+    },
+    "google/gemini-2.5-flash": {
+      "completeness": 2,
+      "directness": 3,
+      "faithfulness": 2
+    },
     "gpt-5-mini": {
       "completeness": 2,
-      "directness": 2,
+      "directness": 3,
       "faithfulness": 2
     }
   },
   "gov08": {
-    "gpt-5-mini": {
+    "anthropic/claude-haiku-4.5": {
       "completeness": 2,
       "directness": 3,
+      "faithfulness": 1
+    },
+    "google/gemini-2.5-flash": {
+      "completeness": 2,
+      "directness": 3,
+      "faithfulness": 1
+    },
+    "gpt-5-mini": {
+      "completeness": 2,
+      "directness": 2,
       "faithfulness": 1
     }
   }

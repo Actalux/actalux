@@ -132,7 +132,8 @@ directness -- does it answer the question asked, plainly and without filler?
   1 = partial or evasive.
   0 = does not answer the query (or says nothing was found when quotes exist).
 
-Output ONLY a JSON object, no prose:
+Check each claim against the quotes, then FINISH your reply with the grades as a \
+JSON object on its own line -- this exact shape, with nothing after it:
 {"faithfulness": <0-3>, "completeness": <0-3>, "directness": <0-3>}\
 """
 
@@ -145,9 +146,11 @@ Provided source quotes (the only evidence the answer was allowed to use):
 AI-generated answer:
 {answer}
 
-Grades (JSON only):"""
+Assess each claim, then end with the JSON grades:"""
 
-_JSON_OBJ_RE = re.compile(r"\{.*\}", re.DOTALL)
+# Flat object only (no nested braces); the judge may reason first, so take the
+# LAST object in the reply -- its final verdict.
+_JSON_OBJ_RE = re.compile(r"\{[^{}]*\}")
 
 
 def grade_answer(
@@ -160,8 +163,10 @@ def grade_answer(
     """
     client = anthropic.Anthropic(api_key=api_key)
     resp = client.messages.create(
+        # Headroom for the judge to reason through every claim before the JSON; a
+        # tight cap truncated thorough analyses mid-JSON. (This model rejects prefill.)
         model=model,
-        max_tokens=64,
+        max_tokens=1024,
         system=ANSWER_GRADE_SYSTEM,
         messages=[
             {
@@ -170,11 +175,11 @@ def grade_answer(
             }
         ],
     )
-    text = "".join(b.text for b in resp.content if isinstance(b, TextBlock)).strip()
-    match = _JSON_OBJ_RE.search(text)
-    if not match:
+    text = "".join(b.text for b in resp.content if isinstance(b, TextBlock))
+    matches = _JSON_OBJ_RE.findall(text)
+    if not matches:
         raise ValueError(f"answer judge returned no JSON object: {text!r}")
-    parsed = json.loads(match.group())
+    parsed = json.loads(matches[-1])
     scores = {}
     for dim in ANSWER_DIMENSIONS:
         value = parsed.get(dim)

@@ -23,6 +23,10 @@ class Config:
     )
     anthropic_api_key: str = field(default_factory=lambda: os.environ.get("ANTHROPIC_API_KEY", ""))
     openai_api_key: str = field(default_factory=lambda: os.environ.get("OPENAI_API_KEY", ""))
+    # OpenRouter: one key reaches many models for synthesis A/B (eval/eval_answers).
+    openrouter_api_key: str = field(
+        default_factory=lambda: os.environ.get("OPENROUTER_API_KEY", "")
+    )
     summary_model: str = "gpt-5-mini"
     # ZeroEntropy hosted reranker. Key gates the API call; zerank-1-small is the
     # Apache-2.0 model that won the retrieval eval (+24% nDCG@10; see eval/README.md).

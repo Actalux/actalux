@@ -22,6 +22,7 @@ from typing import Any
 from supabase import Client
 
 from actalux.db import get_documents
+from actalux.errors import SummaryError
 from actalux.eval import judge
 from actalux.eval.harness import load_queries
 from actalux.models import chunk_hash_id
@@ -89,6 +90,9 @@ def generate_answer(
     openai_key: str,
     summary_model: str,
     reranker: Reranker | None,
+    *,
+    base_url: str | None = None,
+    reasoning_effort: str = "minimal",
 ) -> tuple[Summary, list[dict[str, Any]]]:
     """Run the production summary path; return the Summary and the quotes it saw."""
     embedding = embed_model.encode(query, normalize_embeddings=True).tolist()
@@ -96,7 +100,14 @@ def generate_answer(
         client, query, embedding, max_results=SUMMARY_MAX_RESULTS, reranker=reranker
     )
     enriched = _enrich(client, results)
-    summary = generate_summary(query, enriched, openai_key, summary_model)
+    summary = generate_summary(
+        query,
+        enriched,
+        openai_key,
+        summary_model,
+        base_url=base_url,
+        reasoning_effort=reasoning_effort,
+    )
     return summary, enriched
 
 
@@ -117,12 +128,21 @@ def run(
     summary_model: str,
     reranker: Reranker | None,
     *,
+    model_id: str | None = None,
+    base_url: str | None = None,
+    reasoning_effort: str = "minimal",
     limit: int | None = None,
     query_ids: set[str] | None = None,
     regenerate: bool = False,
     judge_model: str = judge.JUDGE_MODEL,
 ) -> list[AnswerRow]:
-    """Generate + judge answers for the query set, caching per (query_id, model)."""
+    """Generate + judge answers for the query set, caching per (query_id, model_id).
+
+    `model_id` is the cache/report label (defaults to `summary_model`); pass a
+    distinct one for a config variant of the same model (e.g. a reasoning bump)
+    so it doesn't collide with the base model's cached answers.
+    """
+    model_id = model_id or summary_model
     queries = load_queries()
     if query_ids is not None:
         queries = [q for q in queries if q["id"] in query_ids]
@@ -135,11 +155,22 @@ def run(
 
     for q in queries:
         qid = q["id"]
-        cached = answers.get(qid, {}).get(summary_model)
+        cached = answers.get(qid, {}).get(model_id)
         if cached is None or regenerate:
-            summary, enriched = generate_answer(
-                client, embed_model, q["query"], openai_key, summary_model, reranker
-            )
+            try:
+                summary, enriched = generate_answer(
+                    client,
+                    embed_model,
+                    q["query"],
+                    openai_key,
+                    summary_model,
+                    reranker,
+                    base_url=base_url,
+                    reasoning_effort=reasoning_effort,
+                )
+            except SummaryError as exc:  # skip-and-report; a bad arm shouldn't crash the run
+                logger.warning("answer generation failed for %s (%s): %s", qid, model_id, exc)
+                continue
             cached = {
                 "answer": summary.text,
                 "found": summary.citations_found,
@@ -147,11 +178,11 @@ def run(
                 "dropped": summary.citations_dropped,
                 "quotes": _quotes_block(enriched),
             }
-            answers.setdefault(qid, {})[summary_model] = cached
+            answers.setdefault(qid, {})[model_id] = cached
             _save(ANSWERS_PATH, answers)
-            grades.get(qid, {}).pop(summary_model, None)  # answer changed -> regrade
+            grades.get(qid, {}).pop(model_id, None)  # answer changed -> regrade
 
-        score = grades.get(qid, {}).get(summary_model)
+        score = grades.get(qid, {}).get(model_id)
         if score is None:
             try:
                 score = judge.grade_answer(
@@ -160,7 +191,7 @@ def run(
             except Exception as exc:  # noqa: BLE001 - skip-and-report, don't score a hole
                 logger.warning("answer judge failed for %s: %s", qid, exc)
                 continue
-            grades.setdefault(qid, {})[summary_model] = score
+            grades.setdefault(qid, {})[model_id] = score
             _save(ANSWER_JUDGMENTS_PATH, grades)
 
         rows.append(
