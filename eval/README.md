@@ -136,6 +136,67 @@ baseline vs `zerank-1-small-api`:
 improved. This reproduces the earlier self-hosted finding, confirming the gain
 transfers to the hosted API.
 
+## Recall fixes (decided)
+
+A per-query audit found three queries whose first stage surfaced **zero** relevant
+items (`rel-in-pool = 0`): `fin05` (per-pupil expenditure by building), `gov01`
+(superintendent contract and evaluation), `cur02` (Spanish curriculum elementary).
+They turned out to have three different root causes, only two of which are
+retrieval-fixable. None is fixed by an embedding-model upgrade.
+
+1. **HNSW `ef_search` ceiling (fin05, semantic side).** `chunks_embedding_hnsw`
+   is an approximate index; pgvector's default `hnsw.ef_search = 40` caps the
+   graph traversal and silently drops true nearest neighbours for a tightly
+   clustered, recently inserted document group. The six DESE per-pupil documents
+   (chunks 7770-7779) are the corpus's top neighbours by exact cosine (0.747) yet
+   `semantic_search` returned **0** of them — 40 rows topping out at 0.743,
+   reaching as deep as exact-rank 54. **Fix:** `migrate_010_ef_search.sql` sets
+   `ef_search = 100` via a transaction-local `set_config` inside the function
+   (a function-level `SET` clause is denied for this custom GUC on managed
+   Postgres). Validated: ef_search 40 → 5/10 of the exact top-10, 0 per-pupil;
+   ≥ 80 → 10/10, all per-pupil; saturates at 80. No re-embed, no schema change.
+
+2. **FTS hyphen tokenization (fin05, keyword side).** `websearch_to_tsquery`
+   turns a hyphenated query term into a phrase query over the *compound* lexeme
+   (`per-pupil <-> per <-> pupil`), which only matches identically-hyphenated
+   text; the OCR'd corpus writes "Expenditures Per Pupil". So
+   `keyword('per-pupil expenditure by building')` returned 0 rows while the
+   de-hyphenated form returned 18 (answer at rank 4). **Fix:**
+   `search/hybrid.py:_normalize_fts_query` de-hyphenates the FTS query before the
+   RPC — strictly more permissive (a hyphenated document still emits the split
+   lexemes), so it only adds matches.
+
+**Validated 2026-06-07** (24 queries, judge claude-sonnet-4-6), before/after with
+the judgment union held constant (isolating the ranking change):
+
+| arm | nDCG@10 | recall@10 | fin05 (nDCG / rel-in-pool) |
+|---|---|---|---|
+| rrf_only before | 0.715 | 0.461 | 0.000 / 0 |
+| rrf_only after | 0.741 | 0.444 | **1.000 / 10** |
+| zerank-1-small-api before | 0.885 | 0.548 | 0.907 / 0 |
+| zerank-1-small-api after | 0.885 | **0.558** | **1.000 / 10** |
+
+fin05's hole is closed on both arms. On the production (reranked) path the
+aggregate is flat-to-slightly-up; the rrf-only arm shows minor fusion churn
+(e.g. gov05 −0.175) that the reranker absorbs (gov05 −0.005 reranked), because
+`ef_search = 100` raises *rel-in-pool* (more relevant items reach the pool for
+the reranker to lift) even when it reorders the un-reranked fusion.
+
+3. **Chunk-context loss (cur02) — global re-embed rejected.** `cur02`'s answer is
+   doc 140 (`canva_1-5_Spanish_Curriculum_Map`), a single chunk whose body has no
+   "Spanish"/"elementary" — the subject lives only in the filename/title, so FTS
+   can't match it and its content-only embedding is crowded out. A tempting fix is
+   to embed every chunk as `meeting_title + content`. **A read-only simulation
+   rejected it:** re-embedding all 4990 chunks that way put doc 140 into the
+   exact-top-50 (rank 19) but **degraded 13 of 24 queries' rel-in-pool while
+   helping 2** (e.g. fin08 34 → 4), because noisy titles ("canva", ".pdf", dates,
+   "Budget") distort the many queries that already work. The right fix is
+   surgical — re-ingest the curriculum-map source so each map's subject lives in
+   the chunk body — or accept cur02 as a known limitation. `gov01` is a separate
+   content/privacy gap: no substantive public superintendent contract/evaluation
+   record exists (evaluations are closed-session); retrieval cannot return what
+   the corpus does not hold.
+
 ## Answer quality
 
 A second eval (`answer_quality.py`, CLI `scripts/eval_answers.py`) scores the

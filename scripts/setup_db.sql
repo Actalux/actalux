@@ -213,8 +213,16 @@ RETURNS TABLE (
     speaker TEXT,
     similarity FLOAT
 )
-LANGUAGE sql STABLE
+LANGUAGE plpgsql STABLE
 AS $$
+BEGIN
+    -- HNSW is approximate; pgvector's default ef_search=40 drops true nearest
+    -- neighbours for tightly-clustered recent inserts. Set transaction-local so
+    -- it scopes to this PostgREST request without affecting other queries (a
+    -- function-level SET clause is denied for this custom GUC on managed
+    -- Postgres). See migrate_010.
+    PERFORM set_config('hnsw.ef_search', '100', true);
+    RETURN QUERY
     SELECT
         c.id AS chunk_id,
         c.document_id,
@@ -231,6 +239,7 @@ AS $$
       AND (filter_doc_type IS NULL OR d.document_type = filter_doc_type)
     ORDER BY c.embedding <=> query_embedding
     LIMIT match_count;
+END;
 $$;
 
 -- Keyword search: returns chunks ranked by full-text relevance

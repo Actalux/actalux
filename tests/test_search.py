@@ -9,6 +9,7 @@ from actalux.search.hybrid import (
     SearchFilters,
     SearchResult,
     _keyword_search,
+    _normalize_fts_query,
     _reciprocal_rank_fusion,
     _semantic_search,
 )
@@ -161,3 +162,27 @@ class TestSearchRpcParams:
                 },
             )
         ]
+
+    def test_keyword_search_normalizes_hyphens(self) -> None:
+        # A hyphenated term must reach the FTS RPC de-hyphenated, or
+        # websearch_to_tsquery demands a compound lexeme the OCR'd corpus
+        # rarely has (see _normalize_fts_query). Regression guard for fin05.
+        client = _FakeClient()
+
+        _keyword_search(client, "per-pupil expenditure by building", SearchFilters())
+
+        assert client.calls[0][1]["search_query"] == "per pupil expenditure by building"
+
+
+class TestNormalizeFtsQuery:
+    """The FTS query is de-hyphenated to avoid compound-lexeme phrase queries."""
+
+    def test_ascii_hyphen(self) -> None:
+        assert _normalize_fts_query("per-pupil") == "per pupil"
+
+    def test_en_and_em_dashes(self) -> None:
+        assert _normalize_fts_query("grades 9–12") == "grades 9 12"
+        assert _normalize_fts_query("budget—2024") == "budget 2024"
+
+    def test_unaffected_query_unchanged(self) -> None:
+        assert _normalize_fts_query("annual budget resolution") == "annual budget resolution"

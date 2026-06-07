@@ -6,6 +6,7 @@ Uses Reciprocal Rank Fusion (RRF) to combine rankings from both sources.
 from __future__ import annotations
 
 import logging
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -19,6 +20,9 @@ from actalux.errors import RerankError, SearchError
 logger = logging.getLogger(__name__)
 
 RRF_K = 60
+# Hyphen-like characters normalized out of FTS queries (see _normalize_fts_query):
+# ASCII hyphen-minus, Unicode hyphen, non-breaking hyphen, figure dash, en/em dash.
+_HYPHENS_RE = re.compile(r"[-‐‑‒–—]")
 SEMANTIC_CANDIDATES = 50
 KEYWORD_CANDIDATES = 50
 MAX_RESULTS = 20
@@ -141,6 +145,21 @@ def _semantic_search(
         raise SearchError(f"Semantic search failed: {exc}") from exc
 
 
+def _normalize_fts_query(query: str) -> str:
+    """Replace hyphens with spaces so FTS doesn't demand a compound token.
+
+    `websearch_to_tsquery('english', 'per-pupil ...')` turns a hyphenated term
+    into a phrase query over the *compound* lexeme (`per-pupil <-> per <-> pupil`),
+    which only matches documents whose text is hyphenated the same way. Our OCR'd
+    sources mostly write the unhyphenated form ("Expenditures Per Pupil"), so the
+    hyphenated query matched nothing: `keyword('per-pupil expenditure by building')`
+    returned 0 rows, while the de-hyphenated form returned 18 (answer at rank 4).
+    De-hyphenating is strictly more permissive — a hyphenated document still emits
+    the split lexemes — so this only adds matches, never removes them.
+    """
+    return _HYPHENS_RE.sub(" ", query)
+
+
 def _keyword_search(
     client: Client,
     query: str,
@@ -148,7 +167,7 @@ def _keyword_search(
 ) -> list[dict[str, Any]]:
     """Run keyword search via Supabase RPC."""
     params: dict[str, Any] = {
-        "search_query": query,
+        "search_query": _normalize_fts_query(query),
         "match_count": KEYWORD_CANDIDATES,
     }
     if filters.date_from:
