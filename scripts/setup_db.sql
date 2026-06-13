@@ -233,6 +233,7 @@ BEGIN
     FROM chunks c
     JOIN documents d ON d.id = c.document_id
     WHERE c.embedding IS NOT NULL
+      AND d.replaces_id IS NULL
       AND 1 - (c.embedding <=> query_embedding) >= match_threshold
       AND (filter_date_from IS NULL OR d.meeting_date >= filter_date_from)
       AND (filter_date_to IS NULL OR d.meeting_date <= filter_date_to)
@@ -270,6 +271,7 @@ AS $$
     FROM chunks c
     JOIN documents d ON d.id = c.document_id
     WHERE to_tsvector('english', c.content) @@ websearch_to_tsquery('english', search_query)
+      AND d.replaces_id IS NULL
       AND (filter_date_from IS NULL OR d.meeting_date >= filter_date_from)
       AND (filter_date_to IS NULL OR d.meeting_date <= filter_date_to)
       AND (filter_doc_type IS NULL OR d.document_type = filter_doc_type)

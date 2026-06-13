@@ -117,6 +117,11 @@ DOC_TYPE_PATTERNS = {
 # from the transcripts directory, classify as "transcript"
 TRANSCRIPT_EXTENSIONS = {".txt"}
 
+# Canva curriculum maps are scraped as bare skill tables; the subject and grade
+# band survive only in the filename, so the chunk body is unfindable by subject
+# (the 1-5 Spanish map's only chunk contains no "Spanish"). See subject_header.
+CANVA_MAP_RE = re.compile(r"^canva_.*curriculum_map", re.IGNORECASE)
+
 
 def infer_meeting_date(name: str) -> date | None:
     """Extract a date from a directory or filename.
@@ -214,6 +219,26 @@ def infer_meeting_title(name: str) -> str:
     title = title.replace("-", " ").replace("_", " ").strip()
 
     return title or "Board Meeting"
+
+
+def subject_header(source_file: str, meeting_title: str) -> str:
+    """Subject line to restore into a Canva curriculum-map's content, or "".
+
+    These maps are scraped as bare skill tables whose subject lives only in the
+    filename, so the chunk body can't be found by subject. Prepending the subject
+    makes the map retrievable by both FTS and embedding. Scoped to this source so
+    other documents' content is unchanged (a global title prefix regressed most
+    queries -- see eval/README.md "Recall fixes"). Validated: the 1-5 Spanish map
+    moved from absent to rank 8 in the candidate pool with no finance/governance
+    regression.
+    """
+    if not CANVA_MAP_RE.match(source_file):
+        return ""
+    subject = meeting_title.strip()
+    # Drop the leading "canva " filename artifact; keep "<grades> <subject> ...".
+    if subject.lower().startswith("canva "):
+        subject = subject[len("canva ") :].strip()
+    return subject
 
 
 def ingest_directory(data_dir: Path) -> None:
@@ -396,6 +421,12 @@ def _ingest_with_dedup(
     `_pii_gate`), so private records never reach the database.
     """
     text = parse_file(path)
+    # Restore the subject into Canva curriculum-map content (no-op for everything
+    # else). Done before hashing so an existing map re-ingests as a new version,
+    # and so the subject lands in both the stored content and the embedding.
+    header = subject_header(path.name, meeting_title)
+    if header and not text.startswith(header):
+        text = f"{header}\n\n{text}"
     file_hash = content_hash(text)
     portal = source_portal or _infer_portal(path.name)
 

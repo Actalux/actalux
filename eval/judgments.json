@@ -205,6 +205,101 @@
       "grade": 1,
       "query": "high school math curriculum map grades 9-12"
     },
+    "cur01::7975": {
+      "chunk_preview": "6 8 Visual Arts Curriculum Map\n\n6th Grade 7th Grade 8th Grade Visual Arts 6Visual Arts 7Visual Arts 8Fiber ArtsDigital Art andPhotographyFiber Arts1/1",
+      "grade": 0,
+      "query": "high school math curriculum map grades 9-12"
+    },
+    "cur01::7978": {
+      "chunk_preview": "Elementary Strings Curriculum Map\n\n4th GradeStrings5th Grade Strings1/1",
+      "grade": 0,
+      "query": "high school math curriculum map grades 9-12"
+    },
+    "cur01::7989": {
+      "chunk_preview": "6 8 Literacy Curriculum Map\n\n6th Grade 7th Grade 8th Grade 6th GradeLiteracy7th GradeLiteracy 8th GradeLiteracyElective CourseLiteracy LabEnglishEssentialsEngli",
+      "grade": 0,
+      "query": "high school math curriculum map grades 9-12"
+    },
+    "cur01::7990": {
+      "chunk_preview": "9 12 Literacy Curriculum Map\n\n9th Grade 10th Grade 11th Grade 12th Grade English Essentials IEnglish Essentials IIEnglish Essentials IIIEnglish EssentialsIVEngl",
+      "grade": 1,
+      "query": "high school math curriculum map grades 9-12"
+    },
+    "cur01::7992": {
+      "chunk_preview": "6 8 Social Studies Curriculum Map\n\n6th Grade 7th Grade 8th Grade 6th GradeSocial Studies7th Grade Social Studies8th GradeSocial Studies Social StudiesEssentials",
+      "grade": 0,
+      "query": "high school math curriculum map grades 9-12"
+    },
+    "cur01::7993": {
+      "chunk_preview": "9 12 Social Studies Curriculum Map\n\n9th Grade 10th Grade           11th and 12th Grade  * must include American Government     (some electives offered on a rota",
+      "grade": 1,
+      "query": "high school math curriculum map grades 9-12"
+    },
+    "cur01::7995": {
+      "chunk_preview": "7 8 Chinese Curriculum Map\n\n7th Grade 8th Grade 7th Grade Chinese8th GradeChinese1/1",
+      "grade": 0,
+      "query": "high school math curriculum map grades 9-12"
+    },
+    "cur01::7996": {
+      "chunk_preview": "6 8 French Curriculum Map\n\n6th Grade 7th Grade 8th Grade 6th GradeFrench7th Grade French8th GradeFrench1/1",
+      "grade": 0,
+      "query": "high school math curriculum map grades 9-12"
+    },
+    "cur01::7997": {
+      "chunk_preview": "7 8 Latin Curriculum Map\n\n7th Grade 8th Grade 7th Grade Latin8th GradeLatin1/1",
+      "grade": 0,
+      "query": "high school math curriculum map grades 9-12"
+    },
+    "cur01::7998": {
+      "chunk_preview": "6 8 Spanish Curriculum Map\n\n6th Grade 7th Grade 8th Grade 6th GradeSpanish7th Grade Spanish8th GradeSpanish1/1",
+      "grade": 0,
+      "query": "high school math curriculum map grades 9-12"
+    },
+    "cur01::8001": {
+      "chunk_preview": "9 12 Latin Curriculum Map\n\nLatin ILatin VLatin IILatin IIILatin IVLatin IIILatin 8 (Grade 8)Latin IILatin IVLatin V1/1",
+      "grade": 1,
+      "query": "high school math curriculum map grades 9-12"
+    },
+    "cur01::8004": {
+      "chunk_preview": "6 8 Curriculum Map\n\n6th Grade 7th Grade 8th Grade 6th GradeScience7th Grade Science8th GradeScience Science EssentialsScience EssentialsScience Essentials1/1",
+      "grade": 1,
+      "query": "high school math curriculum map grades 9-12"
+    },
+    "cur01::8005": {
+      "chunk_preview": "9 12 Curriculum Map\n\n9th Grade 10th Grade           11th and 12th Grade  * must include one year of Biological ScienceScience Essentials IScience Essentials IIS",
+      "grade": 1,
+      "query": "high school math curriculum map grades 9-12"
+    },
+    "cur01::8006": {
+      "chunk_preview": "6 8 Health Curriculum Map\n\n6th Grade 7th Grade 8th Grade 6th Grade Health7th Grade Health8th GradeHealth1/1",
+      "grade": 0,
+      "query": "high school math curriculum map grades 9-12"
+    },
+    "cur01::8007": {
+      "chunk_preview": "9 12 Health Curriculum Map\n\n10th Grade HealthyDecisions(Health andFamilyDecisions)1/1",
+      "grade": 1,
+      "query": "high school math curriculum map grades 9-12"
+    },
+    "cur01::8009": {
+      "chunk_preview": "Family and Consumer Science Curriculum Map\n\n7th Grade7th  and 8th GradeBasic FACSExploringthe FACS1/1",
+      "grade": 0,
+      "query": "high school math curriculum map grades 9-12"
+    },
+    "cur01::8010": {
+      "chunk_preview": "Engineering and Computer Science Curriculum Map\n\n6th Grade 7th  and 8th Grades Computer Scienceand Magic ofElectronsCoding IDigitalStorytellingAutomation and Ro",
+      "grade": 1,
+      "query": "high school math curriculum map grades 9-12"
+    },
+    "cur01::8015": {
+      "chunk_preview": "9 12 Curriculum Map (for CHS Class of 2027 and prior)\n\nAlgebra 1GeometryAlgebra 2Algebra 3Honors Algebra 2 & TrigonometryAP PreCalcBCAP CalculusABMath Essential",
+      "grade": 3,
+      "query": "high school math curriculum map grades 9-12"
+    },
+    "cur01::8016": {
+      "chunk_preview": "9 12 Curriculum Map (starting with CHS Class of 2028)\n\nAlgebra 1GeometryAlgebra 2Algebra 3Honors Algebra 2 & TrigonometryAP PreCalcBCAP CalculusABMath Essential",
+      "grade": 3,
+      "query": "high school math curriculum map grades 9-12"
+    },
     "cur02::1246": {
       "chunk_preview": "A CER in sixth grade, seventh grade, eighth grade, ninth grade, tenth grade so we're using common language all the way through. CER is used in science and used ",
       "grade": 0,
@@ -388,6 +483,81 @@
     "cur02::7919": {
       "chunk_preview": "6.1 \nFacility Updates by Design Team & Construction Management Team \nJohn Brazeal and the team from Paragon, BLDD, and BSI shared an update with the Board of \nE",
       "grade": 1,
+      "query": "Spanish curriculum elementary grades"
+    },
+    "cur02::7977": {
+      "chunk_preview": "K 5 Music Curriculum Map\n\nK1st2nd3rd4th5thMelodyHarmonyExpressionRhythmEcho, read and create using grade level rhythmic materialsSteady beatQuarter notes, rest,",
+      "grade": 0,
+      "query": "Spanish curriculum elementary grades"
+    },
+    "cur02::7978": {
+      "chunk_preview": "Elementary Strings Curriculum Map\n\n4th GradeStrings5th Grade Strings1/1",
+      "grade": 1,
+      "query": "Spanish curriculum elementary grades"
+    },
+    "cur02::7989": {
+      "chunk_preview": "6 8 Literacy Curriculum Map\n\n6th Grade 7th Grade 8th Grade 6th GradeLiteracy7th GradeLiteracy 8th GradeLiteracyElective CourseLiteracy LabEnglishEssentialsEngli",
+      "grade": 0,
+      "query": "Spanish curriculum elementary grades"
+    },
+    "cur02::7990": {
+      "chunk_preview": "9 12 Literacy Curriculum Map\n\n9th Grade 10th Grade 11th Grade 12th Grade English Essentials IEnglish Essentials IIEnglish Essentials IIIEnglish EssentialsIVEngl",
+      "grade": 0,
+      "query": "Spanish curriculum elementary grades"
+    },
+    "cur02::7992": {
+      "chunk_preview": "6 8 Social Studies Curriculum Map\n\n6th Grade 7th Grade 8th Grade 6th GradeSocial Studies7th Grade Social Studies8th GradeSocial Studies Social StudiesEssentials",
+      "grade": 0,
+      "query": "Spanish curriculum elementary grades"
+    },
+    "cur02::7993": {
+      "chunk_preview": "9 12 Social Studies Curriculum Map\n\n9th Grade 10th Grade           11th and 12th Grade  * must include American Government     (some electives offered on a rota",
+      "grade": 0,
+      "query": "Spanish curriculum elementary grades"
+    },
+    "cur02::7994": {
+      "chunk_preview": "1 5 Spanish Curriculum Map\n\n1st2nd3rd4th5thListening Reading SpeakingWriting Recognize Cognates Recognize and Use Cognates to Aid Comprehension Use Verbal Cues ",
+      "grade": 3,
+      "query": "Spanish curriculum elementary grades"
+    },
+    "cur02::7996": {
+      "chunk_preview": "6 8 French Curriculum Map\n\n6th Grade 7th Grade 8th Grade 6th GradeFrench7th Grade French8th GradeFrench1/1",
+      "grade": 1,
+      "query": "Spanish curriculum elementary grades"
+    },
+    "cur02::7997": {
+      "chunk_preview": "7 8 Latin Curriculum Map\n\n7th Grade 8th Grade 7th Grade Latin8th GradeLatin1/1",
+      "grade": 1,
+      "query": "Spanish curriculum elementary grades"
+    },
+    "cur02::7998": {
+      "chunk_preview": "6 8 Spanish Curriculum Map\n\n6th Grade 7th Grade 8th Grade 6th GradeSpanish7th Grade Spanish8th GradeSpanish1/1",
+      "grade": 1,
+      "query": "Spanish curriculum elementary grades"
+    },
+    "cur02::8000": {
+      "chunk_preview": "9 12 French Curriculum Map\n\nFrench IFrench IIFrench IIIFrench IVAdvancedFrenchAP FrenchLanguageFrench CinemaandConversationFrench 8(8th Grade)French IIIFrench I",
+      "grade": 1,
+      "query": "Spanish curriculum elementary grades"
+    },
+    "cur02::8001": {
+      "chunk_preview": "9 12 Latin Curriculum Map\n\nLatin ILatin VLatin IILatin IIILatin IVLatin IIILatin 8 (Grade 8)Latin IILatin IVLatin V1/1",
+      "grade": 0,
+      "query": "Spanish curriculum elementary grades"
+    },
+    "cur02::8002": {
+      "chunk_preview": "9 12 Spanish Curriculum Map\n\nPopular Culture inthe SpanishSpeaking WorldCollege PrepSpanish ICollege PrepSpanish IICollege PrepSpanish IIICollege PrepSpanish IV",
+      "grade": 1,
+      "query": "Spanish curriculum elementary grades"
+    },
+    "cur02::8004": {
+      "chunk_preview": "6 8 Curriculum Map\n\n6th Grade 7th Grade 8th Grade 6th GradeScience7th Grade Science8th GradeScience Science EssentialsScience EssentialsScience Essentials1/1",
+      "grade": 0,
+      "query": "Spanish curriculum elementary grades"
+    },
+    "cur02::8009": {
+      "chunk_preview": "Family and Consumer Science Curriculum Map\n\n7th Grade7th  and 8th GradeBasic FACSExploringthe FACS1/1",
+      "grade": 0,
       "query": "Spanish curriculum elementary grades"
     },
     "cur03::1360": {
@@ -1040,6 +1210,76 @@
       "grade": 0,
       "query": "middle school performing arts and theater curriculum"
     },
+    "cur06::7975": {
+      "chunk_preview": "6 8 Visual Arts Curriculum Map\n\n6th Grade 7th Grade 8th Grade Visual Arts 6Visual Arts 7Visual Arts 8Fiber ArtsDigital Art andPhotographyFiber Arts1/1",
+      "grade": 1,
+      "query": "middle school performing arts and theater curriculum"
+    },
+    "cur06::7977": {
+      "chunk_preview": "K 5 Music Curriculum Map\n\nK1st2nd3rd4th5thMelodyHarmonyExpressionRhythmEcho, read and create using grade level rhythmic materialsSteady beatQuarter notes, rest,",
+      "grade": 1,
+      "query": "middle school performing arts and theater curriculum"
+    },
+    "cur06::7979": {
+      "chunk_preview": "6 8 Performing Arts   Band Music Curriculum Map\n\n6th Grade 7th Grade 8th Grade Cadet Band Introductionto Band7th Grade Band8th GradeBand1/1",
+      "grade": 2,
+      "query": "middle school performing arts and theater curriculum"
+    },
+    "cur06::7980": {
+      "chunk_preview": "6 8 Performing Arts   Choir Music Curriculum Map\n\n6th Grade 7th Grade 8th Grade Chorus Concert ChoirChamber Choir(audition required)Concert ChoirChamber Choir(a",
+      "grade": 2,
+      "query": "middle school performing arts and theater curriculum"
+    },
+    "cur06::7981": {
+      "chunk_preview": "6 8 Performing Arts   Orchestra Music Curriculum Map\n\n6th Grade 7th Grade 8th Grade Orchestra 6Orchestra 7Chamber Orchestra(audition required)Orchestra 8Chamber",
+      "grade": 2,
+      "query": "middle school performing arts and theater curriculum"
+    },
+    "cur06::7982": {
+      "chunk_preview": "9 12 Performing Arts   Choir Music Curriculum Map\n\nConcert Choir Chamber Choir(audition required)VocalJazz Ensemble(audition required)Chorale(audition required)",
+      "grade": 1,
+      "query": "middle school performing arts and theater curriculum"
+    },
+    "cur06::7983": {
+      "chunk_preview": "9 12 Performing Arts   Band Music Curriculum Map\n\nConcert BandSymphonic Band(audition required)Band Jazz BandInstrumentalJazz Ensemble(audition required)1/1",
+      "grade": 1,
+      "query": "middle school performing arts and theater curriculum"
+    },
+    "cur06::7984": {
+      "chunk_preview": "9 12 Performing Arts   Orchestra Music Curriculum Map\n\nConcert OrchestraSymphonic Orchestra(audition required)OrchestraJazz BandInstrumentalJazz Ensemble(auditi",
+      "grade": 1,
+      "query": "middle school performing arts and theater curriculum"
+    },
+    "cur06::7986": {
+      "chunk_preview": "6 8 Performing Arts   Theater Curriculum Map\n\n6th Grade 7th Grade 8th Grade Drama 6MusicalTheatreMusicalTheatre 6Introduction to Technical TheatreIntroduction t",
+      "grade": 3,
+      "query": "middle school performing arts and theater curriculum"
+    },
+    "cur06::7987": {
+      "chunk_preview": "9 12 Performing Arts   Theater Curriculum Map\n\nAdvanced Acting &Directing StudioActing IMusicalTheatre IMusicalTheatre IITechnicalTheatre 1/1",
+      "grade": 1,
+      "query": "middle school performing arts and theater curriculum"
+    },
+    "cur06::7989": {
+      "chunk_preview": "6 8 Literacy Curriculum Map\n\n6th Grade 7th Grade 8th Grade 6th GradeLiteracy7th GradeLiteracy 8th GradeLiteracyElective CourseLiteracy LabEnglishEssentialsEngli",
+      "grade": 1,
+      "query": "middle school performing arts and theater curriculum"
+    },
+    "cur06::7990": {
+      "chunk_preview": "9 12 Literacy Curriculum Map\n\n9th Grade 10th Grade 11th Grade 12th Grade English Essentials IEnglish Essentials IIEnglish Essentials IIIEnglish EssentialsIVEngl",
+      "grade": 0,
+      "query": "middle school performing arts and theater curriculum"
+    },
+    "cur06::8004": {
+      "chunk_preview": "6 8 Curriculum Map\n\n6th Grade 7th Grade 8th Grade 6th GradeScience7th Grade Science8th GradeScience Science EssentialsScience EssentialsScience Essentials1/1",
+      "grade": 0,
+      "query": "middle school performing arts and theater curriculum"
+    },
+    "cur06::8008": {
+      "chunk_preview": "Gifted Program Curriculum Map\n\nElementaryMiddle SchoolHigh SchoolSelf Actualized Intellectually Curious Culturally CompetentCreative Thinker CollaboratorEmpathe",
+      "grade": 0,
+      "query": "middle school performing arts and theater curriculum"
+    },
     "cur07::1084": {
       "chunk_preview": "The state made a decision about up until that point. EOC's had been districts making decisions about best time to assess students. We at that point had our Alge",
       "grade": 1,
@@ -1207,6 +1447,11 @@
     },
     "cur07::6478": {
       "chunk_preview": "Novak T to the ninth hour class\nand they have the scale of the\ncurriculum but they really work with the\nkids that are in front of them\nwhat they need to do so w",
+      "grade": 0,
+      "query": "assessment and grading guidelines"
+    },
+    "cur07::8007": {
+      "chunk_preview": "9 12 Health Curriculum Map\n\n10th Grade HealthyDecisions(Health andFamilyDecisions)1/1",
       "grade": 0,
       "query": "assessment and grading guidelines"
     },
@@ -1905,6 +2150,11 @@
       "grade": 1,
       "query": "ending fund balance and district reserves over time"
     },
+    "fin03::5560": {
+      "chunk_preview": "Go on, Leo. Go ahead. You touched on this a little, but I get\nasked about it enough that I'm going to\nask you to expand on it. The the cycle\nwith the fund balan",
+      "grade": 3,
+      "query": "ending fund balance and district reserves over time"
+    },
     "fin03::7138": {
       "chunk_preview": "The Debt\nService Fund\u2019s balance decreased $2.9 million.\n\uf0b7\nThe Capital Projects Fund had $5.0 million in revenues and $4.0 million in expenditures. The\nCapital P",
       "grade": 1,
@@ -2025,6 +2275,11 @@
       "grade": 3,
       "query": "debt service principal and interest payments"
     },
+    "fin04::5101": {
+      "chunk_preview": "General Obligation Bond principal, interest and related charges.",
+      "grade": 2,
+      "query": "debt service principal and interest payments"
+    },
     "fin04::5110": {
       "chunk_preview": "Expenditures are categorized by Salaries, \nEmployee Benefits, Purchased Services, Supplies, Capital Outlay, Principal and Interest payments. The cost \nof person",
       "grade": 3,
@@ -2032,6 +2287,11 @@
     },
     "fin04::5111": {
       "chunk_preview": "Expenditures are categorized by \nInstructional, Support Services, Community Services, Principal and Interest payments. Instructional costs \nconstitute the large",
+      "grade": 2,
+      "query": "debt service principal and interest payments"
+    },
+    "fin04::5155": {
+      "chunk_preview": "General Obligation Bond principal, interest and related charges.",
       "grade": 2,
       "query": "debt service principal and interest payments"
     },
@@ -3830,6 +4090,11 @@
       "grade": 0,
       "query": "bond ballot measure board action"
     },
+    "gov06::250": {
+      "chunk_preview": "to the Board",
+      "grade": 0,
+      "query": "bond ballot measure board action"
+    },
     "gov06::279": {
       "chunk_preview": "To adopt the agenda as posted. \n \nMotion by Gary Pierson, second by Amy Rubin. \nFinal Resolution: Motion Carries \nYes: Amy Rubin, Kimberly Hurst, Stacy Siwak, G",
       "grade": 0,
@@ -4253,6 +4518,11 @@
     "gov08::3802": {
       "chunk_preview": "at Board Meetings\nThere were no public comments",
       "grade": 1,
+      "query": "board policy on public comment"
+    },
+    "gov08::3805": {
+      "chunk_preview": "to the Board",
+      "grade": 0,
       "query": "board policy on public comment"
     },
     "gov08::3847": {

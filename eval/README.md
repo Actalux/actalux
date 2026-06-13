@@ -182,20 +182,33 @@ aggregate is flat-to-slightly-up; the rrf-only arm shows minor fusion churn
 `ef_search = 100` raises *rel-in-pool* (more relevant items reach the pool for
 the reranker to lift) even when it reorders the un-reranked fusion.
 
-3. **Chunk-context loss (cur02) — global re-embed rejected.** `cur02`'s answer is
-   doc 140 (`canva_1-5_Spanish_Curriculum_Map`), a single chunk whose body has no
-   "Spanish"/"elementary" — the subject lives only in the filename/title, so FTS
-   can't match it and its content-only embedding is crowded out. A tempting fix is
-   to embed every chunk as `meeting_title + content`. **A read-only simulation
-   rejected it:** re-embedding all 4990 chunks that way put doc 140 into the
-   exact-top-50 (rank 19) but **degraded 13 of 24 queries' rel-in-pool while
-   helping 2** (e.g. fin08 34 → 4), because noisy titles ("canva", ".pdf", dates,
-   "Budget") distort the many queries that already work. The right fix is
-   surgical — re-ingest the curriculum-map source so each map's subject lives in
-   the chunk body — or accept cur02 as a known limitation. `gov01` is a separate
-   content/privacy gap: no substantive public superintendent contract/evaluation
-   record exists (evaluations are closed-session); retrieval cannot return what
-   the corpus does not hold.
+3. **Chunk-context loss (cur02) — surgical re-ingest, global re-embed rejected.**
+   `cur02`'s answer is the 1-5 Spanish curriculum map, a single chunk whose body
+   has no "Spanish"/"elementary" — the subject lives only in the filename/title,
+   so FTS can't match it and its content-only embedding is crowded out. The
+   tempting fix — embed every chunk as `meeting_title + content` — was **rejected
+   by a read-only simulation**: re-embedding all 4990 chunks that way put the map
+   into the exact-top-50 (rank 19) but **degraded 13 of 24 queries' rel-in-pool
+   while helping 2** (e.g. fin08 34 → 4), because noisy titles ("canva", ".pdf",
+   dates, "Budget") distort the many queries that already work. **The implemented
+   fix is scoped to Canva curriculum maps** (`ingest.py:subject_header`): the
+   map's subject is restored into the chunk body at ingest, so it is findable by
+   both FTS and embedding, with every other document untouched. A scoped
+   simulation confirmed the targeted gain with no finance/governance regression;
+   after re-ingesting the 43 maps, `cur02` rel-in-pool went **0 → 1** and the
+   reranked nDCG@10 to **0.859** (production aggregate nDCG 0.885 → 0.894, recall
+   0.558 → 0.575).
+
+   The re-ingest exposed a latent bug: search never filtered superseded document
+   versions, so the 43 old map versions (59 stale chunks) stayed searchable.
+   `migrate_011_filter_superseded.sql` adds `d.replaces_id IS NULL` to both
+   `semantic_search` and `keyword_search` — a citation archive must only return
+   the current version of each document.
+
+   `gov01` is a separate content/privacy gap, accepted as correct-empty: no
+   substantive public superintendent contract/evaluation record exists
+   (evaluations are closed-session), and retrieval cannot return what the corpus
+   does not hold — this is a coverage limitation, not a retrieval failure.
 
 ## Answer quality
 
