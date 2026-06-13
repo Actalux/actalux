@@ -12,6 +12,29 @@ from actalux.web.app import _render_citation_links, app
 client = TestClient(app, raise_server_exceptions=False)
 
 
+class TestCanonicalHostRedirect:
+    """www.actalux.org redirects to the apex; other hosts pass through."""
+
+    def test_www_redirects_to_apex_preserving_path_and_query(self) -> None:
+        response = client.get(
+            "/search?q=budget",
+            headers={"host": "www.actalux.org"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 301
+        assert response.headers["location"] == "https://actalux.org/search?q=budget"
+
+    def test_apex_host_not_redirected(self) -> None:
+        response = client.get("/healthz", headers={"host": "actalux.org"}, follow_redirects=False)
+        assert response.status_code == 200
+
+    def test_fly_host_not_redirected(self) -> None:
+        response = client.get(
+            "/healthz", headers={"host": "actalux.fly.dev"}, follow_redirects=False
+        )
+        assert response.status_code == 200
+
+
 class TestStaticPages:
     """Pages that render without database access."""
 

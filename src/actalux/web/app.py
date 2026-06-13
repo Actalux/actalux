@@ -65,6 +65,20 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 templates.env.filters["chunk_hash_id"] = chunk_hash_id
 
+# Apex (actalux.org) is the canonical host; www redirects to it so links and
+# search indexing don't fork across two hostnames.
+CANONICAL_HOST = "actalux.org"
+WWW_HOST = "www.actalux.org"
+
+
+@app.middleware("http")
+async def redirect_www_to_apex(request: Request, call_next: Any) -> Any:
+    """301 www.actalux.org -> actalux.org, preserving path and query string."""
+    if request.url.hostname == WWW_HOST:
+        target = request.url.replace(scheme="https", netloc=CANONICAL_HOST)
+        return RedirectResponse(str(target), status_code=301)
+    return await call_next(request)
+
 
 def _window_snippet(content: str, query: str, width: int = 160) -> Markup:
     """Return an HTML-safe snippet windowed around the first query-term match.
