@@ -105,8 +105,9 @@ def grade_relevance(query: str, passage: str, api_key: str, model: str = JUDGE_M
 ANSWER_DIMENSIONS = ("faithfulness", "completeness", "directness")
 
 ANSWER_GRADE_SYSTEM = """\
-You grade the quality of an AI-generated answer for Actalux, a nonprofit that \
-makes Clayton, MO school district public records searchable. The answer must \
+You grade the quality of an AI-generated answer for Actalux, an independent, \
+nonpartisan service that makes Clayton, MO school district public records \
+searchable. The answer must \
 ground every claim in the provided source quotes and cite them like [#q003f].
 
 Grade THREE dimensions, each an integer 0-3, judging the ANSWER ONLY against \

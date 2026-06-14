@@ -1,6 +1,6 @@
 # Actalux
 
-Citation-first searchable archive of Clayton, MO school district public records. 501(c)(3) nonprofit.
+Citation-first searchable archive of Clayton, MO school district public records. Independent and nonpartisan; operated on a noncommercial basis. Nonprofit (501(c)(3)) formation is planned but NOT yet registered — do not describe Actalux as a nonprofit or 501(c)(3) in any user-facing copy until it is.
 
 ## Content policy
 

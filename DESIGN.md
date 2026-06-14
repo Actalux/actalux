@@ -5,9 +5,11 @@ and UI decisions. Do not deviate without explicit approval.
 
 ## Product Context
 
-- **What this is:** A nonpartisan, nonprofit searchable archive of public
+- **What this is:** A nonpartisan, independent searchable archive of public
   records of the Clayton, Missouri school district. Every passage on the site
-  is a verbatim quote with its source citation attached.
+  is a verbatim quote with its source citation attached. (Operated
+  noncommercially; nonprofit/501(c)(3) status is planned but not yet
+  registered — don't claim it in user-facing copy.)
 - **Who it's for:** Clayton parents, community members, and researchers who
   want to track board decisions without watching hours of video.
 - **Space/industry:** Civic transparency / local government records. Peers:
