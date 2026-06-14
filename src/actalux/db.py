@@ -83,6 +83,47 @@ def get_documents(client: Client, doc_ids: list[int]) -> dict[int, dict[str, Any
     return {row["id"]: row for row in (result.data or [])}
 
 
+def get_entity_by_path(
+    client: Client, state: str, place_slug: str, body_slug: str
+) -> dict[str, Any] | None:
+    """Resolve a public body from its URL parts, e.g. ('mo','clayton','schools').
+
+    Returns the entity row with its place embedded under ``place``, or None if
+    no such place/body exists. The two-step lookup avoids PostgREST embedded-
+    filter quirks and keeps the query intent obvious.
+    """
+    places = (
+        client.table("places")
+        .select("*")
+        .eq("state", state)
+        .eq("slug", place_slug)
+        .limit(1)
+        .execute()
+    )
+    if not places.data:
+        return None
+    place = places.data[0]
+    entities = (
+        client.table("entities")
+        .select("*")
+        .eq("place_id", place["id"])
+        .eq("body_slug", body_slug)
+        .limit(1)
+        .execute()
+    )
+    if not entities.data:
+        return None
+    entity = entities.data[0]
+    entity["place"] = place
+    return entity
+
+
+def list_entities(client: Client) -> list[dict[str, Any]]:
+    """All public bodies with their places embedded, for the landing/directory."""
+    result = client.table("entities").select("*, place:places(*)").execute()
+    return result.data or []
+
+
 def find_document_by_source(
     client: Client, source_file: str, source_portal: str = ""
 ) -> dict[str, Any] | None:

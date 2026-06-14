@@ -56,6 +56,9 @@ class SearchFilters:
     date_from: date | None = None
     date_to: date | None = None
     document_type: str | None = None
+    # Scope to one public body (places/entities model). None = no scope, which
+    # for a single-entity corpus is identical to scoping to it.
+    entity_id: int | None = None
 
 
 def hybrid_search(
@@ -137,6 +140,8 @@ def _semantic_search(
         params["filter_date_to"] = filters.date_to.isoformat()
     if filters.document_type:
         params["filter_doc_type"] = filters.document_type
+    if filters.entity_id is not None:
+        params["filter_entity_id"] = filters.entity_id
 
     try:
         result = client.rpc("semantic_search", params).execute()
@@ -176,6 +181,8 @@ def _keyword_search(
         params["filter_date_to"] = filters.date_to.isoformat()
     if filters.document_type:
         params["filter_doc_type"] = filters.document_type
+    if filters.entity_id is not None:
+        params["filter_entity_id"] = filters.entity_id
 
     try:
         result = client.rpc("keyword_search", params).execute()

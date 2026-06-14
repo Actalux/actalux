@@ -163,6 +163,23 @@ class TestSearchRpcParams:
             )
         ]
 
+    def test_searches_pass_entity_filter(self) -> None:
+        client = _FakeClient()
+        filters = SearchFilters(entity_id=7)
+
+        _semantic_search(client, [0.1, 0.2], filters)
+        _keyword_search(client, "budget", filters)
+
+        assert client.calls[0][1]["filter_entity_id"] == 7
+        assert client.calls[1][1]["filter_entity_id"] == 7
+
+    def test_searches_omit_entity_filter_when_unset(self) -> None:
+        client = _FakeClient()
+
+        _semantic_search(client, [0.1, 0.2], SearchFilters())
+
+        assert "filter_entity_id" not in client.calls[0][1]
+
     def test_keyword_search_normalizes_hyphens(self) -> None:
         # A hyphenated term must reach the FTS RPC de-hyphenated, or
         # websearch_to_tsquery demands a compound lexeme the OCR'd corpus

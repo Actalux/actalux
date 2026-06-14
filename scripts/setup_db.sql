@@ -168,6 +168,35 @@ CREATE INDEX IF NOT EXISTS idx_documents_latest
 CREATE INDEX IF NOT EXISTS idx_documents_portal
     ON documents (source_portal);
 
+-- ============================================================
+-- Migration 012: multi-jurisdiction entity model
+-- A "place" is a discovery grouping (mo/clayton), not a legal boundary;
+-- an "entity" is one public body we archive. See migrate_012/013 for the
+-- seed + the entity-aware search RPCs (filter_entity_id). Details:
+-- docs/architecture/multi-tenancy.md.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS places (
+    id           SERIAL PRIMARY KEY,
+    state        TEXT NOT NULL,
+    slug         TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    county       TEXT,
+    UNIQUE (state, slug)
+);
+
+CREATE TABLE IF NOT EXISTS entities (
+    id           SERIAL PRIMARY KEY,
+    place_id     INT REFERENCES places(id),
+    body_slug    TEXT NOT NULL,
+    type         TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    external_ids JSONB NOT NULL DEFAULT '{}'::jsonb,
+    UNIQUE (place_id, body_slug)
+);
+
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS entity_id INT REFERENCES entities(id);
+CREATE INDEX IF NOT EXISTS idx_documents_entity ON documents (entity_id);
+
 -- Source registry: tracks known crawl targets
 CREATE TABLE IF NOT EXISTS sources (
     id SERIAL PRIMARY KEY,
@@ -203,7 +232,8 @@ CREATE OR REPLACE FUNCTION semantic_search(
     match_count INT DEFAULT 50,
     filter_date_from DATE DEFAULT NULL,
     filter_date_to DATE DEFAULT NULL,
-    filter_doc_type TEXT DEFAULT NULL
+    filter_doc_type TEXT DEFAULT NULL,
+    filter_entity_id INT DEFAULT NULL
 )
 RETURNS TABLE (
     chunk_id INT,
@@ -234,6 +264,7 @@ BEGIN
     JOIN documents d ON d.id = c.document_id
     WHERE c.embedding IS NOT NULL
       AND d.replaces_id IS NULL
+      AND (filter_entity_id IS NULL OR d.entity_id = filter_entity_id)
       AND 1 - (c.embedding <=> query_embedding) >= match_threshold
       AND (filter_date_from IS NULL OR d.meeting_date >= filter_date_from)
       AND (filter_date_to IS NULL OR d.meeting_date <= filter_date_to)
@@ -249,7 +280,8 @@ CREATE OR REPLACE FUNCTION keyword_search(
     match_count INT DEFAULT 50,
     filter_date_from DATE DEFAULT NULL,
     filter_date_to DATE DEFAULT NULL,
-    filter_doc_type TEXT DEFAULT NULL
+    filter_doc_type TEXT DEFAULT NULL,
+    filter_entity_id INT DEFAULT NULL
 )
 RETURNS TABLE (
     chunk_id INT,
@@ -272,6 +304,7 @@ AS $$
     JOIN documents d ON d.id = c.document_id
     WHERE to_tsvector('english', c.content) @@ websearch_to_tsquery('english', search_query)
       AND d.replaces_id IS NULL
+      AND (filter_entity_id IS NULL OR d.entity_id = filter_entity_id)
       AND (filter_date_from IS NULL OR d.meeting_date >= filter_date_from)
       AND (filter_date_to IS NULL OR d.meeting_date <= filter_date_to)
       AND (filter_doc_type IS NULL OR d.document_type = filter_doc_type)
