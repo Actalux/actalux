@@ -72,9 +72,14 @@ class TestStaticPages:
 
     @patch("actalux.web.app._get_db")
     @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
-    def test_home_has_search_form(self, mock_ent, mock_db) -> None:
+    def test_home_search_form_is_get_navigation(self, mock_ent, mock_db) -> None:
+        # The top-bar search must work from any page (incl. home, which has no
+        # #search-results target), so it GET-navigates to the search route
+        # rather than HTMX-swapping into an element that may not exist.
         response = client.get("/mo/clayton/schools")
-        assert 'hx-post="/mo/clayton/schools/search"' in response.text
+        assert 'action="/mo/clayton/schools/search"' in response.text
+        assert 'method="get"' in response.text
+        assert "hx-post" not in response.text
 
     @patch("actalux.web.app._get_db")
     @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)

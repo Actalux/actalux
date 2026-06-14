@@ -18,9 +18,7 @@
     Actalux<span class="dot">.</span><span class="tag">{{ entity_tag }}</span>
   </a>
 
-  <form class="topbar-search" action="{{ base }}/search" method="post"
-        hx-post="{{ base }}/search" hx-target="#search-results" hx-push-url="true"
-        hx-indicator="#search-indicator" role="search">
+  <form class="topbar-search" action="{{ base }}/search" method="get" role="search">
     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
       <circle cx="9" cy="9" r="6.5"/><path d="m14 14 4.5 4.5"/>
     </svg>
