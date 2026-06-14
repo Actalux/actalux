@@ -684,6 +684,57 @@ img { max-width: 100%; display: block; }
   box-decoration-break: clone;
 }
 
+/* ===== Citation-first reader pane ===== */
+.reader-summary {
+  font-family: var(--serif-body);
+  font-style: italic;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--muted);
+  padding: var(--s-4) 0 0;
+  max-width: var(--col-reading);
+}
+.block-label {
+  display: block;
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: var(--s-3);
+}
+.citation-block { margin-top: var(--s-5); }
+.cited-context { max-width: var(--col-reading); }
+.cited-context .cited-para {
+  font-family: var(--serif-body);
+  font-size: 17px;
+  line-height: 1.65;
+  color: var(--ink);
+  margin-bottom: var(--s-4);
+}
+.cited-context .ctx-para {
+  font-family: var(--serif-body);
+  font-size: 17px;
+  line-height: 1.65;
+  color: var(--muted);
+  margin-bottom: var(--s-4);
+}
+.original-block {
+  margin-top: var(--s-6);
+  padding-top: var(--s-5);
+  border-top: 1px solid var(--rule);
+}
+.original-block .pdf-frame { margin-top: 0; }
+.original-block .video-embed { margin-top: 0; }
+.reader-actions {
+  margin-top: var(--s-5);
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--rule);
+  display: flex;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+
 /* ===== Document viewer (3-col) ===== */
 .doc-frame {
   display: grid;

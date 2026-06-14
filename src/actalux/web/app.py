@@ -58,6 +58,7 @@ from actalux.web.charts import (
     trend_svg,
     usd,
 )
+from actalux.web.text_snippets import extractive_snippet, split_for_highlight
 
 logger = logging.getLogger(__name__)
 
@@ -138,62 +139,30 @@ def _page(ev: EntityView | None, **extra: Any) -> dict[str, Any]:
     return {"entity": ev.entity, "base": ev.base, "entity_tag": ev.tag, **extra}
 
 
-def _window_snippet(content: str, query: str, width: int = 160) -> Markup:
-    """Return an HTML-safe snippet windowed around the first query-term match.
+def _match_snippet(content: str, query: str, width: int = 220) -> Markup:
+    """Best-sentence match snippet with query terms marked, HTML-safe.
 
-    Produces a preview roughly ``width`` characters long, centered on the
-    first occurrence of any query term. Query terms are wrapped in ``<mark>``
-    tags. Leading/trailing ellipses are added when the window is truncated.
-    Falls back to the first ``width`` characters of the content when no
-    query terms match.
+    Thin Markup wrapper over ``extractive_snippet`` (the pure, tested logic):
+    picks the sentence that best covers the query rather than windowing around
+    the first keyword hit, which routinely landed on boilerplate.
     """
-    cleaned = re.sub(r"\s+", " ", (content or "").strip())
-    if not cleaned:
-        return Markup("")
+    return Markup(extractive_snippet(content, query, max_chars=width))
 
-    terms = [t for t in re.findall(r"[A-Za-z0-9]{3,}", (query or "").lower())]
-    lowered = cleaned.lower()
-    match_pos = -1
-    for t in terms:
-        pos = lowered.find(t)
-        if pos != -1 and (match_pos == -1 or pos < match_pos):
-            match_pos = pos
 
-    if match_pos == -1:
-        # No match — just head-truncate
-        snippet = cleaned[:width]
-        suffix = "…" if len(cleaned) > width else ""
-        return Markup(str(escape(snippet)) + suffix)
+def _cited_html(content: str, query: str) -> Markup:
+    """Render a cited chunk with only its most query-relevant sentence highlighted.
 
-    half = width // 2
-    start = max(0, match_pos - half)
-    end = min(len(cleaned), start + width)
-    # Shift start back if we ran out of text on the right
-    start = max(0, end - width)
-    prefix = "…" if start > 0 else ""
-    suffix = "…" if end < len(cleaned) else ""
-    window = cleaned[start:end]
-
-    # Wrap every matching term occurrence in <mark> (case-insensitive)
-    def _highlight(text: str) -> str:
-        if not terms:
-            return str(escape(text))
-        pattern = re.compile(
-            r"(" + "|".join(re.escape(t) for t in terms) + r")",
-            re.IGNORECASE,
-        )
-        parts: list[str] = []
-        last = 0
-        for m in pattern.finditer(text):
-            parts.append(str(escape(text[last : m.start()])))
-            parts.append("<mark>")
-            parts.append(str(escape(m.group(0))))
-            parts.append("</mark>")
-            last = m.end()
-        parts.append(str(escape(text[last:])))
-        return "".join(parts)
-
-    return Markup(prefix + _highlight(window) + suffix)
+    Keeps the archival-yellow ``.cited`` motif on the relevant clause instead of
+    a 200-word solid-yellow block; the rest of the chunk reads as context.
+    """
+    before, key, after = split_for_highlight(content, query)
+    parts = []
+    if before:
+        parts.append(str(escape(before)) + " ")
+    parts.append('<span class="cited">' + str(escape(key)) + "</span>")
+    if after:
+        parts.append(" " + str(escape(after)))
+    return Markup("".join(parts))
 
 
 def _safe_url(value: str) -> str:
@@ -209,7 +178,8 @@ def _safe_url(value: str) -> str:
     return quote(value, safe="%/:?#[]@!$&'()*+,;=~")
 
 
-templates.env.filters["window_snippet"] = _window_snippet
+templates.env.filters["match_snippet"] = _match_snippet
+templates.env.filters["cited_html"] = _cited_html
 templates.env.filters["usd"] = usd
 templates.env.filters["safe_url"] = _safe_url
 
