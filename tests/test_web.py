@@ -161,6 +161,52 @@ class TestJurisdictionRouting:
         assert r.headers["location"] == "/mo/clayton/schools"
 
 
+_FAKE_DOC = {
+    "id": 195,
+    "meeting_title": "February 1, 2023 Business Meeting Minutes",
+    "document_type": "minutes",
+    "meeting_date": "2023-02-01",
+    "summary": "Signed minutes from the February 1, 2023 board meeting.",
+    "source_url": "https://example.test/storage/minutes.pdf",
+    "source_portal": "diligent",
+    "video_id": "",
+    "entity_id": 1,
+}
+
+
+class TestBrowse:
+    """Browse-by-type: chronological document listings, not search."""
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
+    @patch("actalux.web.app.list_documents", return_value=[_FAKE_DOC])
+    def test_browse_minutes_lists_documents(self, mock_list, mock_ent, mock_db) -> None:
+        r = client.get("/mo/clayton/schools/browse/minutes")
+        assert r.status_code == 200
+        assert "Minutes" in r.text
+        assert "February 1, 2023 Business Meeting Minutes" in r.text
+        # browse rows open the document pane, they do not run a search
+        assert "/document/195/pane" in r.text
+        # the listing filters by document_type, not a keyword search
+        assert mock_list.call_args.kwargs["document_type"] == "minutes"
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
+    @patch("actalux.web.app.list_documents", return_value=[])
+    def test_browse_curriculum_maps_filters_by_filename(self, mock_list, mock_ent, mock_db) -> None:
+        # Curriculum maps share document_type='other'; they are matched by filename.
+        r = client.get("/mo/clayton/schools/browse/curriculum-maps")
+        assert r.status_code == 200
+        assert mock_list.call_args.kwargs["document_type"] is None
+        assert mock_list.call_args.kwargs["source_file_like"] == "%curriculum%map%"
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
+    def test_browse_unknown_kind_404(self, mock_ent, mock_db) -> None:
+        r = client.get("/mo/clayton/schools/browse/nonsense")
+        assert r.status_code == 404
+
+
 class TestDocumentEndpoint:
     """Document view (mocked DB)."""
 
@@ -169,6 +215,22 @@ class TestDocumentEndpoint:
     def test_missing_document_returns_404(self, mock_doc, mock_db) -> None:
         response = client.get("/document/99999")
         assert response.status_code == 404
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity", return_value=_FAKE_ENTITY)
+    @patch("actalux.web.app.get_document", return_value=_FAKE_DOC)
+    def test_document_pane_renders_without_citation(self, mock_doc, mock_ent, mock_db) -> None:
+        r = client.get("/document/195/pane")
+        assert r.status_code == 200
+        assert "reader-summary" in r.text
+        assert "pdf-frame" in r.text  # PDF source embeds in-window
+        assert "cited-para" not in r.text  # browse has no cited passage
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_document", return_value=None)
+    def test_document_pane_404(self, mock_doc, mock_db) -> None:
+        r = client.get("/document/99999/pane")
+        assert r.status_code == 404
 
 
 class TestChunkSourceEndpoint:

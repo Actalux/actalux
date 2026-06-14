@@ -121,11 +121,7 @@ def get_entity_by_path(
 def get_entity(client: Client, entity_id: int) -> dict[str, Any] | None:
     """Fetch one public body by id with its place embedded under ``place``."""
     result = (
-        client.table("entities")
-        .select("*, place:places(*)")
-        .eq("id", entity_id)
-        .limit(1)
-        .execute()
+        client.table("entities").select("*, place:places(*)").eq("id", entity_id).limit(1).execute()
     )
     return result.data[0] if result.data else None
 
@@ -133,6 +129,35 @@ def get_entity(client: Client, entity_id: int) -> dict[str, Any] | None:
 def list_entities(client: Client) -> list[dict[str, Any]]:
     """All public bodies with their places embedded, for the landing/directory."""
     result = client.table("entities").select("*, place:places(*)").execute()
+    return result.data or []
+
+
+def list_documents(
+    client: Client,
+    entity_id: int | None = None,
+    *,
+    document_type: str | None = None,
+    source_file_like: str | None = None,
+    limit: int = 500,
+) -> list[dict[str, Any]]:
+    """List current documents for browse-by-type, newest meeting first.
+
+    Filters are ANDed; ``source_file_like`` is an ILIKE pattern (used for
+    curriculum maps, which share ``document_type='other'`` and are identified
+    by filename instead). Superseded versions (``replaces_id`` set) are excluded.
+    """
+    query = (
+        client.table("documents")
+        .select("id, meeting_title, document_type, meeting_date, summary")
+        .is_("replaces_id", "null")
+    )
+    if entity_id is not None:
+        query = query.eq("entity_id", entity_id)
+    if document_type is not None:
+        query = query.eq("document_type", document_type)
+    if source_file_like is not None:
+        query = query.ilike("source_file", source_file_like)
+    result = query.order("meeting_date", desc=True).limit(limit).execute()
     return result.data or []
 
 

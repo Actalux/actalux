@@ -37,6 +37,7 @@ from actalux.db import (
     get_entity,
     get_entity_by_path,
     insert_correction,
+    list_documents,
     list_entities,
 )
 from actalux.errors import SearchError, SummaryError
@@ -360,6 +361,52 @@ async def search_redirect(request: Request) -> RedirectResponse:
     return _redirect_to_default("/search", request)
 
 
+# Browse-by-type: the sidebar "Documents" links list documents of one kind
+# chronologically (newest first) rather than running a keyword search. Most
+# kinds map to a document_type; curriculum maps share document_type='other' and
+# are identified by their filename instead.
+@dataclass(frozen=True)
+class BrowseKind:
+    slug: str
+    label: str
+    document_type: str | None = None
+    source_file_like: str | None = None
+
+
+BROWSE_KINDS: dict[str, BrowseKind] = {
+    "minutes": BrowseKind("minutes", "Minutes", document_type="minutes"),
+    "budgets": BrowseKind("budgets", "Budgets", document_type="budget"),
+    "resolutions": BrowseKind("resolutions", "Resolutions", document_type="resolution"),
+    "transcripts": BrowseKind("transcripts", "Transcripts", document_type="transcript"),
+    "curriculum-maps": BrowseKind(
+        "curriculum-maps", "Curriculum maps", source_file_like="%curriculum%map%"
+    ),
+}
+
+
+@jurisdiction.get("/browse/{kind}", response_class=HTMLResponse)
+def browse(request: Request, kind: str, view: EntityView = Depends(resolve_entity)) -> HTMLResponse:
+    """List one document kind for this body, newest first — a browse, not a search.
+
+    Sync (not async) so the blocking Supabase query runs in Starlette's
+    threadpool, matching ``search_get``.
+    """
+    spec = BROWSE_KINDS.get(kind)
+    if spec is None:
+        raise HTTPException(status_code=404, detail="Unknown document type")
+    docs = list_documents(
+        _get_db(),
+        view.entity["id"],
+        document_type=spec.document_type,
+        source_file_like=spec.source_file_like,
+    )
+    return templates.TemplateResponse(
+        request,
+        "browse.html",
+        _page(view, documents=docs, kind=spec, active=f"browse-{spec.slug}"),
+    )
+
+
 def _budget_quote_sections(entity_id: int) -> list[dict[str, Any]]:
     """Run the preset budget queries into cited-quote sections (cached 1h)."""
     cache_key = f"budget:{entity_id}"
@@ -567,6 +614,21 @@ async def document_view(request: Request, doc_id: int) -> HTMLResponse:
 
     view = _entity_view_for_document(client, doc)
     return templates.TemplateResponse(request, "document.html", _page(view, document=doc))
+
+
+@app.get("/document/{doc_id}/pane", response_class=HTMLResponse)
+async def document_pane(request: Request, doc_id: int) -> HTMLResponse:
+    """Document-level reader pane (summary + original embed) for browse clicks.
+
+    Unlike the chunk source pane, there is no cited passage — browse opens a
+    whole document, not a search hit.
+    """
+    client = _get_db()
+    doc = get_document(client, doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    view = _entity_view_for_document(client, doc)
+    return templates.TemplateResponse(request, "partials/doc_pane.html", _page(view, document=doc))
 
 
 @app.get("/chunk/{chunk_id}/source", response_class=HTMLResponse)

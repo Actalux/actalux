@@ -69,11 +69,11 @@
         </span>
       </button>
       <div class="nav-sub collapsed" id="sub-docs">
-        <a class="nav-item" href="{{ base }}/search?q=minutes"><span>Minutes</span></a>
-        <a class="nav-item" href="{{ base }}/search?q=budget"><span>Budgets</span></a>
-        <a class="nav-item" href="{{ base }}/search?q=resolution"><span>Resolutions</span></a>
-        <a class="nav-item" href="{{ base }}/search?q=transcript"><span>Transcripts</span></a>
-        <a class="nav-item" href="{{ base }}/search?q=curriculum"><span>Curriculum maps</span></a>
+        <a class="nav-item{% if active == 'browse-minutes' %} active{% endif %}" href="{{ base }}/browse/minutes"><span>Minutes</span></a>
+        <a class="nav-item{% if active == 'browse-budgets' %} active{% endif %}" href="{{ base }}/browse/budgets"><span>Budgets</span></a>
+        <a class="nav-item{% if active == 'browse-resolutions' %} active{% endif %}" href="{{ base }}/browse/resolutions"><span>Resolutions</span></a>
+        <a class="nav-item{% if active == 'browse-transcripts' %} active{% endif %}" href="{{ base }}/browse/transcripts"><span>Transcripts</span></a>
+        <a class="nav-item{% if active == 'browse-curriculum-maps' %} active{% endif %}" href="{{ base }}/browse/curriculum-maps"><span>Curriculum maps</span></a>
       </div>
     </div>
 

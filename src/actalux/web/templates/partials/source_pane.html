@@ -44,19 +44,7 @@
 {% if is_video %}
 <section class="original-block">
   <div class="block-label">Original — board meeting video{% if cue %}, cued to the citation{% endif %}</div>
-  {# Lazy facade: only a poster thumbnail loads until the viewer clicks play, then
-     it swaps to the real (nocookie) iframe -- no YouTube connection before then. #}
-  <div class="video-embed">
-    <button type="button" class="yt-facade" data-video="{{ document.video_id | urlencode }}" data-start="{{ cue }}"
-            aria-label="Play the board meeting video{% if cue %} from the cited moment{% endif %}"
-            style="position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; padding: 0; border: 0; background: #000; cursor: pointer;">
-      <img src="https://i.ytimg.com/vi/{{ document.video_id | urlencode }}/hqdefault.jpg" alt=""
-           loading="lazy" style="width: 100%; height: 100%; object-fit: cover; display: block;">
-      <span aria-hidden="true" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;">
-        <span style="display: flex; align-items: center; justify-content: center; width: 72px; height: 50px; background: var(--accent); color: #fff; font-size: 22px;">&#9654;</span>
-      </span>
-    </button>
-  </div>
+  {% include "partials/_video_embed.html" %}
 </section>
 {% elif is_pdf %}
 <section class="original-block">
@@ -74,25 +62,3 @@
   {% if is_video %}<a class="btn" href="https://www.youtube.com/watch?v={{ document.video_id | urlencode }}{% if cue %}&t={{ cue }}s{% endif %}" target="_blank" rel="noopener">Watch on YouTube{% if cue %} at cue{% endif %}</a>{% endif %}
   <a class="btn btn-ghost" href="https://github.com/Actalux/actalux/issues/new?title=Error+report+{{ ctx_chunk.id | chunk_hash_id | urlencode }}" target="_blank" rel="noopener">Report an error →</a>
 </div>
-
-{% if is_video %}
-<script>
-  (function () {
-    var fac = document.querySelector('#source-col .yt-facade') || document.querySelector('.yt-facade');
-    if (!fac) return;
-    fac.addEventListener('click', function () {
-      var id = fac.getAttribute('data-video');
-      var start = parseInt(fac.getAttribute('data-start') || '0', 10);
-      var src = 'https://www.youtube-nocookie.com/embed/' + id + '?autoplay=1';
-      if (start > 0) { src += '&start=' + start; }
-      var frame = document.createElement('iframe');
-      frame.src = src;
-      frame.title = 'Board meeting video';
-      frame.setAttribute('style', 'width:100%;aspect-ratio:16/9;border:0;');
-      frame.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen');
-      frame.setAttribute('allowfullscreen', '');
-      fac.replaceWith(frame);
-    });
-  })();
-</script>
-{% endif %}

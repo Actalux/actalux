@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}{{ kind.label }}{% endblock %}
+{% block content %}
+
+<section class="pane-header">
+  <h2>{{ kind.label }}</h2>
+  <span class="meta">{{ entity.display_name if entity else 'Public records' }}</span>
+</section>
+
+{% if documents %}
+<div class="search-layout">
+
+  <section class="results-col" id="results-col">
+    <div class="results-head-row">
+      <div class="query">{{ kind.label }}</div>
+      <div class="meta-row">
+        <span>{{ documents|length }} document{{ 's' if documents|length != 1 }}</span>
+        <span>·</span>
+        <span>newest first</span>
+      </div>
+    </div>
+
+    {% for d in documents %}
+    <a class="result-card{% if loop.first %} active{% endif %}"
+       href="/document/{{ d.id }}"
+       hx-get="/document/{{ d.id }}/pane"
+       hx-target="#source-col"
+       hx-swap="innerHTML"
+       {% if loop.first %}hx-trigger="load, click"{% endif %}
+       onclick="document.querySelectorAll('.result-card.active').forEach(function(el){el.classList.remove('active');});this.classList.add('active');">
+      <div class="card-head">
+        <h3 class="doc-title">{{ d.meeting_title or 'Untitled document' }}</h3>
+        <div class="card-meta">
+          <span class="kind">{{ d.document_type or 'Record' }}</span>
+          {% if d.meeting_date %}<span class="date">{{ d.meeting_date }}</span>{% endif %}
+        </div>
+      </div>
+      {% if d.summary %}
+      <div class="card-summary doc-summary">
+        <span class="card-label">Doc</span>
+        <span class="card-body">{{ d.summary }}</span>
+      </div>
+      {% endif %}
+    </a>
+    {% endfor %}
+  </section>
+
+  <section class="source-col" id="source-col">
+    <div class="reader-empty">Loading document…</div>
+  </section>
+
+</div>
+{% else %}
+<div class="landing">
+  <span class="tagline">{{ kind.label }}</span>
+  <h1>No {{ kind.label|lower }} in the record yet.</h1>
+  <p class="lede">
+    We publish documents as we gather them. Try the
+    <a href="{{ base }}/search">search</a>, or browse another section from the sidebar.
+  </p>
+</div>
+{% endif %}
+
+{% endblock %}
