@@ -15,12 +15,13 @@ from __future__ import annotations
 import logging
 import re
 import time
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
-from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, FastAPI, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -33,7 +34,10 @@ from actalux.db import (
     get_chunk_with_context,
     get_client,
     get_document,
+    get_entity,
+    get_entity_by_path,
     insert_correction,
+    list_entities,
 )
 from actalux.errors import SearchError, SummaryError
 from actalux.ingest.embedder import load_model
@@ -78,6 +82,60 @@ async def redirect_www_to_apex(request: Request, call_next: Any) -> Any:
         target = request.url.replace(scheme="https", netloc=CANONICAL_HOST)
         return RedirectResponse(str(target), status_code=301)
     return await call_next(request)
+
+
+# --- Jurisdiction (place/entity) routing -------------------------------------
+# Each public body is served under /{state}/{place}/{body}, e.g.
+# /mo/clayton/schools. While there is one body, the apex and place hub redirect
+# to it (a directory landing arrives with the second body). See
+# docs/architecture/multi-tenancy.md.
+DEFAULT_ENTITY_PATH = "/mo/clayton/schools"
+
+
+@dataclass(frozen=True)
+class EntityView:
+    """A resolved public body plus the presentational bits every page needs."""
+
+    entity: dict[str, Any]
+    base: str  # URL prefix for this body, e.g. "/mo/clayton/schools"
+    tag: str  # short top-bar label, e.g. "Clayton MO"
+
+
+def _entity_view(entity: dict[str, Any]) -> EntityView:
+    place = entity.get("place") or {}
+    state = place.get("state", "")
+    base = f"/{state}/{place.get('slug', '')}/{entity['body_slug']}"
+    tag = f"{place.get('display_name', '')} {state.upper()}".strip()
+    return EntityView(entity=entity, base=base, tag=tag)
+
+
+def resolve_entity(state: str, place: str, body: str) -> EntityView:
+    """FastAPI dependency: resolve a body from its URL parts or 404."""
+    entity = get_entity_by_path(_get_db(), state, place, body)
+    if not entity:
+        raise HTTPException(status_code=404, detail="Unknown jurisdiction")
+    return _entity_view(entity)
+
+
+def _entity_view_for_document(client: Client, doc: dict[str, Any] | None) -> EntityView | None:
+    """The EntityView a flat (doc/chunk) page renders its chrome under."""
+    if not doc or doc.get("entity_id") is None:
+        return None
+    entity = get_entity(client, doc["entity_id"])
+    return _entity_view(entity) if entity else None
+
+
+def _page(ev: EntityView | None, **extra: Any) -> dict[str, Any]:
+    """Template context with the entity chrome (entity, base, tag) merged in.
+
+    Parameter is named ``ev`` (not ``view``) so callers can spread a breakdown
+    context that carries its own ``view`` key without a keyword collision.
+    base defaults to the canonical body so flat pages and the few entity-less
+    contexts still render valid links while there is one body.
+    """
+    if ev is None:
+        return {"entity": None, "base": DEFAULT_ENTITY_PATH, "entity_tag": "", **extra}
+    return {"entity": ev.entity, "base": ev.base, "entity_tag": ev.tag, **extra}
 
 
 def _window_snippet(content: str, query: str, width: int = 160) -> Markup:
@@ -221,6 +279,11 @@ BUDGET_QUERIES = [
 
 # --- Routes ---
 
+# Entity-scoped pages live on this router under /{state}/{place}/{body}. It is
+# included last so the specific flat routes (/document, /chunk, redirects) win
+# the match over its greedy path prefix.
+jurisdiction = APIRouter(prefix="/{state}/{place}/{body}")
+
 
 @app.get("/healthz")
 def healthz() -> dict[str, str]:
@@ -233,29 +296,45 @@ def healthz() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/", response_class=HTMLResponse)
-async def home(request: Request) -> HTMLResponse:
-    """Landing page with search box."""
-    return templates.TemplateResponse(request, "home.html")
+def _redirect_to_default(suffix: str, request: Request) -> RedirectResponse:
+    """301 an old flat path to its canonical entity-scoped path, keeping query."""
+    target = DEFAULT_ENTITY_PATH + suffix
+    if request.url.query:
+        target = f"{target}?{request.url.query}"
+    return RedirectResponse(target, status_code=301)
+
+
+@app.get("/")
+async def apex() -> RedirectResponse:
+    """Apex -> the one body for now; becomes a directory landing in Phase C."""
+    return RedirectResponse(DEFAULT_ENTITY_PATH, status_code=307)
+
+
+@jurisdiction.get("", response_class=HTMLResponse)
+async def home(request: Request, view: EntityView = Depends(resolve_entity)) -> HTMLResponse:
+    """A body's home page with the search box."""
+    return templates.TemplateResponse(request, "home.html", _page(view))
 
 
 def _run_search(
     request: Request,
+    view: EntityView,
     q: str,
     date_from: str,
     date_to: str,
     doc_type: str,
 ) -> HTMLResponse:
-    """Shared search handler for GET and POST routes."""
+    """Shared search handler for GET and POST routes, scoped to one body."""
     is_htmx = bool(request.headers.get("HX-Request"))
     if not q.strip():
         template = "partials/search_results.html" if is_htmx else "search.html"
-        return templates.TemplateResponse(request, template, {"results": [], "query": ""})
+        return templates.TemplateResponse(request, template, _page(view, results=[], query=""))
 
     filters = SearchFilters(
         date_from=date.fromisoformat(date_from) if date_from else None,
         date_to=date.fromisoformat(date_to) if date_to else None,
         document_type=doc_type or None,
+        entity_id=view.entity["id"],
     )
 
     client = _get_db()
@@ -269,12 +348,13 @@ def _run_search(
     enriched = enrich_results(client, results)
     template = "partials/search_results.html" if is_htmx else "search.html"
 
-    return templates.TemplateResponse(request, template, {"results": enriched, "query": q})
+    return templates.TemplateResponse(request, template, _page(view, results=enriched, query=q))
 
 
-@app.get("/search", response_class=HTMLResponse)
+@jurisdiction.get("/search", response_class=HTMLResponse)
 def search_get(
     request: Request,
+    view: EntityView = Depends(resolve_entity),
     q: str = "",
     date_from: str = "",
     date_to: str = "",
@@ -286,12 +366,13 @@ def search_get(
     and blocking Supabase RPCs in a threadpool, keeping the event loop free
     for other requests on this single-instance server.
     """
-    return _run_search(request, q, date_from, date_to, doc_type)
+    return _run_search(request, view, q, date_from, date_to, doc_type)
 
 
-@app.post("/search", response_class=HTMLResponse)
+@jurisdiction.post("/search", response_class=HTMLResponse)
 def search_post(
     request: Request,
+    view: EntityView = Depends(resolve_entity),
     q: str = Form(""),
     date_from: str = Form(""),
     date_to: str = Form(""),
@@ -299,22 +380,30 @@ def search_post(
 ) -> HTMLResponse:
     """POST from the search form (works with or without HTMX). Sync for the same
     threadpool reason as ``search_get``."""
-    return _run_search(request, q, date_from, date_to, doc_type)
+    return _run_search(request, view, q, date_from, date_to, doc_type)
 
 
-def _budget_quote_sections() -> list[dict[str, Any]]:
+@app.get("/search", response_class=HTMLResponse)
+async def search_redirect(request: Request) -> RedirectResponse:
+    """Legacy flat /search -> the canonical body's search (keeps query)."""
+    return _redirect_to_default("/search", request)
+
+
+def _budget_quote_sections(entity_id: int) -> list[dict[str, Any]]:
     """Run the preset budget queries into cited-quote sections (cached 1h)."""
-    cached = _get_cached_topic("budget")
+    cache_key = f"budget:{entity_id}"
+    cached = _get_cached_topic(cache_key)
     if cached is not None:
         return cached
 
     client = _get_db()
+    filters = SearchFilters(entity_id=entity_id)
     sections: list[dict[str, Any]] = []
     for query_text in BUDGET_QUERIES:
         try:
             query_embedding = _embed_query(query_text)
             results = hybrid_search(
-                client, query_text, query_embedding, max_results=5, reranker=_reranker()
+                client, query_text, query_embedding, filters, max_results=5, reranker=_reranker()
             )
             enriched = enrich_results(client, results)
             sections.append({"query": query_text, "results": enriched})
@@ -322,7 +411,7 @@ def _budget_quote_sections() -> list[dict[str, Any]]:
             logger.exception("Budget topic query failed: %s", query_text)
             sections.append({"query": query_text, "results": []})
 
-    _set_cached_topic("budget", sections)
+    _set_cached_topic(cache_key, sections)
     return sections
 
 
@@ -417,9 +506,14 @@ def _detail_context(client: Client, view: str, key: str) -> dict[str, Any]:
     }
 
 
-@app.get("/budget", response_class=HTMLResponse)
-async def budget(request: Request) -> HTMLResponse:
-    """First-class Budget page: charts from budget_line_items plus cited quotes."""
+@jurisdiction.get("/budget", response_class=HTMLResponse)
+async def budget(request: Request, view: EntityView = Depends(resolve_entity)) -> HTMLResponse:
+    """First-class Budget page: charts from budget_line_items plus cited quotes.
+
+    The budget_line_items figures are not yet entity-scoped (one body has budget
+    data today); the cited-quote sections are. Scope the figures in Phase C when
+    a second body carries budget data.
+    """
     client = _get_db()
     # By-fund rows drive the time-series chart and the figures table; the
     # breakdown panel below the chart switches between fund/function/source.
@@ -433,48 +527,65 @@ async def budget(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         request,
         "budget.html",
-        {
-            "active": "topic-budget",
-            "line_items": line_items,
-            "year_totals": year_totals,
-            "latest_year": latest_year,
-            "chart_svg": revenue_expenditure_svg(year_totals),
-            "budget_actual": budget_actual,
-            "sections": _budget_quote_sections(),
+        _page(
+            view,
+            active="topic-budget",
+            line_items=line_items,
+            year_totals=year_totals,
+            latest_year=latest_year,
+            chart_svg=revenue_expenditure_svg(year_totals),
+            budget_actual=budget_actual,
+            sections=_budget_quote_sections(view.entity["id"]),
             **breakdown,
-        },
+        ),
     )
 
 
-@app.get("/budget/breakdown", response_class=HTMLResponse)
-async def budget_breakdown(request: Request, view: str = _DEFAULT_BREAKDOWN_VIEW) -> HTMLResponse:
+@jurisdiction.get("/budget/breakdown", response_class=HTMLResponse)
+async def budget_breakdown(
+    request: Request,
+    view: EntityView = Depends(resolve_entity),
+    breakdown_view: str = Query(_DEFAULT_BREAKDOWN_VIEW, alias="view"),
+) -> HTMLResponse:
     """HTMX partial: the breakdown bars for one view of the latest fiscal year."""
-    if view not in _BREAKDOWN_VIEWS:
-        view = _DEFAULT_BREAKDOWN_VIEW
+    if breakdown_view not in _BREAKDOWN_VIEWS:
+        breakdown_view = _DEFAULT_BREAKDOWN_VIEW
     client = _get_db()
-    breakdown = _breakdown_context(client, view, _latest_budget_year(client))
-    return templates.TemplateResponse(request, "_budget_breakdown.html", breakdown)
+    breakdown = _breakdown_context(client, breakdown_view, _latest_budget_year(client))
+    return templates.TemplateResponse(request, "_budget_breakdown.html", _page(view, **breakdown))
 
 
-@app.get("/budget/detail", response_class=HTMLResponse)
+@jurisdiction.get("/budget/detail", response_class=HTMLResponse)
 async def budget_detail(
-    request: Request, view: str = _DEFAULT_BREAKDOWN_VIEW, key: str = ""
+    request: Request,
+    view: EntityView = Depends(resolve_entity),
+    breakdown_view: str = Query(_DEFAULT_BREAKDOWN_VIEW, alias="view"),
+    key: str = "",
 ) -> HTMLResponse:
     """HTMX partial: one component's multi-year trend + fund<->function cross-split."""
-    if view not in _BREAKDOWN_VIEWS:
-        view = _DEFAULT_BREAKDOWN_VIEW
+    if breakdown_view not in _BREAKDOWN_VIEWS:
+        breakdown_view = _DEFAULT_BREAKDOWN_VIEW
     client = _get_db()
     return templates.TemplateResponse(
-        request, "_budget_detail.html", _detail_context(client, view, key)
+        request, "_budget_detail.html", _page(view, **_detail_context(client, breakdown_view, key))
     )
+
+
+@app.get("/budget", response_class=HTMLResponse)
+async def budget_redirect(request: Request) -> RedirectResponse:
+    """Legacy flat /budget (and old /budget/* partials) -> canonical body."""
+    return _redirect_to_default("/budget", request)
 
 
 @app.get("/topic/budget")
-async def topic_budget_redirect() -> RedirectResponse:
-    """Legacy path -> canonical /budget (preserves existing links)."""
-    return RedirectResponse("/budget", status_code=308)
+async def topic_budget_redirect(request: Request) -> RedirectResponse:
+    """Legacy path -> canonical body's budget page."""
+    return _redirect_to_default("/budget", request)
 
 
+# Document and chunk pages stay flat (IDs are globally unique, reached only via
+# their body's results). They resolve their body from the document so the page
+# chrome (sidebar, top-bar) renders under the right jurisdiction.
 @app.get("/document/{doc_id}", response_class=HTMLResponse)
 async def document_view(request: Request, doc_id: int) -> HTMLResponse:
     """Full document view."""
@@ -483,11 +594,8 @@ async def document_view(request: Request, doc_id: int) -> HTMLResponse:
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    return templates.TemplateResponse(
-        request,
-        "document.html",
-        {"document": doc},
-    )
+    view = _entity_view_for_document(client, doc)
+    return templates.TemplateResponse(request, "document.html", _page(view, document=doc))
 
 
 @app.get("/chunk/{chunk_id}/source", response_class=HTMLResponse)
@@ -503,12 +611,13 @@ async def chunk_source(request: Request, chunk_id: int, embed: int = 0) -> HTMLR
         raise HTTPException(status_code=404, detail="Chunk not found")
 
     doc = get_document(client, context["chunk"]["document_id"])
+    view = _entity_view_for_document(client, doc)
     template = "partials/reader_pane.html" if embed else "chunk_source.html"
 
     return templates.TemplateResponse(
         request,
         template,
-        {"chunk": context["chunk"], "context": context["context"], "document": doc},
+        _page(view, chunk=context["chunk"], context=context["context"], document=doc),
     )
 
 
@@ -527,25 +636,35 @@ async def chunk_source_pane(request: Request, chunk_id: int, q: str = "") -> HTM
         raise HTTPException(status_code=404, detail="Chunk not found")
 
     doc = get_document(client, ctx["chunk"]["document_id"])
+    view = _entity_view_for_document(client, doc)
     target_hash = chunk_hash_id(chunk_id)
 
     return templates.TemplateResponse(
         request,
         "partials/source_pane.html",
-        {
-            "chunk": ctx["chunk"],
-            "context": ctx["context"],
-            "document": doc,
-            "query": q,
-            "target_hash": target_hash,
-        },
+        _page(
+            view,
+            chunk=ctx["chunk"],
+            context=ctx["context"],
+            document=doc,
+            query=q,
+            target_hash=target_hash,
+        ),
+    )
+
+
+@jurisdiction.get("/methodology", response_class=HTMLResponse)
+async def methodology(request: Request, view: EntityView = Depends(resolve_entity)) -> HTMLResponse:
+    """How the system works — transparency page."""
+    return templates.TemplateResponse(
+        request, "methodology.html", _page(view, active="methodology")
     )
 
 
 @app.get("/methodology", response_class=HTMLResponse)
-async def methodology(request: Request) -> HTMLResponse:
-    """How the system works — transparency page."""
-    return templates.TemplateResponse(request, "methodology.html", {"active": "methodology"})
+async def methodology_redirect(request: Request) -> RedirectResponse:
+    """Legacy flat /methodology -> canonical body."""
+    return _redirect_to_default("/methodology", request)
 
 
 @app.post("/report-error", response_class=HTMLResponse)
@@ -570,9 +689,10 @@ async def report_error(
     return templates.TemplateResponse(request, "partials/error_submitted.html")
 
 
-@app.post("/summarize", response_class=HTMLResponse)
+@jurisdiction.post("/summarize", response_class=HTMLResponse)
 async def summarize(
     request: Request,
+    view: EntityView = Depends(resolve_entity),
     q: str = Form(""),
     date_from: str = Form(""),
     date_to: str = Form(""),
@@ -595,6 +715,7 @@ async def summarize(
         date_from=date.fromisoformat(date_from) if date_from else None,
         date_to=date.fromisoformat(date_to) if date_to else None,
         document_type=doc_type or None,
+        entity_id=view.entity["id"],
     )
 
     client = _get_db()
@@ -654,3 +775,25 @@ def _render_citation_links(text: str, results: list[dict[str, Any]]) -> str:
         last = match.end()
     parts.append(str(escape(text[last:])))
     return "".join(parts)
+
+
+# Registered after the flat routes so /document/{id} and /topic/budget win the
+# match; with one body the place hub just redirects to it.
+@app.get("/{state}/{place}")
+async def place_hub(state: str, place: str) -> RedirectResponse:
+    """Place hub: redirect to the (currently only) body; a directory in Phase C."""
+    client = _get_db()
+    bodies = [
+        e
+        for e in list_entities(client)
+        if (e.get("place") or {}).get("state") == state
+        and (e.get("place") or {}).get("slug") == place
+    ]
+    if not bodies:
+        raise HTTPException(status_code=404, detail="Unknown place")
+    return RedirectResponse(f"/{state}/{place}/{bodies[0]['body_slug']}", status_code=307)
+
+
+# Include the jurisdiction router LAST so its greedy /{state}/{place}/{body}
+# prefix is matched only after the specific flat routes above.
+app.include_router(jurisdiction)

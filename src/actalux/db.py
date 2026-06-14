@@ -118,6 +118,18 @@ def get_entity_by_path(
     return entity
 
 
+def get_entity(client: Client, entity_id: int) -> dict[str, Any] | None:
+    """Fetch one public body by id with its place embedded under ``place``."""
+    result = (
+        client.table("entities")
+        .select("*, place:places(*)")
+        .eq("id", entity_id)
+        .limit(1)
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
 def list_entities(client: Client) -> list[dict[str, Any]]:
     """All public bodies with their places embedded, for the landing/directory."""
     result = client.table("entities").select("*, place:places(*)").execute()

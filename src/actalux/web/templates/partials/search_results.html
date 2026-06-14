@@ -55,13 +55,13 @@
   <span class="tagline">No matches</span>
   <h1>No records found for "{{ query }}".</h1>
   <p class="lede">
-    Try different keywords, or browse the <a href="/topic/budget">Budget topic page</a>, or use the sidebar to browse by document type.
+    Try different keywords, or browse the <a href="{{ base }}/budget">Budget topic page</a>, or use the sidebar to browse by document type.
   </p>
 </div>
 {% else %}
 <div class="landing">
   <span class="tagline">Search</span>
-  <h1>Search 215 public documents of the Clayton school district.</h1>
+  <h1>Search the public records of the {{ entity.display_name if entity else 'district' }}.</h1>
   <p class="lede">
     Use the search field in the top bar. Every result is a verbatim quote with its source citation attached. Try "multilingual learner program," "long range facilities master plan," or "curriculum adoption."
   </p>

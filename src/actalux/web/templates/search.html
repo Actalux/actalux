@@ -4,7 +4,7 @@
 
 <section class="pane-header">
   <h2>{% if query %}Search results{% else %}Search the archive{% endif %}</h2>
-  <span class="meta">Clayton School District</span>
+  <span class="meta">{{ entity.display_name if entity else 'Public records' }}</span>
 </section>
 
 <span id="search-indicator" class="htmx-indicator">Searching…</span>

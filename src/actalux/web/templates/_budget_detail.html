@@ -2,7 +2,7 @@
    year/amount/source table, and the fund<->function cross-split. Swapped into
    #breakdown-panel by clicking a breakdown bar. Split bars drill the other way. #}
 <button type="button" class="back-link"
-        hx-get="/budget/breakdown?view={{ view }}"
+        hx-get="{{ base }}/budget/breakdown?view={{ view }}"
         hx-target="#breakdown-panel" hx-swap="innerHTML">&larr; Back to {{ back_label }}</button>
 
 {% if rows %}
@@ -36,7 +36,7 @@
 <div class="fund-bars">
   {% for s in split %}
   <button type="button" class="fund-row"
-          hx-get="/budget/detail?view={{ split_view }}&amp;key={{ s.label | urlencode }}"
+          hx-get="{{ base }}/budget/detail?view={{ split_view }}&amp;key={{ s.label | urlencode }}"
           hx-target="#breakdown-panel" hx-swap="innerHTML">
     <span class="fund-name">{{ s.label }}</span>
     <span class="fund-track"><span class="fund-fill" style="width: {{ '%.1f' % s.pct }}%;"></span></span>

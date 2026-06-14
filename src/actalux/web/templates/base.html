@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Actalux{% endblock %} — Clayton School District Records</title>
+  <title>{% block title %}Actalux{% endblock %} — {{ entity.display_name if entity else 'Public Records' }}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Newsreader:ital,opsz,wght@0,6..72,300..700;1,6..72,300..700&family=Geist:wght@300..700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -14,12 +14,12 @@
 <body>
 
 <header class="topbar" role="banner">
-  <a href="/" class="brand">
-    Actalux<span class="dot">.</span><span class="tag">Clayton MO</span>
+  <a href="{{ base }}" class="brand">
+    Actalux<span class="dot">.</span><span class="tag">{{ entity_tag }}</span>
   </a>
 
-  <form class="topbar-search" action="/search" method="post"
-        hx-post="/search" hx-target="#search-results" hx-push-url="true"
+  <form class="topbar-search" action="{{ base }}/search" method="post"
+        hx-post="{{ base }}/search" hx-target="#search-results" hx-push-url="true"
         hx-indicator="#search-indicator" role="search">
     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
       <circle cx="9" cy="9" r="6.5"/><path d="m14 14 4.5 4.5"/>
@@ -32,7 +32,7 @@
   </form>
 
   <nav class="topbar-links" aria-label="Primary">
-    <a href="/methodology">About</a>
+    <a href="{{ base }}/methodology">About</a>
     <a href="https://github.com/Actalux/actalux" target="_blank" rel="noopener">GitHub</a>
   </nav>
 </header>
@@ -51,7 +51,7 @@
         <span class="count">1</span>
       </button>
       <div class="nav-sub" id="sub-topics">
-        <a class="nav-item{% if active == 'topic-budget' %} active{% endif %}" href="/budget"><span>Budget &amp; Spending</span></a>
+        <a class="nav-item{% if active == 'topic-budget' %} active{% endif %}" href="{{ base }}/budget"><span>Budget &amp; Spending</span></a>
       </div>
 
       <button class="nav-toggle" aria-expanded="false" data-target="sub-meetings">
@@ -61,7 +61,7 @@
         </span>
       </button>
       <div class="nav-sub collapsed" id="sub-meetings">
-        <a class="nav-item" href="/search?q=board+meeting"><span>All meetings</span></a>
+        <a class="nav-item" href="{{ base }}/search?q=board+meeting"><span>All meetings</span></a>
       </div>
 
       <button class="nav-toggle" aria-expanded="false" data-target="sub-docs">
@@ -71,17 +71,17 @@
         </span>
       </button>
       <div class="nav-sub collapsed" id="sub-docs">
-        <a class="nav-item" href="/search?q=minutes"><span>Minutes</span></a>
-        <a class="nav-item" href="/search?q=budget"><span>Budgets</span></a>
-        <a class="nav-item" href="/search?q=resolution"><span>Resolutions</span></a>
-        <a class="nav-item" href="/search?q=transcript"><span>Transcripts</span></a>
-        <a class="nav-item" href="/search?q=curriculum"><span>Curriculum maps</span></a>
+        <a class="nav-item" href="{{ base }}/search?q=minutes"><span>Minutes</span></a>
+        <a class="nav-item" href="{{ base }}/search?q=budget"><span>Budgets</span></a>
+        <a class="nav-item" href="{{ base }}/search?q=resolution"><span>Resolutions</span></a>
+        <a class="nav-item" href="{{ base }}/search?q=transcript"><span>Transcripts</span></a>
+        <a class="nav-item" href="{{ base }}/search?q=curriculum"><span>Curriculum maps</span></a>
       </div>
     </div>
 
     <div class="nav-section">
       <span class="nav-label">Pages</span>
-      <a class="nav-item{% if active == 'methodology' %} active{% endif %}" href="/methodology"><span>How this works</span></a>
+      <a class="nav-item{% if active == 'methodology' %} active{% endif %}" href="{{ base }}/methodology"><span>How this works</span></a>
       <a class="nav-item" href="https://github.com/Actalux/actalux/issues/new" target="_blank" rel="noopener"><span>Report an error</span></a>
     </div>
 
@@ -103,7 +103,7 @@
     Actalux is an independent, nonpartisan public-records archive. No ads. No tracking. No editorial opinion.
   </div>
   <div class="links">
-    <a href="/methodology">How this works</a>
+    <a href="{{ base }}/methodology">How this works</a>
     <a href="https://github.com/Actalux/actalux" target="_blank" rel="noopener">Source</a>
     <a href="https://github.com/Actalux/actalux/issues/new" target="_blank" rel="noopener">Report an error</a>
   </div>

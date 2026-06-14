@@ -11,6 +11,14 @@ from actalux.web.app import _render_citation_links, app
 
 client = TestClient(app, raise_server_exceptions=False)
 
+_FAKE_ENTITY = {
+    "id": 1,
+    "body_slug": "schools",
+    "type": "school_district",
+    "display_name": "Clayton School District",
+    "place": {"state": "mo", "slug": "clayton", "display_name": "Clayton"},
+}
+
 
 class TestCanonicalHostRedirect:
     """www.actalux.org redirects to the apex; other hosts pass through."""
@@ -45,38 +53,107 @@ class TestStaticPages:
         assert response.status_code == 200
         assert response.json() == {"status": "ok"}
 
-    def test_home_page(self) -> None:
-        response = client.get("/")
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
+    def test_home_page(self, mock_ent, mock_db) -> None:
+        response = client.get("/mo/clayton/schools")
         assert response.status_code == 200
         assert "Clayton School District" in response.text
         assert "Search" in response.text
 
-    def test_methodology_page(self) -> None:
-        response = client.get("/methodology")
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
+    def test_methodology_page(self, mock_ent, mock_db) -> None:
+        response = client.get("/mo/clayton/schools/methodology")
         assert response.status_code == 200
         assert "How Actalux works" in response.text
         assert "citation" in response.text.lower()
         assert "verbatim" in response.text.lower()
 
-    def test_home_has_search_form(self) -> None:
-        response = client.get("/")
-        assert 'hx-post="/search"' in response.text
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
+    def test_home_has_search_form(self, mock_ent, mock_db) -> None:
+        response = client.get("/mo/clayton/schools")
+        assert 'hx-post="/mo/clayton/schools/search"' in response.text
 
-    def test_methodology_has_correction_info(self) -> None:
-        response = client.get("/methodology")
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
+    def test_methodology_has_correction_info(self, mock_ent, mock_db) -> None:
+        response = client.get("/mo/clayton/schools/methodology")
         assert "Report an error" in response.text
 
 
 class TestSearchEndpoint:
     """Search endpoint behavior (mocked DB)."""
 
-    def test_empty_query_returns_empty(self) -> None:
-        response = client.post("/search", data={"q": ""})
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
+    def test_empty_query_returns_empty(self, mock_ent, mock_db) -> None:
+        response = client.post("/mo/clayton/schools/search", data={"q": ""})
         assert response.status_code == 200
 
-    def test_empty_query_no_results(self) -> None:
-        response = client.post("/search", data={"q": "   "})
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
+    def test_empty_query_no_results(self, mock_ent, mock_db) -> None:
+        response = client.post("/mo/clayton/schools/search", data={"q": "   "})
         assert response.status_code == 200
+
+
+class TestJurisdictionRouting:
+    """Entity-scoped routing, redirects from legacy flat paths, and 404s."""
+
+    def test_apex_redirects_to_default_body(self) -> None:
+        r = client.get("/", follow_redirects=False)
+        assert r.status_code == 307
+        assert r.headers["location"] == "/mo/clayton/schools"
+
+    def test_legacy_search_redirects_preserving_query(self) -> None:
+        r = client.get("/search?q=board+meeting", follow_redirects=False)
+        assert r.status_code == 301
+        assert r.headers["location"] == "/mo/clayton/schools/search?q=board+meeting"
+
+    def test_legacy_budget_redirects(self) -> None:
+        r = client.get("/budget", follow_redirects=False)
+        assert r.status_code == 301
+        assert r.headers["location"] == "/mo/clayton/schools/budget"
+
+    def test_legacy_methodology_redirects(self) -> None:
+        r = client.get("/methodology", follow_redirects=False)
+        assert r.status_code == 301
+        assert r.headers["location"] == "/mo/clayton/schools/methodology"
+
+    def test_legacy_topic_budget_redirects(self) -> None:
+        r = client.get("/topic/budget", follow_redirects=False)
+        assert r.status_code == 301
+        assert r.headers["location"] == "/mo/clayton/schools/budget"
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
+    def test_entity_home_renders(self, mock_ent, mock_db) -> None:
+        r = client.get("/mo/clayton/schools")
+        assert r.status_code == 200
+        assert "Clayton School District" in r.text
+        # internal links are entity-scoped
+        assert "/mo/clayton/schools/search" in r.text
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
+    def test_entity_methodology_renders(self, mock_ent, mock_db) -> None:
+        r = client.get("/mo/clayton/schools/methodology")
+        assert r.status_code == 200
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity_by_path", return_value=None)
+    def test_unknown_jurisdiction_404(self, mock_ent, mock_db) -> None:
+        r = client.get("/zz/nowhere/schools")
+        assert r.status_code == 404
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.list_entities", return_value=[_FAKE_ENTITY])
+    def test_place_hub_redirects_to_body(self, mock_list, mock_db) -> None:
+        r = client.get("/mo/clayton", follow_redirects=False)
+        assert r.status_code == 307
+        assert r.headers["location"] == "/mo/clayton/schools"
 
 
 class TestDocumentEndpoint:
