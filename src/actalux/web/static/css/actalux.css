@@ -684,14 +684,49 @@ img { max-width: 100%; display: block; }
   box-decoration-break: clone;
 }
 
-/* ===== Citation-first reader pane ===== */
+/* ===== Reader pane: passage + original ===== */
+/* Provenance bar — mono metadata + "Open original" (DocumentCloud/Perplexity) */
+.provenance {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  padding-bottom: var(--s-3);
+  border-bottom: 1px solid var(--rule);
+}
+.provenance .kind {
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 500;
+}
+.provenance .k { color: var(--ink); }
+.provenance .spacer { flex: 1; }
+.provenance .openorig {
+  color: var(--accent);
+  border-bottom: 1px solid var(--accent-soft);
+  padding-bottom: 1px;
+}
+.reader-title {
+  font-family: var(--serif-display);
+  font-weight: 400;
+  font-size: 26px;
+  letter-spacing: -0.01em;
+  margin: var(--s-4) 0 var(--s-2);
+  color: var(--ink);
+}
+/* Summary — DocumentCloud margin-signal: vermillion left bar, no fill, set apart */
 .reader-summary {
-  font-family: var(--serif-body);
-  font-style: italic;
-  font-size: 15px;
+  border-left: 3px solid var(--accent);
+  padding: 2px 0 2px var(--s-4);
+  margin: var(--s-4) 0 var(--s-5);
+  font-family: var(--sans);
+  font-size: 13px;
   line-height: 1.5;
   color: var(--muted);
-  padding: var(--s-4) 0 0;
   max-width: var(--col-reading);
 }
 .block-label {
@@ -703,21 +738,29 @@ img { max-width: 100%; display: block; }
   color: var(--muted);
   margin-bottom: var(--s-3);
 }
-.citation-block { margin-top: var(--s-5); }
-.cited-context { max-width: var(--col-reading); }
-.cited-context .cited-para {
+.cite-section {
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  margin-bottom: var(--s-3);
+}
+.cited-para {
   font-family: var(--serif-body);
-  font-size: 17px;
+  font-size: 18px;
   line-height: 1.65;
   color: var(--ink);
   margin-bottom: var(--s-4);
+  max-width: var(--col-reading);
 }
-.cited-context .ctx-para {
+.ctx-para {
   font-family: var(--serif-body);
-  font-size: 17px;
+  font-size: 16px;
   line-height: 1.65;
   color: var(--muted);
   margin-bottom: var(--s-4);
+  max-width: var(--col-reading);
 }
 .original-block {
   margin-top: var(--s-6);
@@ -727,7 +770,7 @@ img { max-width: 100%; display: block; }
 .original-block .pdf-frame { margin-top: 0; }
 .original-block .video-embed { margin-top: 0; }
 .reader-actions {
-  margin-top: var(--s-5);
+  margin-top: var(--s-6);
   padding-top: var(--s-4);
   border-top: 1px solid var(--rule);
   display: flex;

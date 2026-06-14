@@ -1,57 +1,46 @@
-{# Source pane: citation-first reader (DESIGN.md "Result -> opens in reader pane").
-   Always leads with the cited passage highlighted in its textual context, then
-   shows the original artifact in-window below:
-     - YouTube doc with a video_id -> embedded player cued to the cited moment
-     - PDF source_url            -> browser-native iframe viewer
-     - .txt / .html sources       -> no embed; the context above is the text, and
-                                     "Open original" links out.
-   This fixes the prior behaviour where PDF results showed the raw file and no
-   cited passage at all. #}
+{# Source pane — "passage + original" reader (mockup C).
+   Leads with the cited passage (verbatim, reflowed, key sentence highlighted),
+   then shows the original artifact in-window below:
+     - PDF source_url -> browser-native iframe viewer
+     - YouTube video  -> player cued to the cited moment
+     - .txt / .html    -> no embed; neighbour chunks give the context, and
+                          "Open original" links out.
+   The original (PDF/video) is the surrounding context for PDF/video results,
+   so neighbour chunks are only rendered when there is no embed. #}
 {% set ctx_chunk = chunk %}
 {% set is_video = document.video_id %}
 {% set is_pdf = document.source_url and document.source_url.lower().endswith('.pdf') %}
-{# Video cue offset (seconds) for the cited chunk; 0 when not a video or unaligned. #}
 {% set cue = ctx_chunk.start_seconds if (is_video and ctx_chunk.start_seconds) else 0 %}
 
-<div class="reader-head">
-  <div>
-    <div class="kicker">{{ document.document_type or 'Record' }}{% if document.source_portal %} · {{ document.source_portal }}{% endif %}</div>
-    <h3>{{ document.meeting_title or 'Source document' }}</h3>
-  </div>
-  <div class="controls">
-    {% if document %}<a href="/document/{{ document.id }}">Open full →</a>{% endif %}
-    <a href="https://github.com/Actalux/actalux/issues/new?title=Error+report+{{ ctx_chunk.id | chunk_hash_id | urlencode }}" target="_blank" rel="noopener">Report error</a>
-  </div>
+<div class="provenance">
+  <span class="kind">{{ document.document_type or 'Record' }}</span>
+  {% if document.meeting_date %}<span class="k">{{ document.meeting_date }}</span>{% endif %}
+  {% if document.source_portal %}<span>{{ document.source_portal }}</span>{% endif %}
+  {% if cue %}<span>Cue {{ cue // 60 }}:{{ '%02d' % (cue % 60) }}</span>{% endif %}
+  <span>{{ ctx_chunk.id | chunk_hash_id }}</span>
+  <span class="spacer"></span>
+  {% if document.source_url %}<a class="openorig" href="{{ document.source_url | safe_url }}" target="_blank" rel="noopener">Open original ↗</a>{% endif %}
 </div>
 
-<div class="reader-meta-bar">
-  {% if document.meeting_date %}<span class="k">{{ document.meeting_date }}</span>{% endif %}
-  {% if document.source_portal %}<span>Portal: {{ document.source_portal }}</span>{% endif %}
-  {% if ctx_chunk.section %}<span>Section: {{ ctx_chunk.section }}</span>{% endif %}
-  {% if ctx_chunk.speaker %}<span>Speaker: {{ ctx_chunk.speaker }}</span>{% endif %}
-  {% if cue %}<span>Cue: {{ cue // 60 }}:{{ '%02d' % (cue % 60) }}</span>{% endif %}
-  <span>{{ ctx_chunk.id | chunk_hash_id }}</span>
-</div>
+<h3 class="reader-title">{{ document.meeting_title or 'Source document' }}</h3>
 
 {% if document.summary %}
-<p class="reader-summary">{{ document.summary }}</p>
+<div class="reader-summary">{{ document.summary }}</div>
 {% endif %}
 
-{# ===== Cited passage in context (the core motif, shown for every result) ===== #}
-<section class="citation-block">
-  <div class="block-label">Cited passage{% if is_video %} · transcript{% endif %}</div>
-  <div class="cited-context">
-    {% for c in context %}
-      {% if c.id == ctx_chunk.id %}
-        <p class="cited-para">{{ c.content | cited_html(query) }}</p>
-      {% else %}
-        <p class="ctx-para">{{ c.content }}</p>
-      {% endif %}
-    {% endfor %}
-  </div>
-</section>
+<div class="block-label">Cited passage{% if is_video %} · transcript{% endif %}</div>
+{% if ctx_chunk.section %}<div class="cite-section">{{ ctx_chunk.section | clean_text }}</div>{% endif %}
+<p class="cited-para">{{ ctx_chunk.content | cited_html(query) }}</p>
 
-{# ===== Original artifact in-window ===== #}
+{# Without an in-window original, the neighbour chunks supply the context. #}
+{% if not is_pdf and not is_video %}
+  {% for c in context %}
+    {% if c.id != ctx_chunk.id %}
+      <p class="ctx-para">{{ c.content | clean_text }}</p>
+    {% endif %}
+  {% endfor %}
+{% endif %}
+
 {% if is_video %}
 <section class="original-block">
   <div class="block-label">Original — board meeting video{% if cue %}, cued to the citation{% endif %}</div>

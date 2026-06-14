@@ -81,9 +81,21 @@ def extract_query_terms(query: str) -> list[str]:
     return terms
 
 
+def normalize_whitespace(text: str) -> str:
+    """Collapse runs of whitespace/newlines to single spaces; strip.
+
+    Reflows PDF/transcript extraction (which is full of mid-paragraph line
+    breaks) into readable prose WITHOUT changing any characters, so a displayed
+    cited passage stays verbatim word-for-word. Deeper extraction artifacts
+    (glued tokens like ``2022/23budget``) are an ingest-quality fix, not a
+    display-time edit.
+    """
+    return _WHITESPACE_RE.sub(" ", (text or "").strip())
+
+
 def split_sentences(text: str) -> list[str]:
     """Collapse whitespace and split into sentences on terminal punctuation."""
-    cleaned = _WHITESPACE_RE.sub(" ", (text or "").strip())
+    cleaned = normalize_whitespace(text)
     if not cleaned:
         return []
     return [s for s in _SENTENCE_SPLIT_RE.split(cleaned) if s]

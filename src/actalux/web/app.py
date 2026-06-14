@@ -58,7 +58,7 @@ from actalux.web.charts import (
     trend_svg,
     usd,
 )
-from actalux.web.text_snippets import extractive_snippet, split_for_highlight
+from actalux.web.text_snippets import extractive_snippet, normalize_whitespace, split_for_highlight
 
 logger = logging.getLogger(__name__)
 
@@ -180,6 +180,7 @@ def _safe_url(value: str) -> str:
 
 templates.env.filters["match_snippet"] = _match_snippet
 templates.env.filters["cited_html"] = _cited_html
+templates.env.filters["clean_text"] = normalize_whitespace
 templates.env.filters["usd"] = usd
 templates.env.filters["safe_url"] = _safe_url
 
