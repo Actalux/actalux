@@ -2,10 +2,10 @@
 
 from datetime import date
 
+from actalux.ingest.classify import is_annual_schedule
 from scripts.recategorize_documents import (
     derive_document_type,
     derive_meeting_date,
-    is_annual_schedule,
     plan_changes,
 )
 

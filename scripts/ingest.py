@@ -42,6 +42,7 @@ from actalux.db import (
 from actalux.errors import ActaluxError, ParseError
 from actalux.ingest import pii_guard
 from actalux.ingest.chunker import chunk_document, validate_chunks
+from actalux.ingest.classify import classify_document_type, parse_meeting_date
 from actalux.ingest.embedder import embed_chunks
 from actalux.ingest.hashing import content_hash
 from actalux.ingest.parser import parse_file
@@ -54,67 +55,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 SUPPORTED_EXTENSIONS = {".pdf", ".html", ".htm", ".md", ".markdown", ".txt"}
+# Date-prefix stripper for building a clean title (the date itself is parsed by
+# actalux.ingest.classify.parse_meeting_date).
 ISO_DATE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})")
-# "April 10, 2024" or "Aug 14 2024" (full or abbreviated, with or without comma)
-NATURAL_DATE_RE = re.compile(
-    r"(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?"
-    r"|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
-    r"\s+(\d{1,2}),?\s+(\d{4})",
-    re.IGNORECASE,
-)
-# "10-29-25" or "2-04-26" — M-D-YY with 2-digit year
-SHORT_DATE_RE = re.compile(r"^(\d{1,2})-(\d{1,2})-(\d{2})\b")
-# "jan21" — abbreviated month + day (no separator), e.g., "jan21_board_meeting.txt"
-COMPACT_DATE_RE = re.compile(
-    r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)(\d{1,2})",
-    re.IGNORECASE,
-)
-# "2024-2025" fiscal year anywhere in the filename
-FISCAL_YEAR_RE = re.compile(r"(\d{4})-(\d{4})(?=[\s_]|$)")
-
-MONTH_NAMES = {
-    "jan": 1,
-    "january": 1,
-    "feb": 2,
-    "february": 2,
-    "mar": 3,
-    "march": 3,
-    "apr": 4,
-    "april": 4,
-    "may": 5,
-    "jun": 6,
-    "june": 6,
-    "jul": 7,
-    "july": 7,
-    "aug": 8,
-    "august": 8,
-    "sep": 9,
-    "september": 9,
-    "oct": 10,
-    "october": 10,
-    "nov": 11,
-    "november": 11,
-    "dec": 12,
-    "december": 12,
-}
-
-DOC_TYPE_PATTERNS = {
-    "agenda": re.compile(r"agenda", re.IGNORECASE),
-    "minutes": re.compile(r"minutes", re.IGNORECASE),
-    "packet": re.compile(r"packet|board.?pack", re.IGNORECASE),
-    "resolution": re.compile(r"resolution", re.IGNORECASE),
-    "audit": re.compile(r"audit|audited|CAFR|comprehensive\s+annual\s+financial", re.IGNORECASE),
-    "per_pupil": re.compile(r"per[-_\s]?pupil", re.IGNORECASE),
-    "warrants": re.compile(r"warrants?", re.IGNORECASE),
-    "expenditure_summary": re.compile(r"expenditure\s+summary", re.IGNORECASE),
-    "revenue_summary": re.compile(r"revenue\s+summary", re.IGNORECASE),
-    "budget": re.compile(r"budget", re.IGNORECASE),
-    "presentation": re.compile(r"presentation|preliminary.?plan", re.IGNORECASE),
-    "ballot": re.compile(r"ballot", re.IGNORECASE),
-}
-
-# Fallback: if filename doesn't match any pattern but is a .txt file
-# from the transcripts directory, classify as "transcript"
 TRANSCRIPT_EXTENSIONS = {".txt"}
 
 # Canva curriculum maps are scraped as bare skill tables; the subject and grade
@@ -124,84 +67,19 @@ CANVA_MAP_RE = re.compile(r"^canva_.*curriculum_map", re.IGNORECASE)
 
 
 def infer_meeting_date(name: str) -> date | None:
-    """Extract a date from a directory or filename.
+    """Extract a meeting date from a directory or filename.
 
-    Handles:
-      - ISO prefix: "2024-03-15_board-meeting"
-      - Short date: "10-29-25 Board of Education Meeting.txt" (M-D-YY)
-      - Natural date: "April 10, 2024 Meeting Minutes.pdf"
-      - Compact date: "jan21_board_meeting.txt" (monDD)
-      - Fiscal year: "2024-2025 School District of Clayton Budget.html"
-        (uses July 1 of the start year as the fiscal year start)
+    Delegates to the shared parser so ingest and the recategorize corrector
+    derive dates identically (ISO, "Apr 12, 2023", "11.16.22", "10-29-25",
+    "10 26 22", "Feb2025", fiscal "2024-2025", compact "jan21").
     """
-    # Try ISO date prefix first
-    match = ISO_DATE_RE.match(name)
-    if match:
-        return date.fromisoformat(match.group(1))
-
-    # Try short date ("M-D-YY" with 2-digit year)
-    match = SHORT_DATE_RE.match(name)
-    if match:
-        month = int(match.group(1))
-        day = int(match.group(2))
-        short_year = int(match.group(3))
-        year = 2000 + short_year if short_year < 50 else 1900 + short_year
-        return date(year, month, day)
-
-    # Try natural date ("Month DD, YYYY")
-    match = NATURAL_DATE_RE.search(name)
-    if match:
-        month = MONTH_NAMES[match.group(1).lower()]
-        day = int(match.group(2))
-        year = int(match.group(3))
-        return date(year, month, day)
-
-    # Try compact month+year ("Feb2025", "April2026" — no day)
-    month_year_match = re.search(
-        r"(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?"
-        r"|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
-        r"(\d{4})",
-        name,
-        re.IGNORECASE,
-    )
-    if month_year_match:
-        month = MONTH_NAMES[month_year_match.group(1).lower()]
-        year = int(month_year_match.group(2))
-        return date(year, month, 1)
-
-    # Try compact date ("jan21" — abbreviated month + day, no year)
-    match = COMPACT_DATE_RE.search(name)
-    if match:
-        month = MONTH_NAMES[match.group(1).lower()]
-        day = int(match.group(2))
-        # Infer year: assume most recent past occurrence
-        from datetime import date as date_type
-
-        today = date_type.today()
-        candidate = date(today.year, month, day)
-        if candidate > today:
-            candidate = date(today.year - 1, month, day)
-        return candidate
-
-    # Try fiscal year ("2024-2025 ..." anywhere in name)
-    match = FISCAL_YEAR_RE.search(name)
-    if match:
-        start_year = int(match.group(1))
-        return date(start_year, 7, 1)
-
-    return None
+    return parse_meeting_date(name, today=date.today())
 
 
 def infer_document_type(filename: str) -> str:
-    """Guess document type from filename."""
-    for doc_type, pattern in DOC_TYPE_PATTERNS.items():
-        if pattern.search(filename):
-            return doc_type
-    # .txt files that match "Board of Education" are transcripts
+    """Guess document type from filename via the shared classifier."""
     ext = Path(filename).suffix.lower()
-    if ext in TRANSCRIPT_EXTENSIONS and re.search(r"board", filename, re.IGNORECASE):
-        return "transcript"
-    return "other"
+    return classify_document_type(filename, is_text_file=ext in TRANSCRIPT_EXTENSIONS)
 
 
 def infer_meeting_title(name: str) -> str:

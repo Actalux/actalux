@@ -27,138 +27,44 @@ from __future__ import annotations
 import argparse
 import logging
 import os
-import re
 from datetime import date
 
 from actalux.db import get_client
+from actalux.ingest.classify import (
+    classify_document_type,
+    is_annual_schedule,
+    parse_meeting_date,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
-_ANNUAL_RE = re.compile(r"20\d{2}\s*[ _-]\s*20\d{2}")
-_MONTHS = {
-    "jan": 1,
-    "feb": 2,
-    "mar": 3,
-    "apr": 4,
-    "may": 5,
-    "jun": 6,
-    "jul": 7,
-    "aug": 8,
-    "sep": 9,
-    "oct": 10,
-    "nov": 11,
-    "dec": 12,
-}
-_SANE_YEARS = range(2015, 2031)
-
-# Date patterns, most-specific first: "Apr 12 2023" / "December 10, 2025";
-# "11.16.22" (MM.DD.YY); "10 26 22" (MM DD YY).
-_MONTH_DATE_RE = re.compile(
-    r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+"
-    r"(\d{1,2})(?:st|nd|rd|th)?[, ]+\s*(\d{4})",
-    re.I,
-)
-_MMDDYY_DOT_RE = re.compile(r"\b(\d{1,2})\.(\d{1,2})\.(\d{2})\b")
-_MMDDYY_SPACE_RE = re.compile(r"\b(\d{1,2})\s+(\d{1,2})\s+(\d{2})\b")
-
-
-def is_annual_schedule(meeting_title: str) -> bool:
-    """An annual board-meeting schedule/calendar, not a single meeting."""
-    s = (meeting_title or "").replace("-", " ")
-    return bool(_ANNUAL_RE.search(s)) and (
-        "board of education meeting" in s.lower() or "meetings" in s.lower()
-    )
-
 
 def derive_document_type(meeting_title: str, source_file: str, current_type: str) -> str | None:
-    """Proposed document_type for an 'other' doc, or None to leave it unchanged.
+    """Proposed document_type, or None to leave it unchanged.
 
-    Only reclassifies docs currently typed 'other'; specific types are trusted.
-    Returns None when the doc is not 'other' or cannot be confidently classified.
+    Uses the shared classifier (so ingest and this corrector agree). Reclassifies
+    docs currently typed 'other' (specific types are trusted), with one extra
+    correction: an annual schedule that the old ingest mis-typed as 'minutes' is
+    moved to 'schedule'.
     """
-    if current_type != "other":
-        return None
-    title, sf = meeting_title or "", source_file or ""
-    s = f"{title} {sf}".lower()
-
-    if is_annual_schedule(title) or "board of education meetings" in s:
+    name = f"{(meeting_title or '').strip()} {(source_file or '').strip()}"
+    is_text = (source_file or "").lower().endswith(".txt")
+    proposed = classify_document_type(name, is_text_file=is_text)
+    if current_type == "other":
+        return proposed if proposed != "other" else None
+    if proposed == "schedule" and current_type == "minutes":
         return "schedule"
-    # Minutes: "MM" token, "meeting minutes", "business meeting", retreats,
-    # "BOE Meeting", session minutes. Checked before curriculum/etc.
-    if (
-        re.search(r"\bmm\b", s)
-        or "meeting minutes" in s
-        or "business meeting" in s
-        or "board retreat" in s
-        or "boe meeting" in s
-        or "working session" in s
-        or "work session" in s
-        or "special meeting" in s
-    ):
-        return "minutes"
-    if "curriculum" in s and "map" in s:
-        return "curriculum_map"
-    if "curriculum" in s:
-        return "curriculum"
-    if "master plan" in s or "masterplan" in s:
-        return "facilities_plan"
-    if "strategic" in s or "csip" in s:
-        return "strategic_plan"
-    if "assessment" in s:
-        return "assessment"
-    if "audit" in s or "acfr" in s:
-        return "audit"
-    if "calendar" in s:
-        return "schedule"
-    if any(
-        kw in s
-        for kw in (
-            "sunshine",
-            "candidate",
-            "orientation",
-            "livestream",
-            "public comment",
-            "governance",
-            "gifted",
-            "resource guide",
-            "open meetings",
-            "policy",
-        )
-    ):
-        return "governance"
-    return None  # leave as 'other'
-
-
-def derive_meeting_date(meeting_title: str, source_file: str) -> date | None:
-    """Parse a full meeting date from the title/filename, or None if unconfident."""
-    for text in (meeting_title or "", source_file or ""):
-        m = _MONTH_DATE_RE.search(text)
-        if m:
-            d = _safe_date(int(m.group(3)), _MONTHS[m.group(1).lower()[:3]], int(m.group(2)))
-            if d:
-                return d
-        m = _MMDDYY_DOT_RE.search(text)
-        if m:
-            d = _safe_date(2000 + int(m.group(3)), int(m.group(1)), int(m.group(2)))
-            if d:
-                return d
-        m = _MMDDYY_SPACE_RE.search(text)
-        if m:
-            d = _safe_date(2000 + int(m.group(3)), int(m.group(1)), int(m.group(2)))
-            if d:
-                return d
     return None
 
 
-def _safe_date(year: int, month: int, day: int) -> date | None:
-    """Construct a date, returning None for out-of-range / impossible values."""
-    if year not in _SANE_YEARS or not (1 <= month <= 12) or not (1 <= day <= 31):
-        return None
-    try:
-        return date(year, month, day)
-    except ValueError:
-        return None
+def derive_meeting_date(meeting_title: str, source_file: str) -> date | None:
+    """Parse a meeting date from the title, then the filename. None if unconfident.
+
+    No ``today`` is passed, so compact "jan21"-style inference is skipped — a
+    retroactive corrector must be deterministic, not dependent on the run date.
+    """
+    return parse_meeting_date(meeting_title or "") or parse_meeting_date(source_file or "")
 
 
 def plan_changes(docs: list[dict]) -> list[dict]:
@@ -221,10 +127,10 @@ def main() -> int:
     logger.info("\n-- RE-TYPE (%d) --", len(retypes))
     type_counts: dict[str, int] = {}
     for c in retypes:
-        t = c["update"]["document_type"]
-        type_counts[t] = type_counts.get(t, 0) + 1
-    for t, n in sorted(type_counts.items(), key=lambda x: -x[1]):
-        logger.info("   other -> %-16s %d", t, n)
+        transition = f"{c['from']['document_type']} -> {c['update']['document_type']}"
+        type_counts[transition] = type_counts.get(transition, 0) + 1
+    for transition, n in sorted(type_counts.items(), key=lambda x: -x[1]):
+        logger.info("   %-26s %d", transition, n)
     for c in retypes:
         logger.info("   #%s  -> %-15s | %s", c["id"], c["update"]["document_type"], c["title"][:48])
 
