@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 HASH_ID_RE = re.compile(r"#q[0-9a-f]{4,}")
 DEFAULT_MODEL = "gpt-5-mini"
 MAX_TOKENS = 1024  # results summary budget
-DOC_SUMMARY_MAX_TOKENS = 120  # one-sentence per-document summary
+DOC_SUMMARY_MAX_TOKENS = 256  # short (2-4 sentence) per-document content summary
 
 SYSTEM_PROMPT = """\
 You are a civic records assistant for Actalux, an independent, nonpartisan \
@@ -272,24 +272,29 @@ def extract_citation_ids(text: str) -> list[str]:
 # --- Card-sized summaries (per-document and per-match) ----------------
 
 DOC_SUMMARY_SYSTEM = """\
-You describe Clayton, MO school district public records in one sentence \
-for a citizen-facing search archive. Be factual and neutral. Say what the \
-document is (its kind, scope, and time frame), not what it argues. Do not \
-editorialize. Do not speculate.\
+You describe Clayton, MO school district public records for a citizen-facing \
+search archive. Summarize what the document covers — its kind and time frame, \
+its main topics or sections, and any concrete decisions, votes, or figures it \
+records. Be factual and neutral: say what the document is and what is in it, \
+not what it argues or implies. Do not editorialize, infer intent, or speculate \
+beyond the excerpts provided.\
 """
 
 DOC_SUMMARY_USER = """\
 Document title: {title}
 Document type: {doc_type}
 Date: {date}
-Source portal: {portal}
+Source: {portal}
 
-Excerpts from the start of the document:
+Excerpts from the document (sampled across it; may be partial):
 
 {excerpts}
 
-In one sentence (under 25 words), say what this document is. Use plain \
-language. No citations needed (this is descriptive of the document itself).\
+In 2-4 plain-language sentences, summarize what this document covers: its kind \
+and time frame, the main topics or sections, and any specific decisions, votes, \
+or figures present in the excerpts. Stay factual and neutral; do not editorialize \
+or speculate beyond what the excerpts show. No citations needed (this describes \
+the document itself).\
 """
 
 
@@ -302,8 +307,8 @@ def generate_doc_summary(
     api_key: str,
     model: str = DEFAULT_MODEL,
 ) -> str:
-    """One-sentence description of a document. Stored on the document row."""
-    excerpts_block = "\n\n".join(e.strip() for e in excerpts if e and e.strip())[:6000]
+    """Short (2-4 sentence) content summary of a document. Stored on the row."""
+    excerpts_block = "\n\n".join(e.strip() for e in excerpts if e and e.strip())[:8000]
     user_message = DOC_SUMMARY_USER.format(
         title=title or "(untitled)",
         doc_type=doc_type or "(unknown)",

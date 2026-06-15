@@ -29,19 +29,29 @@ from actalux.search.summarize import generate_doc_summary
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-EXCERPT_CHUNK_COUNT = 3
+MAX_EXCERPTS = 6  # chunks fed to the summary, sampled across the whole document
 
 
 def fetch_excerpts(client, doc_id: int) -> list[str]:
+    """Return up to MAX_EXCERPTS chunk texts sampled evenly across the document.
+
+    Sampling across the doc (not just the first chunks) lets the content summary
+    reflect the whole record — a long transcript or budget has substance well
+    past its opening. Short docs return all their chunks unchanged.
+    """
     res = (
         client.table("chunks")
         .select("content")
         .eq("document_id", doc_id)
         .order("id", desc=False)
-        .limit(EXCERPT_CHUNK_COUNT)
         .execute()
     )
-    return [r["content"] for r in res.data if r.get("content")]
+    chunks = [r["content"] for r in (res.data or []) if r.get("content")]
+    if len(chunks) <= MAX_EXCERPTS:
+        return chunks
+    step = (len(chunks) - 1) / (MAX_EXCERPTS - 1)
+    indices = sorted({round(i * step) for i in range(MAX_EXCERPTS)})
+    return [chunks[i] for i in indices]
 
 
 def main() -> int:

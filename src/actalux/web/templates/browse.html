@@ -38,7 +38,7 @@
       {% if d.summary %}
       <div class="card-summary doc-summary">
         <span class="card-label">Doc</span>
-        <span class="card-body">{{ d.summary }}</span>
+        <span class="card-body">{{ d.summary | first_sentence }}</span>
       </div>
       {% endif %}
     </a>

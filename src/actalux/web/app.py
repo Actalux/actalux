@@ -59,7 +59,7 @@ from actalux.web.charts import (
     trend_svg,
     usd,
 )
-from actalux.web.display import display_title, source_label
+from actalux.web.display import display_title, first_sentence, source_label
 from actalux.web.text_snippets import extractive_snippet, normalize_whitespace, split_for_highlight
 
 logger = logging.getLogger(__name__)
@@ -185,6 +185,7 @@ templates.env.filters["cited_html"] = _cited_html
 templates.env.filters["clean_text"] = normalize_whitespace
 templates.env.filters["display_title"] = display_title
 templates.env.filters["source_label"] = source_label
+templates.env.filters["first_sentence"] = first_sentence
 templates.env.filters["usd"] = usd
 templates.env.filters["safe_url"] = _safe_url
 

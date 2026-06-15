@@ -103,6 +103,26 @@ def source_label(portal: Any) -> str:
     return _SOURCE_LABELS.get(key, key.replace("_", " ").title())
 
 
+# First terminal punctuation that ends a real sentence. The min-length guard
+# (>=20 chars before the period) skips abbreviation periods like "Mr." / "Dr."
+# so a card preview shows the whole first sentence, not a fragment.
+_SENTENCE_END_RE = re.compile(r"[.!?](?=\s|$)")
+
+
+def first_sentence(text: Any) -> str:
+    """First sentence of a summary, for compact search/browse cards.
+
+    The reader pane shows the full multi-sentence summary; cards show just this.
+    """
+    s = " ".join((text or "").split())
+    if not s:
+        return ""
+    for match in _SENTENCE_END_RE.finditer(s):
+        if match.start() >= 20:
+            return s[: match.end()]
+    return s
+
+
 def _coerce_date(value: Any) -> date | None:
     if isinstance(value, date):
         return value

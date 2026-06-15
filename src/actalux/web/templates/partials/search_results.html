@@ -30,7 +30,7 @@
 
       <div class="card-summary doc-summary">
         <span class="card-label">Document</span>
-        <span class="card-body">{% if r.summary %}{{ r.summary }}{% else %}{{ r.document_type or 'Record' }}{% if r.meeting_date %} · {{ r.meeting_date }}{% endif %}{% if r.section %} · {{ r.section }}{% endif %}{% endif %}</span>
+        <span class="card-body">{% if r.summary %}{{ r.summary | first_sentence }}{% else %}{{ r.document_type or 'Record' }}{% if r.meeting_date %} · {{ r.meeting_date }}{% endif %}{% if r.section %} · {{ r.section }}{% endif %}{% endif %}</span>
       </div>
 
       <div class="card-summary match-summary">

@@ -2,7 +2,32 @@
 
 from datetime import date
 
-from actalux.web.display import display_title, source_label
+from actalux.web.display import display_title, first_sentence, source_label
+
+
+class TestFirstSentence:
+    """Cards show only the first sentence of the (now multi-sentence) summary."""
+
+    def test_takes_first_sentence(self) -> None:
+        text = "The board approved the FY2026 budget. It also discussed enrollment."
+        assert first_sentence(text) == "The board approved the FY2026 budget."
+
+    def test_no_terminal_punctuation_returns_whole(self) -> None:
+        assert (
+            first_sentence("A curriculum map for grades K-5") == "A curriculum map for grades K-5"
+        )
+
+    def test_skips_abbreviation_period(self) -> None:
+        # The min-length guard avoids cutting at "Dr." early in the sentence.
+        text = "Dr. Smith presented the strategic plan to the board. The vote followed."
+        assert first_sentence(text) == "Dr. Smith presented the strategic plan to the board."
+
+    def test_blank(self) -> None:
+        assert first_sentence("") == ""
+        assert first_sentence(None) == ""
+
+    def test_collapses_whitespace(self) -> None:
+        assert first_sentence("Minutes  from\nthe meeting. Next.") == "Minutes from the meeting."
 
 
 class TestSourceLabel:
