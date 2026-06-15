@@ -184,7 +184,8 @@ class TestBrowse:
         r = client.get("/mo/clayton/schools/browse/minutes")
         assert r.status_code == 200
         assert "Minutes" in r.text
-        assert "February 1, 2023 Business Meeting Minutes" in r.text
+        # title is homogenized at render (date-led), raw filename not shown
+        assert "February 1, 2023 — Meeting Minutes" in r.text
         # browse rows open the document pane, they do not run a search
         assert "/document/195/pane" in r.text
         # the listing filters by document_type, not a keyword search

@@ -29,7 +29,7 @@
        {% if loop.first %}hx-trigger="load, click"{% endif %}
        onclick="document.querySelectorAll('.result-card.active').forEach(function(el){el.classList.remove('active');});this.classList.add('active');">
       <div class="card-head">
-        <h3 class="doc-title">{{ d.meeting_title or 'Untitled document' }}</h3>
+        <h3 class="doc-title">{{ d | display_title }}</h3>
         <div class="card-meta">
           <span class="kind">{{ d.document_type or 'Record' }}</span>
           {% if d.meeting_date %}<span class="date">{{ d.meeting_date }}</span>{% endif %}

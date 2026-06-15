@@ -22,7 +22,7 @@
   {% if document.source_url %}<a class="openorig" href="{{ document.source_url | safe_url }}" target="_blank" rel="noopener">Open original ↗</a>{% endif %}
 </div>
 
-<h3 class="reader-title">{{ document.meeting_title or 'Source document' }}</h3>
+<h3 class="reader-title">{{ document | display_title }}</h3>
 
 {% if document.summary %}
 <div class="reader-summary">{{ document.summary }}</div>

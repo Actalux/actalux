@@ -2,7 +2,7 @@
 <div class="reader-head">
   <div>
     <div class="kicker">{{ document.document_type or 'Record' }}{% if document.source_portal %} · {{ document.source_portal }}{% endif %}</div>
-    <h3>{{ document.meeting_title or 'Source document' }}</h3>
+    <h3>{{ document | display_title }}</h3>
   </div>
   <div class="controls">
     {% if document %}<a href="/document/{{ document.id }}">Open full →</a>{% endif %}
