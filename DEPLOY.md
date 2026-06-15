@@ -1,10 +1,10 @@
 # Deploying Actalux
 
 The web app (FastAPI + HTMX) runs as a single always-on container on
-[Fly.io](https://fly.io). Search is hybrid retrieval with RRF; the reranker is
-**not** in this image (it's a future ZeroEntropy API call — see the bottom of
-this file). The data lives in Supabase, so the app itself is effectively
-stateless and cheap to move or rebuild.
+[Fly.io](https://fly.io). Search is hybrid retrieval (RRF) with an optional
+ZeroEntropy reranker stage, gated by `ACTALUX_RERANK` (see the bottom of this
+file). The data lives in Supabase, so the app itself is effectively stateless
+and cheap to move or rebuild.
 
 Artifacts in the repo:
 
@@ -35,17 +35,20 @@ shell history or on a command line:
 ```bash
 doppler secrets download --no-file --format env \
   --project mac --config dev | \
-grep -E '^(ACTALUX_SUPABASE_URL|ACTALUX_SUPABASE_KEY|OPENAI_API_KEY)=' | \
+grep -E '^(ACTALUX_SUPABASE_URL|ACTALUX_SUPABASE_KEY|OPENAI_API_KEY|ZEROENTROPY_API_KEY)=' | \
 fly secrets import
 ```
 
 Only `ACTALUX_SUPABASE_URL` and `ACTALUX_SUPABASE_KEY` (the publishable key)
 are required at startup. `OPENAI_API_KEY` powers the citation-backed summaries
-(`gpt-4o-mini` via the OpenAI SDK) -- omit it and the summary feature silently
+(`gpt-5-mini` via the OpenAI SDK) -- omit it and the summary feature silently
 disables itself. Swap it for a dedicated, spend-capped key before relying on it
-in public. Add `BUTTONDOWN_API_KEY` to the `grep` set if/when that feature is
-live. `ANTHROPIC_API_KEY` is eval-only (the judge), not used by the web app;
-`ACTALUX_PII_GUARD` is ingest-only -- neither is needed on the web host.
+in public. `ZEROENTROPY_API_KEY` plus `ACTALUX_RERANK=api` turn on the reranker
+stage (default off → RRF only); set the flag with
+`fly secrets set ACTALUX_RERANK=api`. Add `BUTTONDOWN_API_KEY` to the `grep` set
+if/when that feature is live. `ANTHROPIC_API_KEY` is eval-only (the judge), not
+used by the web app; `ACTALUX_PII_GUARD` is ingest-only -- neither is needed on
+the web host.
 
 Deploy:
 
@@ -118,13 +121,8 @@ real ~1.8 GB.
   (The compile picks the latest compatible torch, so the deploy may run a newer
   torch patch than `uv.lock`'s — both are torch 2.x with the same bge inference
   behavior. Pin torch in `pyproject.toml` if you need them identical.)
-- **Reranker (Phase 2).** Not in this image. When wired, it will be an optional
-  `ACTALUX_RERANK=off|api` stage calling the ZeroEntropy hosted API after
-  `hybrid_search`, default off (RRF fallback). The API serves the zerank-2
-  family, not the locally-evaluated zerank-1-small, so it gets its own eval-arm
-  validation first.
-- **Reranker (Phase 2).** Not in this image. When wired, it will be an optional
-  `ACTALUX_RERANK=off|api` stage calling the ZeroEntropy hosted API after
-  `hybrid_search`, default off (RRF fallback). The API serves the zerank-2
-  family, not the locally-evaluated zerank-1-small, so it gets its own eval-arm
-  validation first.
+- **Reranker.** Live. An optional `ACTALUX_RERANK=off|api` stage that calls the
+  ZeroEntropy hosted API (model `zerank-1-small`) to rerank the RRF candidate
+  pool after `hybrid_search`. Default `off` (RRF fallback); enabled on the host
+  via `ACTALUX_RERANK=api` + `ZEROENTROPY_API_KEY`. See `eval/README.md` for the
+  retrieval eval that selected the model (+~24% nDCG@10).
