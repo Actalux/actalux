@@ -60,7 +60,12 @@ from actalux.web.charts import (
     usd,
 )
 from actalux.web.display import display_title, first_sentence, source_label
-from actalux.web.text_snippets import extractive_snippet, normalize_whitespace, split_for_highlight
+from actalux.web.text_snippets import (
+    content_paragraphs,
+    extractive_snippet,
+    normalize_whitespace,
+    split_for_highlight,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -183,6 +188,7 @@ def _safe_url(value: str) -> str:
 templates.env.filters["match_snippet"] = _match_snippet
 templates.env.filters["cited_html"] = _cited_html
 templates.env.filters["clean_text"] = normalize_whitespace
+templates.env.filters["content_paragraphs"] = content_paragraphs
 templates.env.filters["display_title"] = display_title
 templates.env.filters["source_label"] = source_label
 templates.env.filters["first_sentence"] = first_sentence

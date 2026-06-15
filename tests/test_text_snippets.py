@@ -2,12 +2,31 @@
 
 from actalux.web.text_snippets import (
     best_sentence_index,
+    content_paragraphs,
     extract_query_terms,
     extractive_snippet,
     mark_terms,
     split_for_highlight,
     split_sentences,
 )
+
+
+class TestContentParagraphs:
+    """Full-document text is reflowed into readable paragraphs."""
+
+    def test_collapses_single_newlines_within_a_block(self) -> None:
+        # A transcript wrapped mid-sentence becomes one flowing paragraph.
+        text = "welcome. I apologize that we are a few\nminutes late getting\nstarted."
+        assert content_paragraphs(text) == [
+            "welcome. I apologize that we are a few minutes late getting started."
+        ]
+
+    def test_splits_on_blank_lines(self) -> None:
+        assert content_paragraphs("First para.\n\nSecond para.") == ["First para.", "Second para."]
+
+    def test_empty_returns_empty_list(self) -> None:
+        assert content_paragraphs("") == []
+        assert content_paragraphs("   \n  \n") == []
 
 
 class TestExtractQueryTerms:

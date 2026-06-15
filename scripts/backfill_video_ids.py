@@ -30,6 +30,25 @@ logger = logging.getLogger(__name__)
 
 MANIFEST_PATH = Path("data/youtube_discovery.json")
 
+# Channel videos whose title carries no parseable date, so date-matching can't
+# reach them. Matched to their document by a title substring, verified by hand.
+MANUAL_MATCHES = [
+    {
+        "title_contains": "safety",
+        "video_id": "5eoLIM4PQEg",
+        "title": "Board of Education Safety & Security Meeting",
+    },
+]
+
+
+def _manual_video(doc_title: str) -> dict | None:
+    """A hand-verified video for a doc whose meeting has no date-matched video."""
+    low = (doc_title or "").lower()
+    for m in MANUAL_MATCHES:
+        if m["title_contains"] in low:
+            return m
+    return None
+
 
 def _words(text: str) -> set[str]:
     """Lowercased alphanumeric word set for title-overlap scoring."""
@@ -85,11 +104,15 @@ def main() -> None:
     no_video = 0
     for d in sorted(docs, key=lambda x: str(x.get("meeting_date"))):
         candidates = by_date.get(str(d.get("meeting_date")), [])
-        if not candidates:
+        video = (
+            _pick_video(d.get("meeting_title") or "", candidates)
+            if candidates
+            else _manual_video(d.get("meeting_title") or "")
+        )
+        if not video:
             no_video += 1
             logger.info("  no video   | doc %s | %s", d["id"], d.get("meeting_title"))
             continue
-        video = _pick_video(d.get("meeting_title") or "", candidates)
         vid = video["video_id"]
         if d.get("video_id") == vid:
             logger.info("  unchanged  | doc %s | %s", d["id"], vid)

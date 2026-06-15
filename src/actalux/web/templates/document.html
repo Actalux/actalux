@@ -2,9 +2,14 @@
 {% block title %}{{ document | display_title }}{% endblock %}
 {% block content %}
 
+{# A transcript's "original" is its YouTube video, never the .txt we derived it
+   from; for everything else the original is the source_url. #}
+{% set is_transcript = document.source_portal == 'youtube' %}
+{% set original_url = ('https://www.youtube.com/watch?v=' ~ document.video_id) if document.video_id else ('' if is_transcript else document.source_url) %}
+
 <section class="pane-header">
   <h2>Document</h2>
-  <span class="meta">{{ document.document_type or 'Record' }}{% if document.source_portal %} · portal: {{ document.source_portal }}{% endif %}</span>
+  <span class="meta">{{ document.document_type or 'Record' }}{% if document.source_portal %} · {{ document.source_portal | source_label }}{% endif %}</span>
 </section>
 
 <div class="doc-frame">
@@ -28,9 +33,9 @@
       <span class="value">{{ document.source_portal | source_label }}</span>
     {% endif %}
 
-    {% if document.source_url %}
-      <span class="label">Source</span>
-      <span class="value"><a href="{{ document.source_url | safe_url }}" target="_blank" rel="noopener" style="color: var(--accent); word-break: break-all;">Open original →</a></span>
+    {% if original_url %}
+      <span class="label">Original</span>
+      <span class="value"><a href="{{ original_url | safe_url }}" target="_blank" rel="noopener" style="color: var(--accent); word-break: break-all;">{{ 'Watch on YouTube →' if document.video_id else 'Open original →' }}</a></span>
     {% endif %}
 
     {% if document.version %}
@@ -46,13 +51,15 @@
 
   <article class="doc-page">
     <h1>{{ document | display_title }}</h1>
-    <pre>{{ document.content }}</pre>
+    {% for para in document.content | content_paragraphs %}
+    <p class="doc-para">{{ para }}</p>
+    {% endfor %}
   </article>
 
   <aside class="doc-toc">
     <span class="label">Actions</span>
     <a href="{{ base }}/search?q={{ document.meeting_title or '' }}">Find quotes from this doc</a>
-    {% if document.source_url %}<a href="{{ document.source_url | safe_url }}" target="_blank" rel="noopener">Open source file</a>{% endif %}
+    {% if original_url %}<a href="{{ original_url | safe_url }}" target="_blank" rel="noopener">{{ 'Watch on YouTube' if document.video_id else 'Open original' }}</a>{% endif %}
     <a href="https://github.com/Actalux/actalux/issues/new?title=Error+report+doc+{{ document.id }}" target="_blank" rel="noopener">Report an error</a>
 
     <span class="label" style="margin-top: var(--s-5);">Browse</span>

@@ -10,7 +10,10 @@
 {% set ctx_chunk = chunk %}
 {% set is_video = document.video_id %}
 {% set is_pdf = document.source_url and document.source_url.lower().endswith('.pdf') %}
+{% set is_transcript = document.source_portal == 'youtube' %}
 {% set cue = ctx_chunk.start_seconds if (is_video and ctx_chunk.start_seconds) else 0 %}
+{# A transcript's "original" is its video, never the .txt we derived it from. #}
+{% set original_url = ('https://www.youtube.com/watch?v=' ~ document.video_id) if document.video_id else ('' if is_transcript else document.source_url) %}
 
 <div class="provenance">
   <span class="kind">{{ document.document_type or 'Record' }}</span>
@@ -19,7 +22,7 @@
   {% if cue %}<span>Cue {{ cue // 60 }}:{{ '%02d' % (cue % 60) }}</span>{% endif %}
   <span>{{ ctx_chunk.id | chunk_hash_id }}</span>
   <span class="spacer"></span>
-  {% if document.source_url %}<a class="openorig" href="{{ document.source_url | safe_url }}" target="_blank" rel="noopener">Open original ↗</a>{% endif %}
+  {% if original_url %}<a class="openorig" href="{{ original_url | safe_url }}" target="_blank" rel="noopener">{{ 'Watch on YouTube ↗' if document.video_id else 'Open original ↗' }}</a>{% endif %}
 </div>
 
 <h3 class="reader-title">{{ document | display_title }}</h3>
@@ -57,7 +60,7 @@
 {% endif %}
 
 <div class="reader-actions">
-  {% if document.source_url %}<a class="btn btn-primary" href="{{ document.source_url | safe_url }}" target="_blank" rel="noopener">Open original ↗</a>{% endif %}
+  {% if original_url and not is_video %}<a class="btn btn-primary" href="{{ original_url | safe_url }}" target="_blank" rel="noopener">Open original ↗</a>{% endif %}
   {% if document %}<a class="btn" href="/document/{{ document.id }}">Open full document</a>{% endif %}
   {% if is_video %}<a class="btn" href="https://www.youtube.com/watch?v={{ document.video_id | urlencode }}{% if cue %}&t={{ cue }}s{% endif %}" target="_blank" rel="noopener">Watch on YouTube{% if cue %} at cue{% endif %}</a>{% endif %}
   <a class="btn btn-ghost" href="https://github.com/Actalux/actalux/issues/new?title=Error+report+{{ ctx_chunk.id | chunk_hash_id | urlencode }}" target="_blank" rel="noopener">Report an error →</a>

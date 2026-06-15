@@ -93,6 +93,21 @@ def normalize_whitespace(text: str) -> str:
     return _WHITESPACE_RE.sub(" ", (text or "").strip())
 
 
+_BLANK_LINE_RE = re.compile(r"\n\s*\n")
+
+
+def content_paragraphs(text: str) -> list[str]:
+    """Split a document's stored text into readable paragraphs for full display.
+
+    Splits on blank lines (real paragraph breaks) and collapses the single
+    newlines inside each block to spaces — so a transcript wrapped at ~60 chars
+    mid-sentence reads as flowing prose, while a PDF/markdown body keeps its
+    paragraphs. Verbatim words are unchanged (only whitespace is reflowed).
+    """
+    blocks = _BLANK_LINE_RE.split((text or "").strip())
+    return [_WHITESPACE_RE.sub(" ", b).strip() for b in blocks if b.strip()]
+
+
 def split_sentences(text: str) -> list[str]:
     """Collapse whitespace and split into sentences on terminal punctuation."""
     cleaned = normalize_whitespace(text)
