@@ -52,28 +52,31 @@
         <a class="nav-item{% if active == 'topic-budget' %} active{% endif %}" href="{{ base }}/budget"><span>Budget &amp; Spending</span></a>
       </div>
 
-      <button class="nav-toggle" aria-expanded="false" data-target="sub-meetings">
+      {% set meetings_active = active in ['browse-minutes', 'browse-transcripts', 'browse-resolutions'] %}
+      {% set docs_active = active in ['browse-budgets', 'browse-curriculum-maps', 'browse-facilities-plan'] %}
+
+      <button class="nav-toggle" aria-expanded="{{ 'true' if meetings_active else 'false' }}" data-target="sub-meetings">
         <span class="left">
           <svg class="chev" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 4l3 3 3-3"/></svg>
           <span>Meetings</span>
         </span>
       </button>
-      <div class="nav-sub collapsed" id="sub-meetings">
-        <a class="nav-item" href="{{ base }}/search?q=board+meeting"><span>All meetings</span></a>
+      <div class="nav-sub{% if not meetings_active %} collapsed{% endif %}" id="sub-meetings">
+        <a class="nav-item{% if active == 'browse-minutes' %} active{% endif %}" href="{{ base }}/browse/minutes"><span>Minutes</span></a>
+        <a class="nav-item{% if active == 'browse-transcripts' %} active{% endif %}" href="{{ base }}/browse/transcripts"><span>Transcripts</span></a>
+        <a class="nav-item{% if active == 'browse-resolutions' %} active{% endif %}" href="{{ base }}/browse/resolutions"><span>Resolutions</span></a>
       </div>
 
-      <button class="nav-toggle" aria-expanded="false" data-target="sub-docs">
+      <button class="nav-toggle" aria-expanded="{{ 'true' if docs_active else 'false' }}" data-target="sub-docs">
         <span class="left">
           <svg class="chev" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 4l3 3 3-3"/></svg>
           <span>Documents</span>
         </span>
       </button>
-      <div class="nav-sub collapsed" id="sub-docs">
-        <a class="nav-item{% if active == 'browse-minutes' %} active{% endif %}" href="{{ base }}/browse/minutes"><span>Minutes</span></a>
+      <div class="nav-sub{% if not docs_active %} collapsed{% endif %}" id="sub-docs">
         <a class="nav-item{% if active == 'browse-budgets' %} active{% endif %}" href="{{ base }}/browse/budgets"><span>Budgets</span></a>
-        <a class="nav-item{% if active == 'browse-resolutions' %} active{% endif %}" href="{{ base }}/browse/resolutions"><span>Resolutions</span></a>
-        <a class="nav-item{% if active == 'browse-transcripts' %} active{% endif %}" href="{{ base }}/browse/transcripts"><span>Transcripts</span></a>
         <a class="nav-item{% if active == 'browse-curriculum-maps' %} active{% endif %}" href="{{ base }}/browse/curriculum-maps"><span>Curriculum maps</span></a>
+        <a class="nav-item{% if active == 'browse-facilities-plan' %} active{% endif %}" href="{{ base }}/browse/facilities-plan"><span>Facilities plan</span></a>
       </div>
     </div>
 

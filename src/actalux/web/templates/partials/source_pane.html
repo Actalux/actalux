@@ -15,7 +15,7 @@
 <div class="provenance">
   <span class="kind">{{ document.document_type or 'Record' }}</span>
   {% if document.meeting_date %}<span class="k">{{ document.meeting_date }}</span>{% endif %}
-  {% if document.source_portal %}<span>{{ document.source_portal }}</span>{% endif %}
+  {% if document.source_portal %}<span>{{ document.source_portal | source_label }}</span>{% endif %}
   {% if cue %}<span>Cue {{ cue // 60 }}:{{ '%02d' % (cue % 60) }}</span>{% endif %}
   <span>{{ ctx_chunk.id | chunk_hash_id }}</span>
   <span class="spacer"></span>

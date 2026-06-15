@@ -83,6 +83,25 @@ _DESCRIPTORS: list[tuple[re.Pattern[str], str]] = [
 _EXT_RE = re.compile(r"\.(pdf|txt|html?|docx?|md|markdown)$", re.I)
 _CANVA_RE = re.compile(r"^canva[ _]+", re.I)
 
+# Human-readable names for the internal source_portal tags shown in the reader.
+# The raw tag ("diligent") is internal plumbing and means nothing to a visitor.
+_SOURCE_LABELS = {
+    "diligent": "Board portal",
+    "claytonschools": "District website",
+    "youtube": "Board meeting video",
+    "sunshine": "Sunshine Law request",
+    "dese": "MO DESE",
+    "manual": "Added by editor",
+}
+
+
+def source_label(portal: Any) -> str:
+    """Human label for a source_portal tag; falls back to a tidied raw value."""
+    key = (portal or "").strip().lower()
+    if not key:
+        return ""
+    return _SOURCE_LABELS.get(key, key.replace("_", " ").title())
+
 
 def _coerce_date(value: Any) -> date | None:
     if isinstance(value, date):

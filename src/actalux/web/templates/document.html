@@ -24,8 +24,8 @@
     {% endif %}
 
     {% if document.source_portal %}
-      <span class="label">Portal</span>
-      <span class="value">{{ document.source_portal }}</span>
+      <span class="label">Source</span>
+      <span class="value">{{ document.source_portal | source_label }}</span>
     {% endif %}
 
     {% if document.source_url %}

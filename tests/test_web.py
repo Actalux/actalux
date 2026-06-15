@@ -203,6 +203,14 @@ class TestBrowse:
 
     @patch("actalux.web.app._get_db")
     @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
+    @patch("actalux.web.app.list_documents", return_value=[])
+    def test_browse_facilities_plan_filters_by_type(self, mock_list, mock_ent, mock_db) -> None:
+        r = client.get("/mo/clayton/schools/browse/facilities-plan")
+        assert r.status_code == 200
+        assert mock_list.call_args.kwargs["document_type"] == "facilities_plan"
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
     def test_browse_unknown_kind_404(self, mock_ent, mock_db) -> None:
         r = client.get("/mo/clayton/schools/browse/nonsense")
         assert r.status_code == 404

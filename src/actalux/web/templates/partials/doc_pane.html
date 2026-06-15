@@ -8,7 +8,7 @@
 <div class="provenance">
   <span class="kind">{{ document.document_type or 'Record' }}</span>
   {% if document.meeting_date %}<span class="k">{{ document.meeting_date }}</span>{% endif %}
-  {% if document.source_portal %}<span>{{ document.source_portal }}</span>{% endif %}
+  {% if document.source_portal %}<span>{{ document.source_portal | source_label }}</span>{% endif %}
   <span class="spacer"></span>
   {% if document.source_url %}<a class="openorig" href="{{ document.source_url | safe_url }}" target="_blank" rel="noopener">Open original ↗</a>{% endif %}
 </div>

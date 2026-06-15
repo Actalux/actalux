@@ -2,7 +2,25 @@
 
 from datetime import date
 
-from actalux.web.display import display_title
+from actalux.web.display import display_title, source_label
+
+
+class TestSourceLabel:
+    """The internal source_portal tag is humanized for display."""
+
+    def test_known_portal_is_humanized(self) -> None:
+        assert source_label("diligent") == "Board portal"
+        assert source_label("youtube") == "Board meeting video"
+
+    def test_case_insensitive(self) -> None:
+        assert source_label("Diligent") == "Board portal"
+
+    def test_unknown_portal_is_title_cased(self) -> None:
+        assert source_label("some_new_source") == "Some New Source"
+
+    def test_empty_is_blank(self) -> None:
+        assert source_label("") == ""
+        assert source_label(None) == ""
 
 
 def _doc(**kw):
