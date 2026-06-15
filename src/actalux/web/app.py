@@ -28,11 +28,9 @@ from fastapi.templating import Jinja2Templates
 from markupsafe import Markup, escape
 from supabase import Client
 
-from actalux.config import Config, load_config
 from actalux.db import (
     get_budget_line_items,
     get_chunk_with_context,
-    get_client,
     get_document,
     get_entity,
     get_entity_by_path,
@@ -41,12 +39,11 @@ from actalux.db import (
     list_entities,
 )
 from actalux.errors import SearchError, SummaryError
-from actalux.ingest.embedder import load_model
 from actalux.models import Correction, chunk_hash_id
 from actalux.search.answer import assemble_evidence, enrich_results
-from actalux.search.hybrid import Reranker, SearchFilters, hybrid_search
-from actalux.search.rerank import rerank_results
+from actalux.search.hybrid import SearchFilters, hybrid_search
 from actalux.search.summarize import generate_summary
+from actalux.web.api import api_router
 from actalux.web.charts import (
     aggregate_by_year,
     budget_vs_actual,
@@ -60,6 +57,7 @@ from actalux.web.charts import (
     usd,
 )
 from actalux.web.display import display_title, first_sentence, source_label
+from actalux.web.retrieval import build_reranker, embed_query, get_config, get_db
 from actalux.web.text_snippets import (
     content_paragraphs,
     extractive_snippet,
@@ -200,36 +198,13 @@ _topic_cache: dict[str, tuple[float, list[Any]]] = {}
 TOPIC_CACHE_TTL = 3600  # seconds
 
 
-def _get_config() -> Config:
-    """Load config (cached by load_config)."""
-    return load_config()
-
-
-def _get_db():
-    """Get the Supabase client."""
-    cfg = _get_config()
-    return get_client(cfg.supabase_url, cfg.supabase_key)
-
-
-def _embed_query(query: str) -> list[float]:
-    """Embed a search query using the same model as ingest."""
-    cfg = _get_config()
-    model = load_model(cfg.embedding_model)
-    vector = model.encode(query, normalize_embeddings=True)
-    return vector.tolist()
-
-
-def _reranker() -> Reranker | None:
-    """Build the search reranker from config, or None for RRF-only retrieval.
-
-    Active only when ACTALUX_RERANK=api and a ZeroEntropy key is present, so a
-    missing key or the default "off" mode degrades to RRF rather than erroring.
-    """
-    cfg = _get_config()
-    if cfg.rerank_mode != "api" or not cfg.zeroentropy_api_key:
-        return None
-    key, model = cfg.zeroentropy_api_key, cfg.rerank_model
-    return lambda query, results: rerank_results(query, results, key, model)
+# Retrieval primitives live in retrieval.py so the JSON API can share them
+# without importing this module (which would be a cycle). The underscore aliases
+# keep the existing call sites — and the tests that patch them — unchanged.
+_get_config = get_config
+_get_db = get_db
+_embed_query = embed_query
+_reranker = build_reranker
 
 
 def _get_cached_topic(topic: str) -> list[Any] | None:
@@ -926,6 +901,10 @@ async def place_hub(state: str, place: str) -> RedirectResponse:
         raise HTTPException(status_code=404, detail="Unknown place")
     return RedirectResponse(f"/{state}/{place}/{bodies[0]['body_slug']}", status_code=307)
 
+
+# The JSON API lives under the literal /api/v1 prefix; include it before the
+# jurisdiction router so its specific routes are matched first.
+app.include_router(api_router)
 
 # Include the jurisdiction router LAST so its greedy /{state}/{place}/{body}
 # prefix is matched only after the specific flat routes above.

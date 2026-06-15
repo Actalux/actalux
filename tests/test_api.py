@@ -1,0 +1,278 @@
+"""Tests for the read-only JSON API (v1)."""
+
+from types import SimpleNamespace
+from unittest.mock import patch
+
+import pytest
+from fastapi.testclient import TestClient
+
+from actalux.web.api import _reset_rate_limits
+from actalux.web.app import app
+
+client = TestClient(app, raise_server_exceptions=False)
+
+BASE = "/api/v1/mo/clayton/schools"
+
+_FAKE_ENTITY = {
+    "id": 1,
+    "body_slug": "schools",
+    "place": {"state": "mo", "slug": "clayton", "display_name": "Clayton"},
+}
+
+# Config with the API open (no key) and generous rate limits.
+_OPEN_CFG = SimpleNamespace(
+    api_key="",
+    rate_limit_search_per_minute=30,
+    rate_limit_api_per_minute=60,
+)
+
+_ENRICHED = [
+    {
+        "chunk_id": 1919,
+        "hash_id": "#q077f",
+        "content": "  Verbatim passage about\nthe facilities plan.  ",
+        "section": "Overview",
+        "speaker": "",
+        "rrf_score": 0.0163,
+        "meeting_date": "",
+        "meeting_title": "Volume1-ClaytonMasterPlan.pdf",
+        "document_id": 87,
+        "document_type": "facilities_plan",
+        "summary": "Volume I of the plan.",
+    }
+]
+_DOCS = {
+    87: {
+        "id": 87,
+        "source_url": "https://example.test/Volume1.pdf",
+        "source_portal": "claytonschools",
+        "video_id": "",
+    }
+}
+_MEETING_ROW = {
+    "id": 195,
+    "meeting_title": "February 1, 2023 Business Meeting Minutes",
+    "document_type": "minutes",
+    "meeting_date": "2023-02-01",
+    "summary": "Signed minutes from the February 1, 2023 meeting.",
+    "source_url": "https://example.test/minutes.pdf",
+    "source_portal": "diligent",
+    "video_id": "",
+}
+_TRANSCRIPT_ROW = {
+    "id": 308,
+    "meeting_title": "Board Safety Meeting transcript.txt",
+    "document_type": "transcript",
+    "meeting_date": "2024-05-01",
+    "summary": "Transcript of the safety meeting.",
+    "source_url": "https://example.test/transcript.txt",
+    "source_portal": "youtube",
+    "video_id": "5eoLIM4PQEg",
+}
+
+
+@pytest.fixture(autouse=True)
+def _isolate_rate_limits():
+    """Each test starts with a clean rate-limit bucket map."""
+    _reset_rate_limits()
+    yield
+    _reset_rate_limits()
+
+
+def _patch_search(**overrides):
+    """Stack the patches the search route needs; returns a list of patchers."""
+    cfg = overrides.get("cfg", _OPEN_CFG)
+    return [
+        patch("actalux.web.api.get_config", return_value=cfg),
+        patch("actalux.web.api.get_db"),
+        patch("actalux.web.api.get_entity_by_path", return_value=_FAKE_ENTITY),
+        patch("actalux.web.api.embed_query", return_value=[0.0]),
+        patch("actalux.web.api.build_reranker", return_value=None),
+        patch("actalux.web.api.hybrid_search", return_value=[]),
+        patch("actalux.web.api.enrich_results", return_value=_ENRICHED),
+        patch("actalux.web.api.get_documents", return_value=_DOCS),
+    ]
+
+
+def _do_search(headers=None, params=None):
+    patchers = _patch_search()
+    for p in patchers:
+        p.start()
+    try:
+        return client.get(
+            f"{BASE}/search",
+            params=params or {"q": "facilities plan"},
+            headers=headers or {},
+        )
+    finally:
+        for p in reversed(patchers):
+            p.stop()
+
+
+class TestSearch:
+    def test_search_returns_cited_passages(self) -> None:
+        r = _do_search()
+        assert r.status_code == 200
+        body = r.json()
+        assert body["entity"] == "mo/clayton/schools"
+        assert body["query"] == "facilities plan"
+        assert body["count"] == 1
+        hit = body["results"][0]
+        assert hit["hash_id"] == "#q077f"
+        # text is verbatim but whitespace-normalized (no leading space / newline)
+        assert hit["text"] == "Verbatim passage about the facilities plan."
+        # non-date-led type -> title is the cleaned filename
+        assert hit["title"] == "Volume1-ClaytonMasterPlan"
+        assert hit["source_url"] == "https://example.test/Volume1.pdf"
+        assert hit["html_url"] == "/chunk/1919/source"
+        assert hit["citation"] == "Volume1-ClaytonMasterPlan [#q077f]"
+
+    def test_search_requires_query(self) -> None:
+        r = _do_search(params={"q": ""})
+        assert r.status_code == 422  # min_length=1
+
+    def test_search_rejects_bad_date(self) -> None:
+        r = _do_search(params={"q": "x", "date_from": "not-a-date"})
+        assert r.status_code == 400
+
+
+class TestAuth:
+    def _search_with_cfg(self, cfg, headers=None):
+        patchers = [
+            patch("actalux.web.api.get_config", return_value=cfg),
+            patch("actalux.web.api.get_db"),
+            patch("actalux.web.api.get_entity_by_path", return_value=_FAKE_ENTITY),
+            patch("actalux.web.api.embed_query", return_value=[0.0]),
+            patch("actalux.web.api.build_reranker", return_value=None),
+            patch("actalux.web.api.hybrid_search", return_value=[]),
+            patch("actalux.web.api.enrich_results", return_value=_ENRICHED),
+            patch("actalux.web.api.get_documents", return_value=_DOCS),
+        ]
+        for p in patchers:
+            p.start()
+        try:
+            return client.get(f"{BASE}/search", params={"q": "x"}, headers=headers or {})
+        finally:
+            for p in reversed(patchers):
+                p.stop()
+
+    def test_open_when_no_key_configured(self) -> None:
+        r = self._search_with_cfg(_OPEN_CFG)
+        assert r.status_code == 200
+
+    def test_rejects_missing_key_when_configured(self) -> None:
+        cfg = SimpleNamespace(
+            api_key="s3cret", rate_limit_search_per_minute=30, rate_limit_api_per_minute=60
+        )
+        r = self._search_with_cfg(cfg)
+        assert r.status_code == 401
+
+    def test_rejects_wrong_key(self) -> None:
+        cfg = SimpleNamespace(
+            api_key="s3cret", rate_limit_search_per_minute=30, rate_limit_api_per_minute=60
+        )
+        r = self._search_with_cfg(cfg, headers={"X-API-Key": "nope"})
+        assert r.status_code == 401
+
+    def test_accepts_x_api_key(self) -> None:
+        cfg = SimpleNamespace(
+            api_key="s3cret", rate_limit_search_per_minute=30, rate_limit_api_per_minute=60
+        )
+        r = self._search_with_cfg(cfg, headers={"X-API-Key": "s3cret"})
+        assert r.status_code == 200
+
+    def test_accepts_bearer_token(self) -> None:
+        cfg = SimpleNamespace(
+            api_key="s3cret", rate_limit_search_per_minute=30, rate_limit_api_per_minute=60
+        )
+        r = self._search_with_cfg(cfg, headers={"Authorization": "Bearer s3cret"})
+        assert r.status_code == 200
+
+
+class TestRateLimit:
+    def test_search_429_after_limit(self) -> None:
+        cfg = SimpleNamespace(
+            api_key="", rate_limit_search_per_minute=2, rate_limit_api_per_minute=60
+        )
+        patchers = [
+            patch("actalux.web.api.get_config", return_value=cfg),
+            patch("actalux.web.api.get_db"),
+            patch("actalux.web.api.get_entity_by_path", return_value=_FAKE_ENTITY),
+            patch("actalux.web.api.embed_query", return_value=[0.0]),
+            patch("actalux.web.api.build_reranker", return_value=None),
+            patch("actalux.web.api.hybrid_search", return_value=[]),
+            patch("actalux.web.api.enrich_results", return_value=_ENRICHED),
+            patch("actalux.web.api.get_documents", return_value=_DOCS),
+        ]
+        for p in patchers:
+            p.start()
+        try:
+            ip = {"Fly-Client-IP": "203.0.113.7"}
+            assert client.get(f"{BASE}/search", params={"q": "x"}, headers=ip).status_code == 200
+            assert client.get(f"{BASE}/search", params={"q": "x"}, headers=ip).status_code == 200
+            third = client.get(f"{BASE}/search", params={"q": "x"}, headers=ip)
+            assert third.status_code == 429
+            assert "Retry-After" in third.headers
+        finally:
+            for p in reversed(patchers):
+                p.stop()
+
+
+class TestMeetingBundle:
+    @patch("actalux.web.api.get_config", return_value=_OPEN_CFG)
+    @patch("actalux.web.api.get_db")
+    @patch("actalux.web.api.get_entity_by_path", return_value=_FAKE_ENTITY)
+    @patch("actalux.web.api.get_meeting_documents", return_value=[_MEETING_ROW, _TRANSCRIPT_ROW])
+    def test_bundle_groups_meeting_documents(self, m_docs, m_ent, m_db, m_cfg) -> None:
+        r = client.get(f"{BASE}/meetings/2023-02-01")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["date"] == "2023-02-01"
+        assert body["count"] == 2
+        first = body["documents"][0]
+        assert first["title"] == "February 1, 2023 — Meeting Minutes"
+        assert first["html_url"] == "/document/195"
+        # the transcript's source is its YouTube video, not the derived .txt
+        transcript = body["documents"][1]
+        assert transcript["source_url"] == "https://www.youtube.com/watch?v=5eoLIM4PQEg"
+
+    @patch("actalux.web.api.get_config", return_value=_OPEN_CFG)
+    @patch("actalux.web.api.get_db")
+    @patch("actalux.web.api.get_entity_by_path", return_value=_FAKE_ENTITY)
+    def test_bundle_rejects_bad_date(self, m_ent, m_db, m_cfg) -> None:
+        r = client.get(f"{BASE}/meetings/2023-13-99")
+        assert r.status_code == 400
+
+    @patch("actalux.web.api.get_config", return_value=_OPEN_CFG)
+    @patch("actalux.web.api.get_db")
+    @patch("actalux.web.api.get_entity_by_path", return_value=None)
+    def test_unknown_jurisdiction_404(self, m_ent, m_db, m_cfg) -> None:
+        r = client.get("/api/v1/zz/nowhere/schools/meetings/2023-02-01")
+        assert r.status_code == 404
+
+
+class TestRecentFeed:
+    @patch("actalux.web.api.get_config", return_value=_OPEN_CFG)
+    @patch("actalux.web.api.get_db")
+    @patch("actalux.web.api.get_entity_by_path", return_value=_FAKE_ENTITY)
+    @patch("actalux.web.api.list_recent_meeting_documents", return_value=[_MEETING_ROW])
+    def test_recent_returns_meeting_documents(self, m_list, m_ent, m_db, m_cfg) -> None:
+        r = client.get(f"{BASE}/recent", params={"since": "2023-01-01", "limit": 5})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["since"] == "2023-01-01"
+        assert body["count"] == 1
+        assert body["items"][0]["document_id"] == 195
+        # the recency query is bounded by the meeting types and the since/limit
+        assert m_list.call_args.kwargs["since"] == "2023-01-01"
+        assert m_list.call_args.kwargs["limit"] == 5
+
+    @patch("actalux.web.api.get_config", return_value=_OPEN_CFG)
+    @patch("actalux.web.api.get_db")
+    @patch("actalux.web.api.get_entity_by_path", return_value=_FAKE_ENTITY)
+    @patch("actalux.web.api.list_recent_meeting_documents", return_value=[])
+    def test_recent_without_since(self, m_list, m_ent, m_db, m_cfg) -> None:
+        r = client.get(f"{BASE}/recent")
+        assert r.status_code == 200
+        assert r.json()["since"] is None
+        assert m_list.call_args.kwargs["since"] is None

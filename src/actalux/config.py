@@ -55,6 +55,11 @@ class Config:
     topic_cache_ttl_seconds: int = 3600
     rate_limit_search_per_minute: int = 30
     rate_limit_corrections_per_hour: int = 5
+    # JSON API (v1). The key is optional: unset -> the API is open (read-only,
+    # rate-limited); set -> a valid X-API-Key header is required. Lets the API
+    # be locked down at deploy time with no code change.
+    api_key: str = field(default_factory=lambda: os.environ.get("ACTALUX_API_KEY", ""))
+    rate_limit_api_per_minute: int = 60
 
 
 def load_config() -> Config:

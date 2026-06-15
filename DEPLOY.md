@@ -46,9 +46,12 @@ disables itself. Swap it for a dedicated, spend-capped key before relying on it
 in public. `ZEROENTROPY_API_KEY` plus `ACTALUX_RERANK=api` turn on the reranker
 stage (default off → RRF only); set the flag with
 `fly secrets set ACTALUX_RERANK=api`. Add `BUTTONDOWN_API_KEY` to the `grep` set
-if/when that feature is live. `ANTHROPIC_API_KEY` is eval-only (the judge), not
-used by the web app; `ACTALUX_PII_GUARD` is ingest-only -- neither is needed on
-the web host.
+if/when that feature is live. `ACTALUX_API_KEY` is optional and gates the JSON
+API (`/api/v1/...`): leave it unset and the read-only API is open (still per-IP
+rate-limited); set it (`fly secrets set ACTALUX_API_KEY=...`) and callers must
+send a matching `X-API-Key` (or `Authorization: Bearer`) header. `ANTHROPIC_API_KEY`
+is eval-only (the judge), not used by the web app; `ACTALUX_PII_GUARD` is
+ingest-only -- neither is needed on the web host.
 
 Deploy:
 

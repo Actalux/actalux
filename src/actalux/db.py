@@ -163,6 +163,65 @@ def list_documents(
     return result.data or []
 
 
+# Columns the JSON API exposes per document (everything it needs to build a
+# citation + source link; deliberately not "*").
+_API_DOC_COLUMNS = (
+    "id, meeting_title, document_type, meeting_date, summary, source_url, source_portal, video_id"
+)
+
+
+def get_meeting_documents(
+    client: Client,
+    entity_id: int,
+    meeting_date: str,
+    document_types: list[str],
+) -> list[dict[str, Any]]:
+    """Current documents for one body on one meeting date, of the given types.
+
+    Backs the JSON API's single-meeting bundle. Ordered by document_type so the
+    bundle is stable (agendas, minutes, resolutions, transcripts grouped).
+    """
+    result = (
+        client.table("documents")
+        .select(_API_DOC_COLUMNS)
+        .is_("replaces_id", "null")
+        .eq("entity_id", entity_id)
+        .eq("meeting_date", meeting_date)
+        .in_("document_type", document_types)
+        .order("document_type")
+        .execute()
+    )
+    return result.data or []
+
+
+def list_recent_meeting_documents(
+    client: Client,
+    entity_id: int,
+    document_types: list[str],
+    *,
+    since: str | None = None,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    """Recent meeting-type documents for one body, newest meeting first.
+
+    Backs the JSON API's recent-meetings feed. Restricted to ``document_types``
+    (the meeting records, which carry real meeting dates) so the feed is not
+    polluted by documents whose date is the ingest day. ``since`` is an inclusive
+    lower bound on meeting_date (YYYY-MM-DD).
+    """
+    query = (
+        client.table("documents")
+        .select(_API_DOC_COLUMNS)
+        .is_("replaces_id", "null")
+        .eq("entity_id", entity_id)
+        .in_("document_type", document_types)
+    )
+    if since is not None:
+        query = query.gte("meeting_date", since)
+    result = query.order("meeting_date", desc=True).limit(limit).execute()
+    return result.data or []
+
+
 def find_document_by_source(
     client: Client, source_file: str, source_portal: str = ""
 ) -> dict[str, Any] | None:
