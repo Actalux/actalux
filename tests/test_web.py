@@ -132,6 +132,16 @@ class TestJurisdictionRouting:
         assert r.status_code == 301
         assert r.headers["location"] == "/mo/clayton/schools/budget"
 
+    def test_legacy_facilities_plan_redirects(self) -> None:
+        r = client.get("/facilities-plan", follow_redirects=False)
+        assert r.status_code == 301
+        assert r.headers["location"] == "/mo/clayton/schools/facilities-plan"
+
+    def test_legacy_topic_facilities_redirects(self) -> None:
+        r = client.get("/topic/facilities-plan", follow_redirects=False)
+        assert r.status_code == 301
+        assert r.headers["location"] == "/mo/clayton/schools/facilities-plan"
+
     @patch("actalux.web.app._get_db")
     @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
     def test_entity_home_renders(self, mock_ent, mock_db) -> None:
@@ -214,6 +224,88 @@ class TestBrowse:
     def test_browse_unknown_kind_404(self, mock_ent, mock_db) -> None:
         r = client.get("/mo/clayton/schools/browse/nonsense")
         assert r.status_code == 404
+
+
+_FAKE_VOLUME = {
+    "id": 87,
+    "meeting_title": "Volume1-ClaytonMasterPlan-Process-Priorities.pdf",
+    "document_type": "facilities_plan",
+    "meeting_date": "2026-04-11",
+    "summary": "Volume I of the Clayton Long-Range Facilities Master Plan.",
+}
+_FAKE_PRESENTATION = {
+    "id": 83,
+    "meeting_title": "LRFMP_Board_Presentation_Feb2025.pdf",
+    "document_type": "presentation",
+    "meeting_date": "2025-02-01",
+    "summary": "A February 2025 board presentation on the facilities master plan.",
+}
+_FAKE_FACILITIES_SECTIONS = [
+    {
+        "label": "What the plan is",
+        "query": "comprehensive strategic document facilities",
+        "results": [
+            {
+                "chunk_id": 1919,
+                "document_id": 87,
+                "document_type": "facilities_plan",
+                "meeting_date": "2026-04-11",
+                "meeting_title": "Volume1-ClaytonMasterPlan-Process-Priorities.pdf",
+                "section": "",
+                "hash_id": "#q077f",
+                "content": (
+                    "The School District of Clayton's Long-Range Master Facilities Plan "
+                    "(LRFMP) is a comprehensive strategic document outlining the future "
+                    "development, maintenance, and management of school facilities."
+                ),
+            }
+        ],
+    }
+]
+
+
+class TestFacilitiesPlanTopic:
+    """The LRFMP topic page: curated plan documents plus cited quotes."""
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
+    @patch(
+        "actalux.web.app.list_documents",
+        side_effect=[[_FAKE_VOLUME], [_FAKE_PRESENTATION]],
+    )
+    @patch(
+        "actalux.web.app._facilities_quote_sections",
+        return_value=_FAKE_FACILITIES_SECTIONS,
+    )
+    def test_facilities_plan_renders_docs_and_quotes(
+        self, mock_sections, mock_list, mock_ent, mock_db
+    ) -> None:
+        r = client.get("/mo/clayton/schools/facilities-plan")
+        assert r.status_code == 200
+        # Page chrome
+        assert "Long-Range Facilities Master Plan" in r.text
+        # Curated documents: the volume (by type) and the presentation (by filename)
+        assert mock_list.call_args_list[0].kwargs["document_type"] == "facilities_plan"
+        assert mock_list.call_args_list[1].kwargs["source_file_like"] == "%LRFMP%"
+        assert "Volume1-ClaytonMasterPlan-Process-Priorities" in r.text
+        # Cited-quote section uses the reader-facing label, not the raw query
+        assert "What the plan is" in r.text
+        # The definitional snippet renders, with query terms marked
+        assert "<mark>strategic</mark>" in r.text
+        assert "outlining the future" in r.text
+        assert "#q077f" in r.text
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
+    @patch("actalux.web.app.list_documents", side_effect=[[_FAKE_VOLUME], [_FAKE_VOLUME]])
+    @patch("actalux.web.app._facilities_quote_sections", return_value=_FAKE_FACILITIES_SECTIONS)
+    def test_facilities_plan_dedupes_curated_documents(
+        self, mock_sections, mock_list, mock_ent, mock_db
+    ) -> None:
+        # A document caught by both filters appears once, not twice.
+        r = client.get("/mo/clayton/schools/facilities-plan")
+        assert r.status_code == 200
+        assert r.text.count("/document/87") == 1
 
 
 class TestDocumentEndpoint:

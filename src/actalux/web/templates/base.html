@@ -46,10 +46,11 @@
           <svg class="chev" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 4l3 3 3-3"/></svg>
           <span>Topics</span>
         </span>
-        <span class="count">1</span>
+        <span class="count">2</span>
       </button>
       <div class="nav-sub" id="sub-topics">
         <a class="nav-item{% if active == 'topic-budget' %} active{% endif %}" href="{{ base }}/budget"><span>Budget &amp; Spending</span></a>
+        <a class="nav-item{% if active == 'topic-facilities' %} active{% endif %}" href="{{ base }}/facilities-plan"><span>Facilities Master Plan</span></a>
       </div>
 
       {% set meetings_active = active in ['browse-minutes', 'browse-transcripts', 'browse-resolutions'] %}

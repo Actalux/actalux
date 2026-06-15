@@ -1,20 +1,38 @@
 {% extends "base.html" %}
-{% block title %}Budget &amp; Spending{% endblock %}
+{% block title %}Long-Range Facilities Master Plan{% endblock %}
 {% block content %}
 
 <section class="pane-header">
   <h2>Topic</h2>
-  <span class="meta">Budget &amp; Spending</span>
+  <span class="meta">Long-Range Facilities Master Plan</span>
 </section>
 
 <div class="topic-head">
-  <span class="kicker">Topic · Budget &amp; Spending</span>
-  <h1>What the Clayton school district has said about the budget.</h1>
+  <span class="kicker">Topic · Long-Range Facilities Master Plan</span>
+  <h1>What the record shows about the {{ entity.display_name if entity else 'district' }} facilities plan.</h1>
   <p class="lede">
-    Every quote on this page is verbatim from a public record. Click any passage to open the source in context. Results are scoped by preset budget-related queries; use the search field for narrower queries.
+    This page collects what the public record says about the Long-Range Facilities Master Plan (LRFMP). Every passage is verbatim — the plan's own description of itself leads the sections below. Click any quote to open it in the source.
   </p>
 </div>
 
+{# Curated source documents for the plan. Dates are omitted here: the master-plan
+   volumes carry no parseable date in their filenames, so the first-sentence
+   summary is the more useful identifier. #}
+{% if documents %}
+<section class="topic-sections">
+  <div class="section-label">The plan documents</div>
+  {% for d in documents %}
+  <a class="result-item" href="/document/{{ d.id }}" style="display: block; border-bottom: 1px solid var(--rule); margin-bottom: 0;">
+    <span class="kind">{{ d.document_type or 'Record' }}</span>
+    <div class="snippet"><strong>{{ d | display_title }}</strong></div>
+    {% if d.summary %}<div class="cite-inline"><span>{{ d.summary | first_sentence }}</span></div>{% endif %}
+  </a>
+  {% endfor %}
+</section>
+{% endif %}
+
+{# What the record says (cited quotes). The first section's query is phrased to
+   surface the plan's own one-sentence definition, so it reads as the overview. #}
 <div class="topic-sections">
   {% for section in sections %}
     {% if section.results %}
@@ -39,7 +57,7 @@
 
   {% if not sections or not sections|selectattr("results")|list %}
   <div class="landing">
-    <p class="lede">No budget-related records indexed yet. Check back after the next ingestion run, or try the search field above.</p>
+    <p class="lede">No facilities-plan records indexed yet. Check back after the next ingestion run, or try the search field above.</p>
   </div>
   {% endif %}
 </div>

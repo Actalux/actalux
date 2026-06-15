@@ -248,14 +248,39 @@ def _set_cached_topic(topic: str, results: list[Any]) -> None:
     _topic_cache[topic] = (time.monotonic(), results)
 
 
-# --- Budget topic preset queries ---
+# --- Topic preset queries ---
+# Each entry is (heading, query): the heading is shown to readers, the query
+# drives retrieval. Queries stay keyword-dense for recall; headings stay readable.
 
 BUDGET_QUERIES = [
-    "budget approval spending fiscal year",
-    "tax levy revenue property tax",
-    "salary compensation benefits",
-    "capital improvement facilities construction",
-    "fund balance reserves financial",
+    ("Budget approval & spending", "budget approval spending fiscal year"),
+    ("Tax levy & revenue", "tax levy revenue property tax"),
+    ("Salaries & benefits", "salary compensation benefits"),
+    ("Capital improvements & facilities", "capital improvement facilities construction"),
+    ("Fund balance & reserves", "fund balance reserves financial"),
+]
+
+# The first query is phrased to surface the plan's own one-sentence definition of
+# itself (verbatim), so the page leads with a sourced overview, not an editorial one.
+FACILITIES_QUERIES = [
+    (
+        "What the plan is",
+        "comprehensive strategic document future development maintenance "
+        "management school facilities 15 years",
+    ),
+    (
+        "Building conditions & deferred maintenance",
+        "building conditions maintenance deferred repairs facility appraisal",
+    ),
+    (
+        "Enrollment & building capacity",
+        "enrollment demographic projections building capacity utilization",
+    ),
+    (
+        "Cost estimates & priorities",
+        "capital improvement construction cost estimates priorities ranking",
+    ),
+    ("HVAC & infrastructure", "HVAC mechanical systems infrastructure upgrades"),
 ]
 
 
@@ -420,9 +445,16 @@ def browse(request: Request, kind: str, view: EntityView = Depends(resolve_entit
     )
 
 
-def _budget_quote_sections(entity_id: int) -> list[dict[str, Any]]:
-    """Run the preset budget queries into cited-quote sections (cached 1h)."""
-    cache_key = f"budget:{entity_id}"
+def _topic_quote_sections(
+    entity_id: int, queries: list[tuple[str, str]], cache_prefix: str
+) -> list[dict[str, Any]]:
+    """Run preset (heading, query) pairs into cited-quote sections (cached 1h).
+
+    Each section carries the reader-facing ``label`` (heading) and the ``query``
+    that drove retrieval (kept so the template can highlight the query terms in
+    each snippet). Shared by the budget and facilities topic pages.
+    """
+    cache_key = f"{cache_prefix}:{entity_id}"
     cached = _get_cached_topic(cache_key)
     if cached is not None:
         return cached
@@ -430,20 +462,30 @@ def _budget_quote_sections(entity_id: int) -> list[dict[str, Any]]:
     client = _get_db()
     filters = SearchFilters(entity_id=entity_id)
     sections: list[dict[str, Any]] = []
-    for query_text in BUDGET_QUERIES:
+    for heading, query_text in queries:
         try:
             query_embedding = _embed_query(query_text)
             results = hybrid_search(
                 client, query_text, query_embedding, filters, max_results=5, reranker=_reranker()
             )
             enriched = enrich_results(client, results)
-            sections.append({"query": query_text, "results": enriched})
+            sections.append({"label": heading, "query": query_text, "results": enriched})
         except SearchError:
-            logger.exception("Budget topic query failed: %s", query_text)
-            sections.append({"query": query_text, "results": []})
+            logger.exception("%s topic query failed: %s", cache_prefix, query_text)
+            sections.append({"label": heading, "query": query_text, "results": []})
 
     _set_cached_topic(cache_key, sections)
     return sections
+
+
+def _budget_quote_sections(entity_id: int) -> list[dict[str, Any]]:
+    """Cited-quote sections for the Budget topic page."""
+    return _topic_quote_sections(entity_id, BUDGET_QUERIES, "budget")
+
+
+def _facilities_quote_sections(entity_id: int) -> list[dict[str, Any]]:
+    """Cited-quote sections for the Facilities Plan topic page."""
+    return _topic_quote_sections(entity_id, FACILITIES_QUERIES, "facilities")
 
 
 # Breakdown views switchable on the Budget page. "fund"/"function" break down
@@ -602,6 +644,39 @@ async def budget_detail(
     )
 
 
+@jurisdiction.get("/facilities-plan", response_class=HTMLResponse)
+async def facilities_plan(
+    request: Request, view: EntityView = Depends(resolve_entity)
+) -> HTMLResponse:
+    """Long-Range Facilities Master Plan topic: the plan's source documents plus
+    cited quotes drawn from the record.
+
+    No charts — the LRFMP is a narrative plan, not a figures table — so the page
+    is sourced quotes (led by the plan's own self-definition) plus the plan's
+    documents.
+    """
+    client = _get_db()
+    entity_id = view.entity["id"]
+    # Curated source set: the master-plan volumes (by type) plus the board
+    # presentation, which classifies as 'presentation' and so is caught by its
+    # filename instead. Merge, keeping volumes first and dropping duplicates.
+    volumes = list_documents(client, entity_id, document_type="facilities_plan")
+    presentations = list_documents(client, entity_id, source_file_like="%LRFMP%")
+    seen = {d["id"] for d in volumes}
+    documents = volumes + [d for d in presentations if d["id"] not in seen]
+
+    return templates.TemplateResponse(
+        request,
+        "facilities_plan.html",
+        _page(
+            view,
+            active="topic-facilities",
+            documents=documents,
+            sections=_facilities_quote_sections(entity_id),
+        ),
+    )
+
+
 @app.get("/budget", response_class=HTMLResponse)
 async def budget_redirect(request: Request) -> RedirectResponse:
     """Legacy flat /budget (and old /budget/* partials) -> canonical body."""
@@ -612,6 +687,18 @@ async def budget_redirect(request: Request) -> RedirectResponse:
 async def topic_budget_redirect(request: Request) -> RedirectResponse:
     """Legacy path -> canonical body's budget page."""
     return _redirect_to_default("/budget", request)
+
+
+@app.get("/facilities-plan", response_class=HTMLResponse)
+async def facilities_plan_redirect(request: Request) -> RedirectResponse:
+    """Legacy flat /facilities-plan -> canonical body."""
+    return _redirect_to_default("/facilities-plan", request)
+
+
+@app.get("/topic/facilities-plan")
+async def topic_facilities_redirect(request: Request) -> RedirectResponse:
+    """Legacy path -> canonical body's facilities-plan page."""
+    return _redirect_to_default("/facilities-plan", request)
 
 
 # Document and chunk pages stay flat (IDs are globally unique, reached only via
