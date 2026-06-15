@@ -27,6 +27,9 @@ class Document:
     content_hash: str = ""
     source_portal: str = ""  # "diligent", "claytonschools", "youtube", "manual"
     video_id: str = ""  # YouTube video id for board-meeting docs; "" for non-video docs
+    # Owning public body (entities.id). Entity-scoped browse/search filter on it,
+    # so a doc with entity_id=None is invisible to those views — ingest must set it.
+    entity_id: int | None = None
     version: int = 1
     replaces_id: int | None = None
     last_checked_at: datetime | None = None

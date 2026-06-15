@@ -1,6 +1,9 @@
 """Tests for ingest orchestration helpers."""
 
-from scripts.ingest import subject_header
+import pytest
+
+import scripts.ingest as ingest
+from scripts.ingest import resolve_entity_id, subject_header
 
 
 class TestSubjectHeader:
@@ -22,3 +25,26 @@ class TestSubjectHeader:
     def test_canva_non_map_returns_empty(self) -> None:
         # A canva file that isn't a curriculum map is not in scope.
         assert subject_header("canva_Board_Photo.txt", "canva Board Photo") == ""
+
+
+class TestResolveEntityId:
+    """Ingest must resolve a real entity_id up front; a bad path aborts the run."""
+
+    def test_resolves_known_path(self, monkeypatch) -> None:
+        monkeypatch.setattr(
+            ingest, "get_entity_by_path", lambda _c, s, p, b: {"id": 7} if (s, p, b) else None
+        )
+        assert resolve_entity_id(object(), "mo/clayton/schools") == 7
+
+    def test_leading_slash_tolerated(self, monkeypatch) -> None:
+        monkeypatch.setattr(ingest, "get_entity_by_path", lambda _c, *_p: {"id": 7})
+        assert resolve_entity_id(object(), "/mo/clayton/schools") == 7
+
+    def test_malformed_path_aborts(self) -> None:
+        with pytest.raises(SystemExit):
+            resolve_entity_id(object(), "clayton")
+
+    def test_unknown_entity_aborts(self, monkeypatch) -> None:
+        monkeypatch.setattr(ingest, "get_entity_by_path", lambda _c, *_p: None)
+        with pytest.raises(SystemExit):
+            resolve_entity_id(object(), "mo/nowhere/schools")

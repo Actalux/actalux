@@ -23,6 +23,7 @@ Document type is inferred from the filename (agenda, minutes, packet, resolution
 
 from __future__ import annotations
 
+import argparse
 import logging
 import re
 import sys
@@ -34,6 +35,7 @@ from actalux.config import load_config
 from actalux.db import (
     find_document_by_source,
     get_client,
+    get_entity_by_path,
     insert_chunks,
     insert_document,
     insert_ingest_run,
@@ -64,6 +66,28 @@ TRANSCRIPT_EXTENSIONS = {".txt"}
 # band survive only in the filename, so the chunk body is unfindable by subject
 # (the 1-5 Spanish map's only chunk contains no "Spanish"). See subject_header.
 CANVA_MAP_RE = re.compile(r"^canva_.*curriculum_map", re.IGNORECASE)
+
+# Owning body for ingested docs, as state/place/body. Every doc must carry an
+# entity_id or it is invisible to the entity-scoped browse/search (migrate_012).
+# Matches the web app's apex-redirect target (app.DEFAULT_ENTITY_PATH); override
+# with --entity once a second body is crawled.
+DEFAULT_ENTITY_PATH = "mo/clayton/schools"
+
+
+def resolve_entity_id(client: Any, entity_path: str) -> int:
+    """Resolve a 'state/place/body' path to its entities.id, or abort.
+
+    Aborting (rather than ingesting with a NULL entity_id) is deliberate: a
+    NULL-entity doc is silently absent from every entity-scoped view, so a typo'd
+    or unseeded entity must fail loudly at the start, not orphan the whole batch.
+    """
+    parts = entity_path.strip("/").split("/")
+    if len(parts) != 3:
+        raise SystemExit(f"--entity must be 'state/place/body', got {entity_path!r}")
+    entity = get_entity_by_path(client, *parts)
+    if not entity:
+        raise SystemExit(f"Unknown entity {entity_path!r}; seed it (see migrate_012) first.")
+    return entity["id"]
 
 
 def infer_meeting_date(name: str) -> date | None:
@@ -119,7 +143,7 @@ def subject_header(source_file: str, meeting_title: str) -> str:
     return subject
 
 
-def ingest_directory(data_dir: Path) -> None:
+def ingest_directory(data_dir: Path, entity_path: str = DEFAULT_ENTITY_PATH) -> None:
     """Ingest documents from data_dir.
 
     Supports two layouts:
@@ -131,6 +155,7 @@ def ingest_directory(data_dir: Path) -> None:
     # Ingest writes documents/chunks/etc., so it uses the service key, which
     # bypasses RLS (the publishable key is read + corrections only).
     client = get_client(config.supabase_url, config.supabase_service_key)
+    entity_id = resolve_entity_id(client, entity_path)
 
     meeting_dirs = sorted(
         [d for d in data_dir.iterdir() if d.is_dir()],
@@ -161,6 +186,7 @@ def ingest_directory(data_dir: Path) -> None:
                     meeting_date=meeting_date,
                     meeting_title=meeting_title,
                     config=config,
+                    entity_id=entity_id,
                 )
                 if result["status"] == "skipped":
                     continue
@@ -207,6 +233,7 @@ def ingest_directory(data_dir: Path) -> None:
                     meeting_date=meeting_date or date.today(),
                     meeting_title=meeting_title,
                     config=config,
+                    entity_id=entity_id,
                 )
                 if result["status"] == "skipped":
                     continue
@@ -291,6 +318,7 @@ def _ingest_with_dedup(
     config: Any,
     source_url: str = "",
     source_portal: str = "",
+    entity_id: int | None = None,
 ) -> dict[str, Any]:
     """Parse a file, check for duplicates by content hash, then ingest.
 
@@ -339,6 +367,7 @@ def _ingest_with_dedup(
             source_url=source_url,
             source_portal=portal,
             version=old_version + 1,
+            entity_id=entity_id,
         )
         # Mark old document as replaced by the new one
         new_id = result["doc_id"]
@@ -358,6 +387,7 @@ def _ingest_with_dedup(
         config=config,
         source_url=source_url,
         source_portal=portal,
+        entity_id=entity_id,
     )
     logger.info("  OK %s: %d chunks ingested", path.name, result["chunks"])
     return {"status": "new", "chunks": result["chunks"]}
@@ -374,6 +404,7 @@ def ingest_single_file(
     source_url: str = "",
     source_portal: str = "",
     version: int = 1,
+    entity_id: int | None = None,
 ) -> dict[str, int]:
     """Parse, chunk, embed, validate, and store a single document.
 
@@ -393,6 +424,7 @@ def ingest_single_file(
         content=text,
         content_hash=file_hash,
         source_portal=source_portal or _infer_portal(path.name),
+        entity_id=entity_id,
         version=version,
     )
     doc_id = insert_document(client, doc)
@@ -435,7 +467,7 @@ def _infer_portal(filename: str) -> str:
     return "manual"
 
 
-def ingest_from_manifest(manifest_path: Path) -> None:
+def ingest_from_manifest(manifest_path: Path, entity_path: str = DEFAULT_ENTITY_PATH) -> None:
     """Ingest documents listed in a crawler manifest JSON file.
 
     Each entry has: source_file, source_url, source_portal,
@@ -448,6 +480,7 @@ def ingest_from_manifest(manifest_path: Path) -> None:
     # Ingest writes documents/chunks/etc., so it uses the service key, which
     # bypasses RLS (the publishable key is read + corrections only).
     client = get_client(config.supabase_url, config.supabase_service_key)
+    entity_id = resolve_entity_id(client, entity_path)
 
     manifest = json.loads(manifest_path.read_text())
     data_dir = manifest_path.parent
@@ -481,6 +514,7 @@ def ingest_from_manifest(manifest_path: Path) -> None:
                 config=config,
                 source_url=entry.get("source_url", ""),
                 source_portal=entry.get("source_portal", ""),
+                entity_id=entity_id,
             )
             if result["status"] == "new":
                 total_new += 1
@@ -502,23 +536,35 @@ def ingest_from_manifest(manifest_path: Path) -> None:
 
 
 def main() -> None:
-    if len(sys.argv) < 2:
-        print("Usage:")
-        print("  python scripts/ingest.py <data_directory>")
-        print("  python scripts/ingest.py --manifest <manifest.json>")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(
+        description="Ingest official documents into Actalux.",
+        epilog=(
+            "Examples:\n"
+            "  python scripts/ingest.py data/documents/\n"
+            "  python scripts/ingest.py --manifest data/documents/diligent_manifest.json"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("data_dir", nargs="?", help="directory of documents to ingest")
+    parser.add_argument(
+        "--manifest", metavar="MANIFEST", help="ingest from a crawler manifest JSON"
+    )
+    parser.add_argument(
+        "--entity",
+        default=DEFAULT_ENTITY_PATH,
+        help="owning body as state/place/body (default: %(default)s)",
+    )
+    args = parser.parse_args()
 
-    if sys.argv[1] == "--manifest":
-        if len(sys.argv) < 3:
-            print("Usage: python scripts/ingest.py --manifest <manifest.json>")
-            sys.exit(1)
-        ingest_from_manifest(Path(sys.argv[2]))
-    else:
-        data_dir = Path(sys.argv[1])
+    if args.manifest:
+        ingest_from_manifest(Path(args.manifest), entity_path=args.entity)
+    elif args.data_dir:
+        data_dir = Path(args.data_dir)
         if not data_dir.is_dir():
-            print(f"Error: {data_dir} is not a directory")
-            sys.exit(1)
-        ingest_directory(data_dir)
+            parser.error(f"{data_dir} is not a directory")
+        ingest_directory(data_dir, entity_path=args.entity)
+    else:
+        parser.error("provide a data directory or --manifest <manifest.json>")
 
 
 if __name__ == "__main__":

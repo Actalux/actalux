@@ -1,6 +1,10 @@
 """Tests for database query construction."""
 
-from actalux.db import get_chunk_with_context
+from dataclasses import replace
+from datetime import date
+
+from actalux.db import get_chunk_with_context, insert_document
+from actalux.models import Document
 
 
 class _Result:
@@ -47,6 +51,64 @@ class _Client:
         calls: list[tuple] = [("table", name)]
         self.queries.append(calls)
         return _Query(self.responses.pop(0), calls)
+
+
+class _InsertResult:
+    def __init__(self, data: list[dict]) -> None:
+        self.data = data
+
+
+class _InsertTable:
+    """Captures the row dict passed to .insert(...) for assertion."""
+
+    def __init__(self, captured: dict) -> None:
+        self._captured = captured
+
+    def insert(self, data: dict) -> "_InsertTable":
+        self._captured.update(data)
+        return self
+
+    def execute(self) -> _InsertResult:
+        return _InsertResult([{"id": 1}])
+
+
+class _InsertClient:
+    def __init__(self) -> None:
+        self.captured: dict = {}
+
+    def table(self, _name: str) -> _InsertTable:
+        return _InsertTable(self.captured)
+
+
+_BASE_DOC = Document(
+    meeting_date=date(2025, 2, 19),
+    meeting_title="February 19, 2025 BOE Meeting Minutes",
+    document_type="minutes",
+    source_url="https://example.test/doc.pdf",
+    source_file="February 19, 2025 BOE Meeting Minutes.pdf",
+    content="body",
+    content_hash="abc",
+)
+
+
+def _doc(**overrides) -> Document:
+    return replace(_BASE_DOC, **overrides)
+
+
+class TestInsertDocumentEntity:
+    """A doc must persist its entity_id, or it is invisible to entity-scoped views."""
+
+    def test_entity_id_written_when_set(self) -> None:
+        client = _InsertClient()
+        insert_document(client, _doc(entity_id=1))
+        assert client.captured["entity_id"] == 1
+
+    def test_entity_id_omitted_when_none(self) -> None:
+        # Omitted (not NULL) so the column default/whatever is preserved; ingest is
+        # expected to always pass one, but the writer must not force a NULL.
+        client = _InsertClient()
+        insert_document(client, _doc(entity_id=None))
+        assert "entity_id" not in client.captured
 
 
 class TestChunkContext:
