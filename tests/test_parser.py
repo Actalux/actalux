@@ -6,7 +6,23 @@ from textwrap import dedent
 import pytest
 
 from actalux.errors import ParseError
-from actalux.ingest.parser import parse_file, strip_control_chars
+from actalux.ingest.parser import exotic_char_ratio, parse_file, strip_control_chars
+
+
+class TestExoticCharRatio:
+    def test_clean_english_is_zero(self) -> None:
+        assert exotic_char_ratio("The board approved the FY2024 budget.") == 0.0
+
+    def test_smart_punctuation_not_counted(self) -> None:
+        # Curly quotes and em dashes are legitimate (General Punctuation block).
+        assert exotic_char_ratio("the “levy” — passed 5-0") == 0.0
+
+    def test_mojibake_scores_high(self) -> None:
+        # Broken-font Cyrillic-block glyphs (the doc 87 cost tables) score high.
+        assert exotic_char_ratio("ҨҨ ьы҂ эыэѐ") > 0.5
+
+    def test_empty_is_zero(self) -> None:
+        assert exotic_char_ratio("") == 0.0
 
 
 @pytest.fixture
