@@ -1,0 +1,140 @@
+#!/usr/bin/env python3
+"""Re-date documents whose date lives in their content, not their filename.
+
+A few documents (the facilities-plan volumes) carry no date in their filename, so
+``parse_meeting_date`` returns None and ingest falls back to the ingest day. Their
+real date is stated on the cover ("Delivered to District on: ..."). This corrects
+those, deriving each date from a verbatim string in the document's own content.
+
+Honest by construction: a date is written only if its ``anchor`` string is still
+present verbatim in the document's content. If the anchor is missing (content
+changed, wrong doc), the script refuses that row rather than writing an unsourced
+date. The mapping is explicit — no content-date guessing — so a reviewer can
+trace every date to the line it came from.
+
+Dry-run by default; --apply writes (needs ACTALUX_SUPABASE_SERVICE_KEY).
+Idempotent: a doc already on its target date is skipped.
+
+Usage:
+  doppler run --project mac --config dev -- uv run python scripts/redate_from_content.py
+  doppler run --project mac --config dev -- uv run python scripts/redate_from_content.py --apply
+"""
+
+from __future__ import annotations
+
+import argparse
+import logging
+import os
+
+from actalux.db import get_client
+
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+logger = logging.getLogger(__name__)
+
+# doc_id -> the date stated in that document, with the verbatim anchor it is read
+# from. The anchor must appear in the document's content for the date to be
+# written (see module docstring). Dates are ISO; anchors are quoted exactly as
+# they appear in the source.
+CONTENT_DATES = [
+    {
+        "doc_id": 87,
+        "date": "2025-02-19",
+        "anchor": "Delivered to District on: 02.19.2025",
+        "note": "LRFMP Volume I cover delivery date",
+    },
+    {
+        "doc_id": 88,
+        "date": "2024-11-13",
+        "anchor": "to the district on Nov. 13, 2024",
+        "note": "LRFMP Volume II (demographic study) delivery date",
+    },
+]
+
+
+def plan(client) -> tuple[list[dict], list[dict], list[dict]]:
+    """Return (to_apply, already, refused) for the configured re-dates."""
+    to_apply: list[dict] = []
+    already: list[dict] = []
+    refused: list[dict] = []
+    for spec in CONTENT_DATES:
+        rows = (
+            client.table("documents")
+            .select("id, source_file, meeting_date, content")
+            .eq("id", spec["doc_id"])
+            .is_("replaces_id", "null")
+            .execute()
+        ).data or []
+        if not rows:
+            refused.append({**spec, "reason": "document not found (or superseded)"})
+            continue
+        doc = rows[0]
+        # Match against whitespace-normalized content: PDF extraction sprinkles
+        # newlines/odd spacing through the text, so the anchor is written in clean
+        # single-space form and compared the same way.
+        haystack = " ".join((doc.get("content") or "").split())
+        if spec["anchor"] not in haystack:
+            refused.append({**spec, "reason": "anchor string not present in content"})
+            continue
+        record = {
+            **spec,
+            "source_file": doc.get("source_file", ""),
+            "from": doc.get("meeting_date"),
+        }
+        if str(doc.get("meeting_date")) == spec["date"]:
+            already.append(record)
+        else:
+            to_apply.append(record)
+    return to_apply, already, refused
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--apply", action="store_true", help="Write changes (default: dry-run).")
+    args = parser.parse_args()
+
+    url = os.environ["ACTALUX_SUPABASE_URL"]
+    key_var = "ACTALUX_SUPABASE_SERVICE_KEY" if args.apply else "ACTALUX_SUPABASE_KEY"
+    try:
+        key = os.environ[key_var]
+    except KeyError as exc:
+        raise SystemExit(
+            f"Missing {exc}; run under doppler run --project mac --config dev -- ..."
+        ) from exc
+
+    client = get_client(url, key)
+    to_apply, already, refused = plan(client)
+
+    logger.info(
+        "Planned: %d to re-date, %d already correct, %d refused.",
+        len(to_apply),
+        len(already),
+        len(refused),
+    )
+    for c in to_apply:
+        logger.info(
+            "   #%s  %s -> %s | %s | anchor: %r",
+            c["doc_id"],
+            c["from"],
+            c["date"],
+            c["note"],
+            c["anchor"],
+        )
+    for c in already:
+        logger.info("   #%s  already %s (skip)", c["doc_id"], c["date"])
+    for c in refused:
+        logger.info("   #%s  REFUSED: %s", c["doc_id"], c["reason"])
+
+    if not args.apply:
+        logger.info("\nDRY RUN — no changes written. Re-run with --apply to write.")
+        return 0
+
+    for c in to_apply:
+        client.table("documents").update({"meeting_date": c["date"]}).eq(
+            "id", c["doc_id"]
+        ).execute()
+    logger.info("\nApplied %d re-dates.", len(to_apply))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
