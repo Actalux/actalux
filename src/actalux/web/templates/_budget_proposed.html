@@ -1,0 +1,87 @@
+{# Proposed Budget (June 2024) — the planned FY2024-2025 budget from doc #262.
+   A clearly-separated section: revenue (by source, by fund) and expenditure (by
+   object, by function), each figure linking to the verbatim passage it was read
+   from. Labelled "Proposed" — never "Adopted": the source PDF is titled
+   "Proposed Budget" and carries no adopting board vote. Read-only (no drill-down):
+   the bars use the static .fund-row variant. #}
+{% macro cited_bars(shares) %}
+<div class="fund-bars">
+  {% for s in shares %}
+  <div class="fund-row is-static">
+    <span class="fund-name">{{ s.label }}</span>
+    <span class="fund-track"><span class="fund-fill" style="width: {{ '%.1f' % s.pct }}%;"></span></span>
+    <span class="fund-amount">{{ s.amount | usd }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endmacro %}
+{% macro cited_table(shares, label_head) %}
+<table class="figures-table">
+  <thead>
+    <tr><th>{{ label_head }}</th><th class="num">Amount</th><th>Source</th></tr>
+  </thead>
+  <tbody>
+    {% for s in shares %}
+    <tr>
+      <td>{{ s.label }}</td>
+      <td class="num">{{ s.amount | usd }}</td>
+      <td>
+        {% if s.chunk_id %}
+          <a href="/chunk/{{ s.chunk_id }}/source" class="hash">{{ s.chunk_id | chunk_hash_id }}</a>
+        {% else %}
+          <span class="muted">&mdash;</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% if s.source_quote %}
+    <tr class="figures-quote"><td colspan="3"><span class="cite-quote">"{{ s.source_quote }}"</span></td></tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+{% endmacro %}
+
+<section class="figures-section proposed-section">
+  <div class="section-label">Proposed Budget (June 2024)</div>
+  <p class="hint">
+    The district's <em>proposed</em> budget for {{ proposed.fiscal_year }}, as published
+    June 2024 (<a href="/document/{{ proposed.doc_id }}" class="hash">doc #{{ proposed.doc_id }}</a>).
+    These are planned figures, not actuals; they are shown separately from the audited
+    results above. Every figure links to the verbatim passage it was read from.
+  </p>
+  <p class="hint">
+    Proposed revenue: <strong>{{ proposed.revenue_total | usd }}</strong>.
+    Proposed expenditures: <strong>{{ proposed.expenditure_total | usd }}</strong>.
+  </p>
+
+  {# --- Proposed revenue --- #}
+  <div class="proposed-block">
+    <div class="section-label" style="margin-top: var(--s-6);">Proposed revenue by source</div>
+    {{ cited_bars(proposed.revenue_by_source) }}
+    {{ cited_table(proposed.revenue_by_source, "Revenue source") }}
+  </div>
+
+  {% if proposed.revenue_by_fund %}
+  <div class="proposed-block">
+    <div class="section-label" style="margin-top: var(--s-6);">Proposed revenue by fund</div>
+    {{ cited_table(proposed.revenue_by_fund, "Fund") }}
+  </div>
+  {% endif %}
+
+  {# --- Proposed expenditure --- #}
+  <div class="proposed-block">
+    <div class="section-label" style="margin-top: var(--s-6);">Proposed expenditure by object</div>
+    {{ cited_bars(proposed.expenditure_by_object) }}
+    {{ cited_table(proposed.expenditure_by_object, "Object") }}
+  </div>
+
+  <div class="proposed-block">
+    <div class="section-label" style="margin-top: var(--s-6);">Proposed expenditure by function</div>
+    {{ cited_bars(proposed.expenditure_by_function) }}
+    {{ cited_table(proposed.expenditure_by_function, "Function") }}
+    <p class="hint" style="margin-top: var(--s-2);">
+      Function labels are reproduced exactly as printed in the source budget, where
+      the first three are clipped by the table's column width.
+    </p>
+  </div>
+</section>

@@ -82,6 +82,63 @@ def _shares(items: list[dict[str, Any]], *, where: dict[str, str], group_key: st
     return sorted(shares, key=lambda s: s.amount, reverse=True)
 
 
+@dataclass(frozen=True)
+class CitedShare:
+    """A breakdown slice that carries the chunk + verbatim quote it was read from.
+
+    Used by the proposed-budget section, where each slice (a revenue source, a
+    fund, an expenditure object, or an expenditure function) must show the
+    verbatim source quote and deep-link to the passage it was transcribed from --
+    the product's citation-first promise. ``amount`` is the slice's total across
+    the grouped rows; ``pct`` is its share of the breakdown total.
+    """
+
+    label: str
+    amount: Decimal
+    pct: float  # 0-100, share of the breakdown total
+    chunk_id: int | None = None
+    source_quote: str = ""
+
+
+def proposed_breakdown(
+    items: list[dict[str, Any]],
+    *,
+    group_key: str = "subcategory",
+    where: dict[str, str] | None = None,
+) -> list[CitedShare]:
+    """Aggregate proposed rows by ``group_key``, summed within group, largest first.
+
+    ``items`` are the rows for a single namespaced proposed dimension (already
+    one fiscal year, one ``proposed_*`` dimension, ``basis='proposed'`` -- see
+    ``get_proposed_budget_line_items``). Pass ``where`` to restrict to a subset
+    (e.g. ``{"category": "revenue"}`` to split the fund dimension's revenue rows
+    by fund, excluding its fund_balance rows). Each group keeps the chunk id and
+    verbatim source quote of the first row that carries it, so every figure can
+    show its quote and deep-link to its source.
+    """
+    where = where or {}
+    totals: dict[str, Decimal] = {}
+    chunks: dict[str, int | None] = {}
+    quotes: dict[str, str] = {}
+    for item in items:
+        if any(item.get(k) != v for k, v in where.items()):
+            continue
+        label = item.get(group_key) or "Unspecified"
+        totals[label] = totals.get(label, Decimal(0)) + Decimal(str(item["amount"]))
+        chunks.setdefault(label, item.get("chunk_id"))
+        quotes.setdefault(label, item.get("source_quote") or "")
+    grand = sum(totals.values())
+    if grand <= 0:
+        return []
+    shares = [
+        CitedShare(
+            label, amount, float(amount / grand * 100), chunks.get(label), quotes.get(label, "")
+        )
+        for label, amount in totals.items()
+    ]
+    return sorted(shares, key=lambda s: s.amount, reverse=True)
+
+
 def fund_breakdown(items: list[dict[str, Any]], fiscal_year: str) -> list[Share]:
     """Expenditure by fund for one fiscal year, largest first."""
     return _shares(

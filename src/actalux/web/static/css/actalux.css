@@ -1198,6 +1198,15 @@ img { max-width: 100%; display: block; }
 
 .budget-actual-table .variance { color: var(--muted); }
 
+/* Proposed-budget section: read-only bars (no drill-down), so the .fund-row
+   static variant drops the button affordances. A top rule sets the proposed
+   figures apart from the audited actuals above. */
+.proposed-section { border-top: 2px solid var(--ink); margin-top: var(--s-6); }
+.proposed-block { margin-bottom: var(--s-4); }
+.fund-row.is-static { cursor: default; }
+.fund-row.is-static:hover { color: var(--ink-soft); }
+.fund-row.is-static:hover .fund-fill { background: var(--ink-soft); }
+
 .empty-note { max-width: var(--col-reading); }
 
 /* ===== Facilities Master Plan briefing ===== */

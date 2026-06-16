@@ -789,6 +789,34 @@ def get_budget_line_items(
     return result.data
 
 
+def get_proposed_budget_line_items(
+    client: Client, fiscal_year: str, dimension: str
+) -> list[dict[str, Any]]:
+    """Fetch one fiscal year's proposed-budget rows for a namespaced dimension.
+
+    The proposed (planned) budget figures live under their own ``proposed_*``
+    dimensions ('proposed_fund', 'proposed_source', 'proposed_object',
+    'proposed_function') with ``basis='proposed'``, deliberately disjoint from
+    the GAAP/budgetary actuals (dimensions 'fund'/'source'/'function'/'budget',
+    basis NULL/original/final/actual) so the proposed figures never leak into the
+    actuals charts or the finance router. This helper is the only reader of those
+    rows; ``get_budget_line_items`` and its existing callers never see them.
+
+    ``basis='proposed'`` is required in addition to the dimension as a second,
+    independent guard against a stray non-proposed row sharing a dimension name.
+    """
+    result = (
+        client.table("budget_line_items")
+        .select("*")
+        .eq("fiscal_year", fiscal_year)
+        .eq("dimension", dimension)
+        .eq("basis", "proposed")
+        .order("amount", desc=True)
+        .execute()
+    )
+    return result.data or []
+
+
 # --- Votes ---
 
 

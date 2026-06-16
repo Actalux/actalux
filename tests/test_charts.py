@@ -13,6 +13,7 @@ from actalux.web.charts import (
     cross_split,
     function_breakdown,
     fund_breakdown,
+    proposed_breakdown,
     revenue_expenditure_svg,
     source_breakdown,
     tier_bar_svg,
@@ -92,6 +93,69 @@ class TestSourceBreakdown:
 
     def test_missing_year_is_empty(self):
         assert source_breakdown(self.SOURCE_ITEMS, "1999-2000") == []
+
+
+class TestProposedBreakdown:
+    """Aggregates namespaced proposed rows by subcategory across funds, keeping
+    a citing chunk per slice."""
+
+    # One source split across two funds (must sum), one in a single fund.
+    ROWS = [
+        {"subcategory": "Local Revenue", "amount": "23876630", "chunk_id": 5109},
+        {"subcategory": "Local Revenue", "amount": "38298500", "chunk_id": 5109},
+        {"subcategory": "County Revenue", "amount": "133500", "chunk_id": 5109},
+    ]
+
+    def test_sums_across_funds_and_orders_largest_first(self):
+        shares = proposed_breakdown(self.ROWS)
+        assert [s.label for s in shares] == ["Local Revenue", "County Revenue"]
+        # Local = 23,876,630 + 38,298,500
+        assert shares[0].amount == Decimal("62175130")
+        assert shares[1].amount == Decimal("133500")
+
+    def test_carries_chunk_and_quote_for_citation(self):
+        rows = [{**r, "source_quote": "County Revenue 133,500"} for r in self.ROWS]
+        shares = proposed_breakdown(rows)
+        assert all(s.chunk_id == 5109 for s in shares)
+        county = next(s for s in shares if s.label == "County Revenue")
+        assert county.source_quote == "County Revenue 133,500"
+
+    def test_pct_is_share_of_breakdown_total(self):
+        shares = proposed_breakdown(self.ROWS)
+        assert round(sum(s.pct for s in shares), 1) == 100.0
+
+    def test_group_by_fund_with_where_filter(self):
+        # The fund dimension mixes revenue + fund_balance rows; group by fund and
+        # restrict to revenue so fund_balance rows don't inflate the revenue mix.
+        rows = [
+            {
+                "fund": "General",
+                "category": "revenue",
+                "subcategory": "Total revenue",
+                "amount": "24866380",
+                "chunk_id": 5109,
+            },
+            {
+                "fund": "Special Revenue (Teachers)",
+                "category": "revenue",
+                "subcategory": "Total revenue",
+                "amount": "40698910",
+                "chunk_id": 5109,
+            },
+            {
+                "fund": "General",
+                "category": "fund_balance",
+                "subcategory": "End Fund Bal-June 30, 2025",
+                "amount": "25110081",
+                "chunk_id": 5109,
+            },
+        ]
+        shares = proposed_breakdown(rows, group_key="fund", where={"category": "revenue"})
+        assert [s.label for s in shares] == ["Special Revenue (Teachers)", "General"]
+        assert shares[1].amount == Decimal("24866380")  # fund_balance row excluded
+
+    def test_empty(self):
+        assert proposed_breakdown([]) == []
 
 
 class TestFunctionBreakdown:

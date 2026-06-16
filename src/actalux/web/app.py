@@ -17,6 +17,7 @@ import re
 import time
 from dataclasses import dataclass
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -34,6 +35,7 @@ from actalux.db import (
     get_document,
     get_entity,
     get_entity_by_path,
+    get_proposed_budget_line_items,
     insert_correction,
     list_documents,
     list_entities,
@@ -56,6 +58,7 @@ from actalux.web.charts import (
     cross_split,
     function_breakdown,
     fund_breakdown,
+    proposed_breakdown,
     revenue_expenditure_svg,
     source_breakdown,
     tier_bar_svg,
@@ -550,6 +553,54 @@ def _detail_context(client: Client, view: str, key: str) -> dict[str, Any]:
     }
 
 
+# The proposed (planned) FY2024-2025 budget from doc #262. Its figures are loaded
+# under namespaced 'proposed_*' dimensions (basis='proposed'), disjoint from the
+# audited actuals above, so they render in their own clearly-separated section and
+# never mix into the actuals charts. Labelled "Proposed (June 2024)" -- the source
+# PDF is titled "Proposed Budget" and carries no adopting vote, so it is never
+# called "Adopted".
+_PROPOSED_BUDGET_FISCAL_YEAR = "2024-2025"
+_PROPOSED_BUDGET_DOC_ID = 262
+
+
+def _proposed_budget_context(client: Client) -> dict[str, Any]:
+    """The proposed-budget section: revenue (by source, by fund) + expenditure (by
+    object, by function), each slice citeable to its source chunk in doc #262.
+
+    Returns ``{"proposed": None}`` when the proposed rows are absent (e.g. before
+    the loader has run), so the section simply does not render.
+    """
+    fy = _PROPOSED_BUDGET_FISCAL_YEAR
+    fund_rows = get_proposed_budget_line_items(client, fy, "proposed_fund")
+    revenue_by_source = proposed_breakdown(
+        get_proposed_budget_line_items(client, fy, "proposed_source")
+    )
+    # The fund dimension carries both revenue and fund_balance rows; split the
+    # revenue rows BY FUND (group on fund, not subcategory) for the by-fund mix.
+    revenue_by_fund = proposed_breakdown(fund_rows, group_key="fund", where={"category": "revenue"})
+    expenditure_by_object = proposed_breakdown(
+        get_proposed_budget_line_items(client, fy, "proposed_object")
+    )
+    expenditure_by_function = proposed_breakdown(
+        get_proposed_budget_line_items(client, fy, "proposed_function")
+    )
+    if not (revenue_by_source or expenditure_by_object):
+        return {"proposed": None}
+
+    return {
+        "proposed": {
+            "fiscal_year": fy,
+            "doc_id": _PROPOSED_BUDGET_DOC_ID,
+            "revenue_by_source": revenue_by_source,
+            "revenue_by_fund": revenue_by_fund,
+            "expenditure_by_object": expenditure_by_object,
+            "expenditure_by_function": expenditure_by_function,
+            "revenue_total": sum((s.amount for s in revenue_by_source), Decimal(0)),
+            "expenditure_total": sum((s.amount for s in expenditure_by_object), Decimal(0)),
+        }
+    }
+
+
 @jurisdiction.get("/budget", response_class=HTMLResponse)
 async def budget(request: Request, view: EntityView = Depends(resolve_entity)) -> HTMLResponse:
     """First-class Budget page: charts from budget_line_items plus cited quotes.
@@ -580,6 +631,7 @@ async def budget(request: Request, view: EntityView = Depends(resolve_entity)) -
             chart_svg=revenue_expenditure_svg(year_totals),
             budget_actual=budget_actual,
             sections=_budget_quote_sections(view.entity["id"]),
+            **_proposed_budget_context(client),
             **breakdown,
         ),
     )

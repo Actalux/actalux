@@ -117,6 +117,12 @@
 </section>
 {% endif %}
 
+{# --- Proposed Budget (June 2024): planned figures from doc #262, kept clearly
+   separate from the audited actuals above --- #}
+{% if proposed %}
+  {% include "_budget_proposed.html" %}
+{% endif %}
+
 {# --- What the district has said (cited quotes from the corpus) --- #}
 <section class="topic-sections">
   <div class="section-label">What the district has said about the budget</div>
