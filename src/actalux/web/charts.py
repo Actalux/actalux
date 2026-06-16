@@ -267,6 +267,70 @@ def trend_svg(points: list[YearPoint]) -> Markup:
     return Markup("".join(parts))
 
 
+# Horizontal tier bar (facilities priority tiers). Its own small canvas so the
+# three rows read as a compact comparison, not the tall time-series canvas.
+_TIER_BAR_W = 720
+_TIER_ROW_H = 44
+_TIER_LABEL_W = 150
+_TIER_BAR_RIGHT = 132  # room for the dollar label at the end of each bar
+_TIER_BAR_H = 18
+
+
+@dataclass(frozen=True)
+class TierBar:
+    """One priority tier's bar: its label, dollar amount, and accent flag.
+
+    ``immediate`` marks the single tier rendered in vermillion (the plan's Red /
+    immediate-needs tier). Per DESIGN.md the accent punctuates one bar only; all
+    other tiers use the neutral ink fill.
+    """
+
+    label: str
+    amount: int
+    immediate: bool = False
+
+
+def tier_bar_svg(bars: list[TierBar]) -> Markup:
+    """Horizontal bar chart of priority-tier totals, accent on the immediate tier.
+
+    Bars are scaled to the largest tier. Only the ``immediate`` bar takes the
+    vermillion fill (``bar-immediate``); the rest use the neutral chart ink, so
+    the accent flags the most-urgent tier exactly once.
+    """
+    if not bars:
+        return Markup("")
+
+    height = _TIER_ROW_H * len(bars)
+    track_x = _TIER_LABEL_W
+    track_w = _TIER_BAR_W - _TIER_LABEL_W - _TIER_BAR_RIGHT
+    max_amount = max((b.amount for b in bars), default=0)
+    ceiling = max_amount if max_amount > 0 else 1
+
+    parts: list[str] = [
+        f'<svg class="chart tier-bars" viewBox="0 0 {_TIER_BAR_W} {height}" '
+        f'role="img" aria-label="Identified need by priority tier" '
+        f'preserveAspectRatio="xMidYMid meet">'
+    ]
+    for idx, bar in enumerate(bars):
+        row_y = idx * _TIER_ROW_H
+        text_y = row_y + _TIER_ROW_H / 2 + 4
+        bar_y = row_y + (_TIER_ROW_H - _TIER_BAR_H) / 2
+        bar_w = track_w * bar.amount / ceiling
+        fill_cls = "bar-immediate" if bar.immediate else "bar-tier"
+        parts.append(f'<text class="tier-label" x="0" y="{text_y:.1f}">{escape(bar.label)}</text>')
+        parts.append(
+            f"<title>{escape(bar.label)} {escape(usd(bar.amount))}</title>"
+            f'<rect class="bar {fill_cls}" x="{track_x}" y="{bar_y:.1f}" '
+            f'width="{bar_w:.1f}" height="{_TIER_BAR_H}"/>'
+        )
+        parts.append(
+            f'<text class="tier-amount" x="{track_x + bar_w + 8:.1f}" y="{text_y:.1f}">'
+            f"{escape(usd(bar.amount))}</text>"
+        )
+    parts.append("</svg>")
+    return Markup("".join(parts))
+
+
 def usd(amount: Decimal | float | int) -> str:
     """Format a dollar amount with thousands separators, no cents."""
     return f"${Decimal(str(amount)):,.0f}"

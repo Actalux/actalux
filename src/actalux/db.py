@@ -640,6 +640,99 @@ def get_chunk_with_context(client: Client, chunk_id: int, context_count: int = 2
     return {"chunk": chunk_data, "context": context.data}
 
 
+def _normalize_anchor_text(text: str) -> str:
+    """Whitespace-collapsed, case-folded text for anchor containment matching.
+
+    The same normalisation is applied to both the anchor and each chunk's content
+    so a verbatim anchor matches its passage regardless of how line wraps, double
+    spaces, or casing differ between the curated string and the stored chunk.
+    """
+    return " ".join((text or "").split()).casefold()
+
+
+def resolve_source_anchor(
+    client: Client,
+    doc_id: int,
+    anchor: str,
+    *,
+    cache: dict[tuple[int, str], int | None] | None = None,
+) -> int | None:
+    """Resolve a curated citation anchor to the chunk id that contains it.
+
+    A curated figure carries a ``Source(doc_id, anchor)`` where ``anchor`` is a
+    short verbatim fragment of the source passage. Unlike
+    ``get_chunk_with_context`` (which takes a known ``chunk_id``), this maps the
+    anchor *text* to a chunk by scanning the document's chunks and finding the one
+    whose content contains the anchor after whitespace/case normalisation. The
+    result deep-links to ``/chunk/{id}/source``.
+
+    A match must be unambiguous: exactly one chunk must contain the anchor. Zero
+    matches (the passage was re-chunked away, or the anchor was mistyped) and
+    multiple matches (the anchor is too generic to identify one passage) are both
+    treated as failures — they are logged and return ``None`` so the caller shows
+    the figure without a (wrong or arbitrary) citation link rather than sending a
+    citation to a passage it cannot vouch for.
+
+    Parameters
+    ----------
+    client
+        Supabase client.
+    doc_id
+        The document the anchor is expected to live in.
+    anchor
+        A verbatim fragment of the cited passage.
+    cache
+        Optional per-request memo, keyed by ``(doc_id, normalized_anchor)``. A
+        single page can cite the same passage several times; passing one dict
+        across calls avoids re-querying the document's chunks each time.
+
+    Returns
+    -------
+    int or None
+        The unique chunk id that contains the anchor, or ``None`` on a logged
+        failure (empty anchor, no match, or an ambiguous multi-chunk match).
+    """
+    target = _normalize_anchor_text(anchor)
+    if not target:
+        logger.warning("Empty source anchor for document %d; no citation link.", doc_id)
+        return None
+
+    cache_key = (doc_id, target)
+    if cache is not None and cache_key in cache:
+        return cache[cache_key]
+
+    rows = (
+        client.table("chunks")
+        .select("id, content, chunk_index")
+        .eq("document_id", doc_id)
+        .order("chunk_index")
+        .execute()
+    ).data or []
+
+    matches = [r["id"] for r in rows if target in _normalize_anchor_text(r.get("content") or "")]
+
+    resolved: int | None
+    if len(matches) == 1:
+        resolved = matches[0]
+    elif not matches:
+        logger.warning("Source anchor not found in document %d: %r", doc_id, anchor)
+        resolved = None
+    else:
+        # Ambiguous: the anchor identifies more than one passage, so it cannot
+        # vouch for a single citation. Surface it rather than picking arbitrarily.
+        logger.warning(
+            "Source anchor matched %d chunks in document %d (ambiguous): %r",
+            len(matches),
+            doc_id,
+            anchor,
+        )
+        resolved = None
+
+    if cache is not None:
+        cache[cache_key] = resolved
+    return resolved
+
+
 # --- Budget line items ---
 
 

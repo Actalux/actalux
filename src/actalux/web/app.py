@@ -39,14 +39,17 @@ from actalux.db import (
     list_entities,
     resolve_canonical_chunk,
     resolve_canonical_document,
+    resolve_source_anchor,
 )
 from actalux.errors import SearchError, SummaryError
 from actalux.models import Correction, chunk_hash_id
 from actalux.search.answer import assemble_evidence, enrich_results
 from actalux.search.hybrid import SearchFilters, hybrid_search
 from actalux.search.summarize import generate_summary
+from actalux.web import facilities_plan_data as fpd
 from actalux.web.api import api_router
 from actalux.web.charts import (
+    TierBar,
     aggregate_by_year,
     budget_vs_actual,
     component_trend,
@@ -55,6 +58,7 @@ from actalux.web.charts import (
     fund_breakdown,
     revenue_expenditure_svg,
     source_breakdown,
+    tier_bar_svg,
     trend_svg,
     usd,
 )
@@ -253,29 +257,6 @@ BUDGET_QUERIES = [
     ("Salaries & benefits", "salary compensation benefits"),
     ("Capital improvements & facilities", "capital improvement facilities construction"),
     ("Fund balance & reserves", "fund balance reserves financial"),
-]
-
-# The first query is phrased to surface the plan's own one-sentence definition of
-# itself (verbatim), so the page leads with a sourced overview, not an editorial one.
-FACILITIES_QUERIES = [
-    (
-        "What the plan is",
-        "comprehensive strategic document future development maintenance "
-        "management school facilities 15 years",
-    ),
-    (
-        "Building conditions & deferred maintenance",
-        "building conditions maintenance deferred repairs facility appraisal",
-    ),
-    (
-        "Enrollment & building capacity",
-        "enrollment demographic projections building capacity utilization",
-    ),
-    (
-        "Cost estimates & priorities",
-        "capital improvement construction cost estimates priorities ranking",
-    ),
-    ("HVAC & infrastructure", "HVAC mechanical systems infrastructure upgrades"),
 ]
 
 
@@ -478,11 +459,6 @@ def _budget_quote_sections(entity_id: int) -> list[dict[str, Any]]:
     return _topic_quote_sections(entity_id, BUDGET_QUERIES, "budget")
 
 
-def _facilities_quote_sections(entity_id: int) -> list[dict[str, Any]]:
-    """Cited-quote sections for the Facilities Plan topic page."""
-    return _topic_quote_sections(entity_id, FACILITIES_QUERIES, "facilities")
-
-
 # Breakdown views switchable on the Budget page. "fund"/"function" break down
 # expenditure; "source" breaks down revenue. Order = tab order.
 _BREAKDOWN_VIEWS = ("function", "fund", "source")
@@ -639,16 +615,71 @@ async def budget_detail(
     )
 
 
+def _facilities_plan_context(client: Client) -> dict[str, Any]:
+    """Assemble the structured, source-cited Facilities Master Plan briefing.
+
+    Every figure in ``facilities_plan_data`` carries a ``Source(doc_id, anchor)``;
+    this resolves each anchor to a chunk id once (a per-request cache backs the
+    shared anchors, e.g. the cost-by-scope and cost-by-location tables both cite
+    the same passage) so the template can deep-link figures to
+    ``/chunk/{id}/source``. An unresolved anchor yields ``None`` — the figure
+    still renders, just without a (wrong or arbitrary) citation link.
+
+    Returns the template context: the lede facts, the tier bar SVG + table, the
+    scope/location cost tables, the future-development frame, funding + the bond,
+    the priority themes, the process timeline, and the resolved citation chunk ids.
+    """
+    cache: dict[tuple[int, str], int | None] = {}
+
+    def link(source: fpd.Source) -> int | None:
+        return resolve_source_anchor(client, source.doc_id, source.anchor, cache=cache)
+
+    tiers = [
+        TierBar(label=name, amount=fpd.TIER_TOTALS[name.lower()], immediate=(name == "Red"))
+        for name, _gloss in fpd.TIERS
+    ]
+
+    return {
+        "plan_title": fpd.PLAN_TITLE,
+        "plan_years": fpd.PLAN_YEARS,
+        "plan_consultant": fpd.PLAN_CONSULTANT,
+        "plan_horizon": fpd.PLAN_HORIZON,
+        "site_count": fpd.SITE_COUNT,
+        "grand_total": fpd.GRAND_TOTAL,
+        "tiers": fpd.TIERS,
+        "tier_totals": fpd.TIER_TOTALS,
+        "tier_bar_svg": tier_bar_svg(tiers),
+        "tier_chunk_id": link(fpd.TIER_SOURCE),
+        "scope_costs": fpd.SCOPE_COSTS,
+        "location_costs": fpd.LOCATION_COSTS,
+        "cost_chunk_id": link(fpd.COST_SOURCE),
+        "cost_soft_cost_note": fpd.COST_SOFT_COST_NOTE,
+        "renovation_options": fpd.RENOVATION_OPTIONS,
+        "renovation_total_label": fpd.RENOVATION_TOTAL_LABEL,
+        "new_schools": fpd.NEW_SCHOOLS,
+        "new_schools_total_m": fpd.NEW_SCHOOLS_TOTAL_M,
+        "options_chunk_id": link(fpd.OPTIONS_SOURCE),
+        "funding_facts": fpd.FUNDING_FACTS,
+        "funding_chunk_id": link(fpd.FUNDING_SOURCE),
+        "bond": fpd.BOND,
+        "district_themes": fpd.DISTRICT_THEMES,
+        "priorities_chunk_id": link(fpd.PRIORITIES_SOURCE),
+        "timeline": fpd.TIMELINE,
+        "timeline_chunk_id": link(fpd.TIMELINE_SOURCE),
+    }
+
+
 @jurisdiction.get("/facilities-plan", response_class=HTMLResponse)
 async def facilities_plan(
     request: Request, view: EntityView = Depends(resolve_entity)
 ) -> HTMLResponse:
-    """Long-Range Facilities Master Plan topic: the plan's source documents plus
-    cited quotes drawn from the record.
+    """Long-Range Facilities Master Plan topic: a structured, source-cited briefing.
 
-    No charts — the LRFMP is a narrative plan, not a figures table — so the page
-    is sourced quotes (led by the plan's own self-definition) plus the plan's
-    documents.
+    Built from the curated ``facilities_plan_data`` dataset (every figure verbatim
+    with a resolvable source anchor) plus the plan's primary-source documents. The
+    two cost frames — identified needs ($94.1M) and future-development options
+    ($129M-$178M) — are kept deliberately separate, and the $135M GO bond is shown
+    with its official resolution/ballot citations.
     """
     client = _get_db()
     entity_id = view.entity["id"]
@@ -667,7 +698,7 @@ async def facilities_plan(
             view,
             active="topic-facilities",
             documents=documents,
-            sections=_facilities_quote_sections(entity_id),
+            **_facilities_plan_context(client),
         ),
     )
 

@@ -2,25 +2,253 @@
 {% block title %}Long-Range Facilities Master Plan{% endblock %}
 {% block content %}
 
+{# Source-link macro. When the anchor resolved, link to the exact passage. When
+   it did not (re-chunked away / ambiguous), the figure must NOT read as silently
+   uncited — show a visible "source pending" marker instead of nothing, the same
+   treatment the bond's not-yet-located result citation gets. Citation integrity
+   over a wrong/arbitrary link. #}
+{% macro src(chunk_id, prefix="Source") %}
+  {% if chunk_id %}<a class="src-link" href="/chunk/{{ chunk_id }}/source">{{ prefix }} {{ chunk_id | chunk_hash_id }}</a>{% else %}<span class="pending">source pending</span>{% endif %}
+{% endmacro %}
+
 <section class="pane-header">
   <h2>Topic</h2>
   <span class="meta">Long-Range Facilities Master Plan</span>
 </section>
 
+{# A. Lede band — numbers first, no vision filler. #}
 <div class="topic-head">
   <span class="kicker">Topic · Long-Range Facilities Master Plan</span>
-  <h1>What the record shows about the {{ entity.display_name if entity else 'district' }} facilities plan.</h1>
+  <h1>The {{ entity.display_name if entity else 'district' }} facilities plan, by the numbers.</h1>
   <p class="lede">
-    This page collects what the public record says about the Long-Range Facilities Master Plan (LRFMP). Every passage is verbatim — the plan's own description of itself leads the sections below. Click any quote to open it in the source.
+    Figures below are transcribed verbatim from the public records of the
+    {{ plan_years }} {{ plan_title }}, or counted from those tables. Each
+    transcribed figure links to the exact passage it was read from.
   </p>
+  <div class="stat-tiles">
+    <div class="stat-tile">
+      <div class="stat-value">{{ grand_total | usd }}</div>
+      <div class="stat-label">identified need (priority total)</div>
+      <div class="stat-label">{{ src(tier_chunk_id) }}</div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-value">{{ site_count }}</div>
+      <div class="stat-label">locations assessed</div>
+      <div class="stat-label src-note">counted from the location table below</div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-value">Feb 2025</div>
+      <div class="stat-label">delivered by {{ plan_consultant }}</div>
+      <div class="stat-label">{{ src(timeline_chunk_id) }}</div>
+    </div>
+  </div>
 </div>
 
-{# Curated source documents for the plan. Dates are omitted here: the master-plan
-   volumes carry no parseable date in their filenames, so the first-sentence
-   summary is the more useful identifier. #}
+{# B. Overview — the plan's own cited figures, not editorial. Each sourced
+   quantity carries the same citation as the section it summarizes. #}
+<section class="fp-section">
+  <div class="section-label">What the plan is</div>
+  <div class="fp-overview">
+    <p>
+      The {{ plan_title }} is the district's {{ plan_horizon }} facility-condition
+      assessment, prepared by {{ plan_consultant }}. It identifies
+      {{ grand_total | usd }} {{ src(tier_chunk_id) }} of needs, broken out by
+      assessment scope and by location {{ src(cost_chunk_id) }} and sorted into
+      three priority tiers, and presents future-development options as a separate
+      frame.
+    </p>
+    <p class="src-note">{{ cost_soft_cost_note }} {{ src(options_chunk_id) }}</p>
+  </div>
+</section>
+
+{# C. Process timeline — vertical dated milestones. #}
+<section class="fp-section">
+  <div class="section-label">How the plan was developed
+    {{ src(timeline_chunk_id) }}</div>
+  <ul class="fp-timeline">
+    {% for m in timeline %}
+    <li><span class="when">{{ m.when }}</span><span class="what">{{ m.title }}</span></li>
+    {% endfor %}
+  </ul>
+</section>
+
+{# D. Cost by priority tier — server-SVG horizontal bar (accent on Red only). #}
+<section class="fp-section">
+  <div class="section-label">Identified need by priority tier
+    {{ src(tier_chunk_id) }}</div>
+  {{ tier_bar_svg }}
+  <table class="fp-table tier-table" style="margin-top: var(--s-4);">
+    <thead>
+      <tr><th>Tier</th><th>Horizon</th><th class="num">Total</th></tr>
+    </thead>
+    <tbody>
+      {% for name, gloss in tiers %}
+      <tr>
+        <td>{{ name }}</td>
+        <td>{{ gloss }}</td>
+        <td class="num">{{ tier_totals[name | lower] | usd }}</td>
+      </tr>
+      {% endfor %}
+      <tr>
+        <td><strong>Priority total</strong></td>
+        <td></td>
+        <td class="num"><strong>{{ grand_total | usd }}</strong></td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+{# E. Cost by scope — table with native <details> drill to the tier split. #}
+<section class="fp-section">
+  <div class="section-label">Identified need by assessment scope
+    {{ src(cost_chunk_id) }}</div>
+  {# Only the three verbatim tier cells are published — no derived per-row total
+     (the source does not print one; column totals come from the tier table). #}
+  <table class="fp-table">
+    <thead>
+      <tr>
+        <th>Scope</th>
+        <th class="num">Immediate</th><th class="num">Near-term</th>
+        <th class="num">Long-term</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in scope_costs %}
+      <tr><td colspan="4">
+        <details class="fp-row" data-immediate="{{ 'true' if row.red > 0 else 'false' }}">
+          <summary>
+            <span>{{ row.label }}</span>
+            <span class="num tier-col">{{ row.red | usd }}</span>
+            <span class="num tier-col">{{ row.yellow | usd }}</span>
+            <span class="num">{{ row.green | usd }}</span>
+          </summary>
+          <div class="drill">
+            <div class="tier-line"><span>Immediate (Red)</span><span class="num">{{ row.red | usd }}</span></div>
+            <div class="tier-line"><span>Near-term (Yellow)</span><span class="num">{{ row.yellow | usd }}</span></div>
+            <div class="tier-line"><span>Long-term (Green)</span><span class="num">{{ row.green | usd }}</span></div>
+            {{ src(cost_chunk_id, prefix="From") }}
+          </div>
+        </details>
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+{# F. Cost by location — same drill pattern; immediate-need rows get a vermillion edge. #}
+<section class="fp-section">
+  <div class="section-label">Identified need by location
+    {{ src(cost_chunk_id) }}</div>
+  <table class="fp-table">
+    <thead>
+      <tr>
+        <th>Location</th>
+        <th class="num">Immediate</th><th class="num">Near-term</th>
+        <th class="num">Long-term</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in location_costs %}
+      <tr><td colspan="4">
+        <details class="fp-row" data-immediate="{{ 'true' if row.red > 0 else 'false' }}">
+          <summary>
+            <span>{{ row.label }}</span>
+            <span class="num tier-col">{{ row.red | usd }}</span>
+            <span class="num tier-col">{{ row.yellow | usd }}</span>
+            <span class="num">{{ row.green | usd }}</span>
+          </summary>
+          <div class="drill">
+            <div class="tier-line"><span>Immediate (Red)</span><span class="num">{{ row.red | usd }}</span></div>
+            <div class="tier-line"><span>Near-term (Yellow)</span><span class="num">{{ row.yellow | usd }}</span></div>
+            <div class="tier-line"><span>Long-term (Green)</span><span class="num">{{ row.green | usd }}</span></div>
+            {{ src(cost_chunk_id, prefix="From") }}
+          </div>
+        </details>
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+{# G. Future-development options — a deliberately SEPARATE frame from the $94.1M. #}
+<section class="fp-section">
+  <div class="section-label">Future-development options
+    {{ src(options_chunk_id) }}</div>
+  <div class="fp-frame">
+    <p class="frame-note">
+      These are conceptual options presented on top of the identified-need
+      assessment above — a separate, larger cost frame, not part of the
+      {{ grand_total | usd }} priority total. Figures are the plan's rounded 2025
+      estimates and require further study.
+    </p>
+    <table class="fp-table">
+      <thead>
+        <tr><th>Site</th><th class="num">Renovate (Level 2)</th><th class="num">Renovate (Level 3)</th></tr>
+      </thead>
+      <tbody>
+        {% for opt in renovation_options %}
+        <tr>
+          <td style="padding: var(--s-2) var(--s-3);">{{ opt.site }}</td>
+          <td class="num" style="padding: var(--s-2) var(--s-3);">{% if opt.level2_m is not none %}${{ opt.level2_m }}M{% else %}—{% endif %}</td>
+          <td class="num" style="padding: var(--s-2) var(--s-3);">{% if opt.level3_m is not none %}${{ opt.level3_m }}M{% else %}—{% endif %}</td>
+        </tr>
+        {% endfor %}
+        <tr>
+          <td style="padding: var(--s-2) var(--s-3);"><strong>Total renovation construction</strong></td>
+          <td class="num" colspan="2" style="padding: var(--s-2) var(--s-3);"><strong>{{ renovation_total_label }}</strong></td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="frame-note" style="margin-top: var(--s-4);">
+      As an alternative, the plan prices three new elementary schools at $43M each
+      ({{ new_schools | map(attribute=0) | join(', ') }}), totalling
+      ${{ new_schools_total_m }}M.
+    </p>
+  </div>
+</section>
+
+{# H. Funding & the bond. The $90M line is the plan's Feb 2025 projection; the
+   measure actually put to voters was the $135M bond shown below. #}
+<section class="fp-section">
+  <div class="section-label">Funding {{ src(funding_chunk_id) }}</div>
+  <ul class="fp-facts">
+    {% for f in funding_facts %}
+    <li><span class="fact-label">{{ f.label }}</span><span>{{ f.value }}</span></li>
+    {% endfor %}
+  </ul>
+
+  <div class="fp-bond">
+    <div class="section-label">The {{ bond.amount }} general-obligation bond</div>
+    <p class="bond-figure">{{ bond.amount }}</p>
+    <ul class="fp-facts" style="margin-top: var(--s-3);">
+      <li><span class="fact-label">Purpose</span><span>{{ bond.purpose }}
+        {{ src(bond.resolution_source.chunk_id, prefix="Resolution") }}</span></li>
+      <li><span class="fact-label">Ballot</span><span>{{ bond.ballot_date }},
+        {{ bond.majority_required }} majority required
+        {{ src(bond.ballot_source.chunk_id, prefix="Ballot") }}</span></li>
+      <li><span class="fact-label">Estimated debt-service levy</span><span>{{ bond.estimated_levy }}
+        {{ src(bond.ballot_source.chunk_id, prefix="Ballot") }}</span></li>
+      <li><span class="fact-label">Result</span><span>{{ bond.result }}
+        {% if bond.result_citation %}{{ src(bond.result_citation.chunk_id, prefix="Result") }}{% else %}<span class="pending">certified-result citation pending</span>{% endif %}</span></li>
+    </ul>
+  </div>
+</section>
+
+{# I. District priorities — the plan's four common project themes. #}
+<section class="fp-section">
+  <div class="section-label">District-wide priority themes
+    {{ src(priorities_chunk_id) }}</div>
+  <ul class="fp-themes">
+    {% for theme in district_themes %}
+    <li>{{ theme }}</li>
+    {% endfor %}
+  </ul>
+</section>
+
+{# J. Primary-source documents — clean cards, no completeness claim. #}
 {% if documents %}
-<section class="topic-sections">
-  <div class="section-label">The plan documents</div>
+<section class="fp-section">
+  <div class="section-label">Primary-source documents</div>
   {% for d in documents %}
   <a class="result-item" href="/document/{{ d.id }}" style="display: block; border-bottom: 1px solid var(--rule); margin-bottom: 0;">
     <span class="kind">{{ d.document_type or 'Record' }}</span>
@@ -30,37 +258,6 @@
   {% endfor %}
 </section>
 {% endif %}
-
-{# What the record says (cited quotes). The first section's query is phrased to
-   surface the plan's own one-sentence definition, so it reads as the overview. #}
-<div class="topic-sections">
-  {% for section in sections %}
-    {% if section.results %}
-    <div class="section-group">
-      <h3>{{ section.label }}</h3>
-
-      {% for r in section.results %}
-      <a class="result-item" href="/chunk/{{ r.chunk_id }}/source" style="display: block; border-bottom: 1px solid var(--rule); margin-bottom: 0;">
-        <span class="kind">{{ r.document_type or 'Record' }}</span>
-        {% if r.meeting_date %}<span class="date">{{ r.meeting_date }}</span>{% endif %}
-        <div class="snippet">{{ r.content | match_snippet(section.query) }}</div>
-        <div class="cite-inline">
-          {% if r.meeting_title %}<span>{{ r | display_title }}</span>{% endif %}
-          {% if r.section %}<span>· {{ r.section }}</span>{% endif %}
-          <span class="hash">{{ r.hash_id }}</span>
-        </div>
-      </a>
-      {% endfor %}
-    </div>
-    {% endif %}
-  {% endfor %}
-
-  {% if not sections or not sections|selectattr("results")|list %}
-  <div class="landing">
-    <p class="lede">No facilities-plan records indexed yet. Check back after the next ingestion run, or try the search field above.</p>
-  </div>
-  {% endif %}
-</div>
 
 <div class="error-form">
   <h2>Found an error?</h2>

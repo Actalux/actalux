@@ -5,6 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from actalux.web.charts import (
+    TierBar,
     _axis_label,
     aggregate_by_year,
     budget_vs_actual,
@@ -14,6 +15,7 @@ from actalux.web.charts import (
     fund_breakdown,
     revenue_expenditure_svg,
     source_breakdown,
+    tier_bar_svg,
     trend_svg,
     usd,
 )
@@ -308,3 +310,35 @@ class TestRevenueExpenditureSvg:
         assert "bar-expenditure" in svg
         assert "bar-deficit" in svg  # 2023-2024 is a deficit year
         assert 'id="hatch"' in svg  # expenditure hatch pattern defined
+
+
+class TestTierBarSvg:
+    """Facilities priority-tier horizontal bar: accent on the immediate bar only."""
+
+    def test_empty_returns_empty_string(self):
+        assert str(tier_bar_svg([])) == ""
+
+    def test_accent_only_on_immediate_bar(self):
+        bars = [
+            TierBar("Red", 23_458_924, immediate=True),
+            TierBar("Yellow", 28_305_058),
+            TierBar("Green", 42_372_894),
+        ]
+        svg = str(tier_bar_svg(bars))
+        assert "<svg" in svg and "</svg>" in svg
+        # The immediate (Red) bar takes the vermillion class; no other bar does.
+        assert svg.count("bar-immediate") == 1
+        # The two non-immediate tiers use the neutral tier fill.
+        assert svg.count("bar-tier") == 2
+        # Each bar labels its tier and its dollar amount.
+        assert "Red" in svg and "Yellow" in svg and "Green" in svg
+        assert "$23,458,924" in svg
+
+    def test_bar_widths_scale_to_largest_tier(self):
+        # The largest tier fills the track; a half-size tier is ~half as wide.
+        bars = [TierBar("Big", 100, immediate=True), TierBar("Half", 50)]
+        svg = str(tier_bar_svg(bars))
+        widths = [float(seg.split('width="')[1].split('"')[0]) for seg in svg.split("<rect")[1:]]
+        assert len(widths) == 2
+        assert widths[0] > widths[1]
+        assert abs(widths[1] / widths[0] - 0.5) < 0.01

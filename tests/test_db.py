@@ -7,6 +7,7 @@ from actalux.db import (
     backfill_document_source_ref,
     get_chunk_with_context,
     insert_document,
+    resolve_source_anchor,
 )
 from actalux.models import Document
 
@@ -209,3 +210,82 @@ class TestChunkContext:
         assert ("gte", "chunk_index", 2) in client.queries[1]
         assert ("lte", "chunk_index", 4) in client.queries[1]
         assert ("order", "chunk_index") in client.queries[1]
+
+
+# Chunks of one document, as resolve_source_anchor would read them. The anchor it
+# resolves is a verbatim fragment that should match exactly one of these.
+_ANCHOR_CHUNKS = [
+    {"id": 100, "chunk_index": 0, "content": "The plan opens with an executive summary."},
+    {
+        "id": 101,
+        "chunk_index": 1,
+        "content": "It identifies approximately $23.5 million dollars in immediate needs.",
+    },
+    {
+        "id": 102,
+        "chunk_index": 2,
+        "content": "Future-development options are presented separately.",
+    },
+]
+
+
+class TestResolveSourceAnchor:
+    """Anchor-to-chunk resolution: exact, whitespace-normalised, missing, ambiguous."""
+
+    def test_exact_substring_match_returns_chunk_id(self) -> None:
+        client = _Client([list(_ANCHOR_CHUNKS)])
+        chunk_id = resolve_source_anchor(
+            client, 87, "approximately $23.5 million dollars in immediate needs"
+        )
+        assert chunk_id == 101
+        # It scoped the chunk read to the document.
+        assert ("eq", "document_id", 87) in client.queries[0]
+
+    def test_whitespace_and_case_normalised_match(self) -> None:
+        # The anchor differs only by line wraps, double spaces, and casing — the
+        # normalisation must still land it on the same chunk.
+        client = _Client([list(_ANCHOR_CHUNKS)])
+        chunk_id = resolve_source_anchor(
+            client,
+            87,
+            "Approximately  $23.5 MILLION\n  dollars in immediate\tneeds",
+        )
+        assert chunk_id == 101
+
+    def test_missing_anchor_returns_none(self) -> None:
+        client = _Client([list(_ANCHOR_CHUNKS)])
+        chunk_id = resolve_source_anchor(client, 87, "a phrase that is not in any chunk")
+        assert chunk_id is None
+
+    def test_empty_anchor_returns_none_without_query(self) -> None:
+        client = _Client([])  # no responses: an empty anchor must short-circuit
+        chunk_id = resolve_source_anchor(client, 87, "   ")
+        assert chunk_id is None
+        assert client.queries == []  # never hit the database
+
+    def test_ambiguous_anchor_returns_none(self) -> None:
+        # Two chunks contain the anchor: it cannot vouch for a single citation, so
+        # the resolver refuses rather than picking one arbitrarily.
+        dup_chunks = [
+            {"id": 200, "chunk_index": 0, "content": "Roofing repairs are needed district-wide."},
+            {"id": 201, "chunk_index": 1, "content": "Additional roofing repairs are scheduled."},
+        ]
+        client = _Client([dup_chunks])
+        chunk_id = resolve_source_anchor(client, 87, "roofing repairs")
+        assert chunk_id is None
+
+    def test_cache_hit_avoids_second_query(self) -> None:
+        cache: dict[tuple[int, str], int | None] = {}
+        client = _Client([list(_ANCHOR_CHUNKS)])
+        first = resolve_source_anchor(
+            client, 87, "approximately $23.5 million dollars in immediate needs", cache=cache
+        )
+        assert first == 101
+        assert len(client.queries) == 1
+        # The second resolution of the same (doc, anchor) is served from the cache:
+        # no further query is issued (the client has no more queued responses).
+        second = resolve_source_anchor(
+            client, 87, "approximately $23.5 million dollars in immediate needs", cache=cache
+        )
+        assert second == 101
+        assert len(client.queries) == 1

@@ -278,32 +278,10 @@ _FAKE_PRESENTATION = {
     "meeting_date": "2025-02-01",
     "summary": "A February 2025 board presentation on the facilities master plan.",
 }
-_FAKE_FACILITIES_SECTIONS = [
-    {
-        "label": "What the plan is",
-        "query": "comprehensive strategic document facilities",
-        "results": [
-            {
-                "chunk_id": 1919,
-                "document_id": 87,
-                "document_type": "facilities_plan",
-                "meeting_date": "2026-04-11",
-                "meeting_title": "Volume1-ClaytonMasterPlan-Process-Priorities.pdf",
-                "section": "",
-                "hash_id": "#q077f",
-                "content": (
-                    "The School District of Clayton's Long-Range Master Facilities Plan "
-                    "(LRFMP) is a comprehensive strategic document outlining the future "
-                    "development, maintenance, and management of school facilities."
-                ),
-            }
-        ],
-    }
-]
 
 
 class TestFacilitiesPlanTopic:
-    """The LRFMP topic page: curated plan documents plus cited quotes."""
+    """The LRFMP topic page: a structured, source-cited briefing (A7 rebuild)."""
 
     @patch("actalux.web.app._get_db")
     @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
@@ -311,39 +289,84 @@ class TestFacilitiesPlanTopic:
         "actalux.web.app.list_documents",
         side_effect=[[_FAKE_VOLUME], [_FAKE_PRESENTATION]],
     )
-    @patch(
-        "actalux.web.app._facilities_quote_sections",
-        return_value=_FAKE_FACILITIES_SECTIONS,
-    )
-    def test_facilities_plan_renders_docs_and_quotes(
-        self, mock_sections, mock_list, mock_ent, mock_db
+    @patch("actalux.web.app.resolve_source_anchor", return_value=1919)
+    def test_facilities_plan_renders_structured_briefing(
+        self, mock_anchor, mock_list, mock_ent, mock_db
     ) -> None:
         r = client.get("/mo/clayton/schools/facilities-plan")
         assert r.status_code == 200
-        # Page chrome
+        # Page chrome + lede stat tiles (figures, not vision filler).
         assert "Long-Range Facilities Master Plan" in r.text
-        # Curated documents: the volume (by type) and the presentation (by filename)
+        assert "$94,136,875" in r.text  # identified-need priority total
+        # Cost-by-tier server-SVG bar (no JS chart lib).
+        assert "tier-bars" in r.text
+        # Cost-by-scope / cost-by-location tables with native <details> drill.
+        assert "Identified need by assessment scope" in r.text
+        assert "Identified need by location" in r.text
+        assert "<details" in r.text
+        # Future-development frame kept separate from the $94.1M.
+        assert "Future-development options" in r.text
+        assert "$137M to $178M" in r.text
+        # Every resolved figure deep-links to its source chunk.
+        assert "/chunk/1919/source" in r.text
+        # Curated primary-source documents: volume (by type) + presentation (by filename).
         assert mock_list.call_args_list[0].kwargs["document_type"] == "facilities_plan"
         assert mock_list.call_args_list[1].kwargs["source_file_like"] == "%LRFMP%"
+        assert "Primary-source documents" in r.text
         assert "Volume1-ClaytonMasterPlan-Process-Priorities" in r.text
-        # Cited-quote section uses the reader-facing label, not the raw query
-        assert "What the plan is" in r.text
-        # The definitional snippet renders, with query terms marked
-        assert "<mark>strategic</mark>" in r.text
-        assert "outlining the future" in r.text
-        assert "#q077f" in r.text
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
+    @patch("actalux.web.app.list_documents", side_effect=[[_FAKE_VOLUME], [_FAKE_PRESENTATION]])
+    @patch("actalux.web.app.resolve_source_anchor", return_value=1919)
+    def test_facilities_plan_bond_passed_with_pending_citation(
+        self, mock_anchor, mock_list, mock_ent, mock_db
+    ) -> None:
+        # Content-policy: the $135M bond is shown as PASSED, with the official
+        # resolution/ballot citations and the result-citation slot marked pending;
+        # the $90M is relabelled as the Feb 2025 projection. No editorializing.
+        r = client.get("/mo/clayton/schools/facilities-plan")
+        assert r.status_code == 200
+        assert "$135,000,000" in r.text
+        assert "April 7, 2026" in r.text
+        assert "Passed" in r.text
+        assert "certified-result citation pending" in r.text
+        # Official public-record citations (chunk ids 8140 / 1755 = #q1fcc / #q06db).
+        assert "/chunk/8140/source" in r.text
+        assert "/chunk/1755/source" in r.text
+        # The plan's $90M is framed as a projection, never as the funding reality.
+        assert "Feb 2025 projection" in r.text
+        # The banned editorial phrase must never appear.
+        assert "unspecified spending" not in r.text.lower()
 
     @patch("actalux.web.app._get_db")
     @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
     @patch("actalux.web.app.list_documents", side_effect=[[_FAKE_VOLUME], [_FAKE_VOLUME]])
-    @patch("actalux.web.app._facilities_quote_sections", return_value=_FAKE_FACILITIES_SECTIONS)
+    @patch("actalux.web.app.resolve_source_anchor", return_value=1919)
     def test_facilities_plan_dedupes_curated_documents(
-        self, mock_sections, mock_list, mock_ent, mock_db
+        self, mock_anchor, mock_list, mock_ent, mock_db
     ) -> None:
-        # A document caught by both filters appears once, not twice.
+        # A document caught by both filters appears once in the document cards.
         r = client.get("/mo/clayton/schools/facilities-plan")
         assert r.status_code == 200
-        assert r.text.count("/document/87") == 1
+        assert r.text.count('href="/document/87"') == 1
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
+    @patch("actalux.web.app.list_documents", side_effect=[[_FAKE_VOLUME], [_FAKE_PRESENTATION]])
+    @patch("actalux.web.app.resolve_source_anchor", return_value=None)
+    def test_facilities_plan_renders_when_anchor_unresolved(
+        self, mock_anchor, mock_list, mock_ent, mock_db
+    ) -> None:
+        # An unresolved anchor must not break the page, and it must NOT read as a
+        # silently uncited figure: the figure still renders, but its citation slot
+        # is visibly marked "source pending" (never linked to the wrong passage).
+        # The bond's chunk-id citations are independent of anchor resolution.
+        r = client.get("/mo/clayton/schools/facilities-plan")
+        assert r.status_code == 200
+        assert "$94,136,875" in r.text
+        assert "source pending" in r.text
+        assert "/chunk/8140/source" in r.text
 
 
 class TestDocumentEndpoint:
