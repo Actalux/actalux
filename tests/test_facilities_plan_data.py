@@ -67,14 +67,57 @@ class TestBondCitations:
         assert chunk_hash_id(fpd.BOND.resolution_source.chunk_id) == "#q1fcc"
         assert chunk_hash_id(fpd.BOND.ballot_source.chunk_id) == "#q06db"
 
-    def test_result_is_passed_with_citation_pending(self) -> None:
-        # Operator-stated fact; certified-result citation not yet located, so the
-        # slot is explicitly pending (None) rather than omitted or fabricated.
-        assert fpd.BOND.result == "Passed"
-        assert fpd.BOND.result_citation is None
+    def test_result_is_approved_with_certified_citation(self) -> None:
+        # The certified St. Louis County result (doc 504, chunk 8710) grounds the
+        # outcome: the measure was approved, with the verbatim vote totals carried
+        # in result_detail and cited to that chunk. No "pending" slot remains.
+        assert fpd.BOND.result == "Approved"
+        assert fpd.BOND.result_citation is not None
+        assert fpd.BOND.result_citation.chunk_id == 8710
+        assert "2,516 yes (89.25%)" in fpd.BOND.result_detail
+        assert "303 no" in fpd.BOND.result_detail
 
     def test_ninety_million_framed_as_projection(self) -> None:
         # The plan's $90M figure must be labelled as the Feb 2025 projection so it
         # is never presented as the funding reality (the actual measure is $135M).
         labels = [f.label for f in fpd.FUNDING_FACTS]
         assert any("projection" in label.lower() for label in labels)
+
+
+class TestFundingFactGrounding:
+    """Every funding fact carries its own verbatim Source, and the page is neutral."""
+
+    def test_every_funding_fact_has_a_source_anchor(self) -> None:
+        for f in fpd.FUNDING_FACTS:
+            assert isinstance(f.source, fpd.Source)
+            assert f.source.doc_id == 83  # all four funding figures live in doc 83
+            assert f.source.anchor.strip()
+
+    def test_no_funding_fact_value_carries_tax_framing(self) -> None:
+        # "without a tax increase" / "without increasing the property tax" is
+        # campaign-style framing and must never appear in a rendered value.
+        for f in fpd.FUNDING_FACTS:
+            value = f.value.lower()
+            assert "without a tax increase" not in value
+            assert "without increasing the property tax" not in value
+
+    def test_bonding_capacity_value_is_bare(self) -> None:
+        # The $90M projection is presented as a bare figure, not a tax-framed claim.
+        cap = next(f for f in fpd.FUNDING_FACTS if "projection" in f.label.lower())
+        assert cap.value == "Up to $90M of bonds"
+
+
+class TestLedeGrounding:
+    """The lede's delivery date and consultant each carry a verbatim Source."""
+
+    def test_delivery_and_consultant_sources_exist(self) -> None:
+        assert isinstance(fpd.DELIVERY_SOURCE, fpd.Source)
+        assert isinstance(fpd.CONSULTANT_SOURCE, fpd.Source)
+        assert fpd.DELIVERY_SOURCE.doc_id == 87
+        assert fpd.CONSULTANT_SOURCE.doc_id == 87
+        # The delivery anchor carries the verbatim Feb 2025 delivery date.
+        assert "02.19.2025" in fpd.DELIVERY_SOURCE.anchor
+        # The consultant anchor is the unique "humble start" narrative line, not the
+        # ambiguous bare "Paragon Architecture" string.
+        assert "Paragon Architecture" in fpd.CONSULTANT_SOURCE.anchor
+        assert fpd.PLAN_DELIVERED == "Feb 2025"

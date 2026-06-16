@@ -691,11 +691,18 @@ def _facilities_plan_context(client: Client) -> dict[str, Any]:
         for name, _gloss in fpd.TIERS
     ]
 
+    # Each funding fact carries its own anchor; pair each with its resolved chunk id
+    # so the template can link the figure to the exact passage it was read from.
+    funding_facts = [(f, link(f.source)) for f in fpd.FUNDING_FACTS]
+
     return {
         "plan_title": fpd.PLAN_TITLE,
         "plan_years": fpd.PLAN_YEARS,
         "plan_consultant": fpd.PLAN_CONSULTANT,
         "plan_horizon": fpd.PLAN_HORIZON,
+        "plan_delivered": fpd.PLAN_DELIVERED,
+        "delivery_chunk_id": link(fpd.DELIVERY_SOURCE),
+        "consultant_chunk_id": link(fpd.CONSULTANT_SOURCE),
         "site_count": fpd.SITE_COUNT,
         "grand_total": fpd.GRAND_TOTAL,
         "tiers": fpd.TIERS,
@@ -711,8 +718,7 @@ def _facilities_plan_context(client: Client) -> dict[str, Any]:
         "new_schools": fpd.NEW_SCHOOLS,
         "new_schools_total_m": fpd.NEW_SCHOOLS_TOTAL_M,
         "options_chunk_id": link(fpd.OPTIONS_SOURCE),
-        "funding_facts": fpd.FUNDING_FACTS,
-        "funding_chunk_id": link(fpd.FUNDING_SOURCE),
+        "funding_facts": funding_facts,
         "bond": fpd.BOND,
         "district_themes": fpd.DISTRICT_THEMES,
         "priorities_chunk_id": link(fpd.PRIORITIES_SOURCE),

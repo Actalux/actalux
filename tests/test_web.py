@@ -307,6 +307,12 @@ class TestFacilitiesPlanTopic:
         # Future-development frame kept separate from the $94.1M.
         assert "Future-development options" in r.text
         assert "$137M to $178M" in r.text
+        # Lede tiles ground the delivery date and consultant individually.
+        assert "Feb 2025" in r.text
+        assert "Paragon Architecture" in r.text
+        # Funding facts each render their own figure + citation (grounded per-fact).
+        assert "Current debt" in r.text
+        assert "Up to $90M of bonds" in r.text
         # Every resolved figure deep-links to its source chunk.
         assert "/chunk/1919/source" in r.text
         # Curated primary-source documents: volume (by type) + presentation (by filename).
@@ -319,23 +325,30 @@ class TestFacilitiesPlanTopic:
     @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
     @patch("actalux.web.app.list_documents", side_effect=[[_FAKE_VOLUME], [_FAKE_PRESENTATION]])
     @patch("actalux.web.app.resolve_source_anchor", return_value=1919)
-    def test_facilities_plan_bond_passed_with_pending_citation(
+    def test_facilities_plan_bond_approved_with_certified_citation(
         self, mock_anchor, mock_list, mock_ent, mock_db
     ) -> None:
-        # Content-policy: the $135M bond is shown as PASSED, with the official
-        # resolution/ballot citations and the result-citation slot marked pending;
-        # the $90M is relabelled as the Feb 2025 projection. No editorializing.
+        # Content-policy: the $135M bond is shown as APPROVED with the verbatim
+        # certified vote totals, cited to the St. Louis County certified results
+        # (chunk 8710); the $90M is relabelled as the Feb 2025 projection with the
+        # tax-rate framing removed. No editorializing.
         r = client.get("/mo/clayton/schools/facilities-plan")
         assert r.status_code == 200
         assert "$135,000,000" in r.text
         assert "April 7, 2026" in r.text
-        assert "Passed" in r.text
-        assert "certified-result citation pending" in r.text
+        assert "Approved" in r.text
+        assert "2,516 yes (89.25%)" in r.text
+        # The result is cited to the certified county results, never left pending.
+        assert "/chunk/8710/source" in r.text
+        assert "certified-result citation pending" not in r.text
         # Official public-record citations (chunk ids 8140 / 1755 = #q1fcc / #q06db).
         assert "/chunk/8140/source" in r.text
         assert "/chunk/1755/source" in r.text
         # The plan's $90M is framed as a projection, never as the funding reality.
         assert "Feb 2025 projection" in r.text
+        # The campaign tax-framing must never appear on the page.
+        assert "without a tax increase" not in r.text.lower()
+        assert "without increasing the property tax" not in r.text.lower()
         # The banned editorial phrase must never appear.
         assert "unspecified spending" not in r.text.lower()
 

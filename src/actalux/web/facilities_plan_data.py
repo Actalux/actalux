@@ -43,6 +43,18 @@ class Source:
     anchor: str
 
 
+# Lede plan-level citations (doc 87, the master-plan volume). The delivery date and
+# the consultant name each carry their own verbatim anchor so the lede stat tiles
+# are grounded rather than asserted. The delivery-date line is duplicated across the
+# cover and the following page (chunk overlap), so the anchor extends past the date
+# into the unique "THE IMPORTANCE OF" run to identify a single passage. The bare
+# "Paragon Architecture" string occurs dozens of times in the volume, so the
+# consultant is anchored on the unique "About Paragon Architecture" narrative line.
+DELIVERY_SOURCE = Source(87, "Delivered to District on:\n02.19.2025\n\n3\nTHE IMPORTANCE OF")
+CONSULTANT_SOURCE = Source(87, "Paragon Architecture got its humble start in 2010")
+PLAN_DELIVERED = "Feb 2025"  # from DELIVERY_SOURCE: "Delivered to District on: 02.19.2025"
+
+
 @dataclass(frozen=True)
 class CostRow:
     """One row of the tiered cost tables (dollars, verbatim from the source)."""
@@ -137,30 +149,50 @@ NEW_SCHOOLS = (
     ("New Meramec Elementary", 43),
 )
 NEW_SCHOOLS_TOTAL_M = 129
-OPTIONS_SOURCE = Source(83, "Total potential future long-range projects at each site")
+# The options table is duplicated across two overlapping chunks (the funding page
+# and the summary page). Anchoring on the table header alone is ambiguous, so the
+# anchor extends to the options-notes/Summary boundary that is unique to the chunk
+# carrying the full options table.
+OPTIONS_SOURCE = Source(83, "Does not include acquisition and renovation of swing space\n\nSummary")
 
 
-# --- Funding context (#q06ae and #q06af / doc 83).
+# --- Funding context (doc 83). Each fact carries its own verbatim anchor so it is
+# grounded individually rather than under one page-level citation.
 @dataclass(frozen=True)
 class FundingFact:
     label: str
     value: str
+    source: Source
 
 
-# The "$90M without a tax increase" line is the plan's Feb 2025 PROJECTION, not the
-# funding reality: the actual measure put to voters was a $135M bond at the higher
-# $0.6320 levy (see BOND below). It is labelled as a projection here so the page
-# never presents it as the adopted figure.
+# The bonding-capacity line is the plan's Feb 2025 PROJECTION, not the funding
+# reality: the actual measure put to voters was a $135M bond at the higher $0.6320
+# levy (see BOND below). It is labelled as a projection here so the page never
+# presents it as the adopted figure. The plan prints a tax-rate-framing clause
+# alongside this figure; that clause is campaign-style framing and is deliberately
+# not carried over (the value is given on its own).
 FUNDING_FACTS = (
-    FundingFact("Current debt", "$34,752,000, fully paid off by March 1, 2029"),
-    FundingFact("Current debt levy", "$0.5110 per $100 assessed valuation"),
+    FundingFact(
+        "Current debt",
+        "$34,752,000, fully paid off by March 1, 2029",
+        Source(83, "Current Debt = $34,752,000 \nto be fully paid off by March 1, 2029"),
+    ),
+    FundingFact(
+        "Current debt levy",
+        "$0.5110 per $100 assessed valuation",
+        Source(83, "Current Debt Levy = $0.5110 \nper $100 assessed valuation"),
+    ),
     FundingFact(
         "Bonding capacity (Feb 2025 projection)",
-        "Up to $90M of bonds without a tax increase",
+        "Up to $90M of bonds",
+        Source(83, "district can borrow up to $90m"),
     ),
-    FundingFact("Annual capital budget", "≈$4M per year"),
+    FundingFact(
+        "Annual capital budget",
+        "≈$4M per year",
+        Source(83, "The district spends an average of $4m annually for capital maintenance"),
+    ),
 )
-FUNDING_SOURCE = Source(83, "Will support up to $90M of bonds")
 
 
 # --- The GO bond (official public records: the board resolution + county ballot).
@@ -182,10 +214,9 @@ class CitedChunk:
 class BondMeasure:
     """The general-obligation bond placed on the ballot, with its sources.
 
-    Every field is verbatim from the official board resolution and the county
-    ballot; ``result`` is an operator-stated fact whose certified-result citation
-    is not yet located, so ``result_citation`` is None and the page marks the
-    source slot pending rather than omitting or fabricating it.
+    Every field is verbatim from the official board resolution, the county ballot,
+    and the St. Louis County certified results. ``result`` / ``result_detail`` are
+    the certified outcome, cited to ``result_citation``.
     """
 
     amount: str
@@ -196,7 +227,8 @@ class BondMeasure:
     resolution_source: CitedChunk
     ballot_source: CitedChunk
     result: str
-    result_citation: CitedChunk | None
+    result_detail: str
+    result_citation: CitedChunk
 
 
 BOND = BondMeasure(
@@ -207,8 +239,11 @@ BOND = BondMeasure(
     estimated_levy="$0.6320 per $100 assessed valuation",
     resolution_source=CitedChunk(8140),  # board minutes Jan 21, 2026 (doc 501, #q1fcc)
     ballot_source=CitedChunk(1755),  # county ballot proposition (doc 84, #q06db)
-    result="Passed",
-    result_citation=None,  # certified results not yet located; slot marked pending
+    result="Approved",
+    # Verbatim from the St. Louis County certified results (doc 504, chunk 8710):
+    # "YES 2,516 89.25% / NO 303 10.75% ... Four-Sevenths Majority Required".
+    result_detail="2,516 yes (89.25%) to 303 no; four-sevenths majority required",
+    result_citation=CitedChunk(8710),  # St. Louis County certified results (doc 504)
 )
 
 # --- District-wide priority themes (#q2015 / doc 87), in the plan's order.
@@ -218,7 +253,9 @@ DISTRICT_THEMES = (
     "Accessibility & Inclusiveness",
     "Curriculum & Programming",
 )
-PRIORITIES_SOURCE = Source(87, "DISTRICT-WIDE COMMON PROJECT THEMES")
+# The "DISTRICT-WIDE COMMON PROJECT THEMES" heading appears in more than one chunk;
+# the unique anchor is the sentence that introduces the four themes.
+PRIORITIES_SOURCE = Source(87, "referred to as “District-Wide Common Master Plan Themes,”")
 
 
 @dataclass(frozen=True)
@@ -237,4 +274,8 @@ TIMELINE = (
     Milestone("January 2025", "Board of Education retreat: design options refined"),
     Milestone("Feb 19, 2025", "Final presentation by Paragon; Volume I delivered"),
 )
-TIMELINE_SOURCE = Source(87, "BOARD OF EDUCATION RETREAT")
+# The bare "BOARD OF EDUCATION RETREAT" heading recurs across chunks; the unique
+# anchor is the December-2024 Board retreat narrative passage.
+TIMELINE_SOURCE = Source(
+    87, "At the Board Retreat, the focus shifted to reviewing the proposed design options"
+)

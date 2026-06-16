@@ -289,3 +289,26 @@ class TestResolveSourceAnchor:
         )
         assert second == 101
         assert len(client.queries) == 1
+
+    def test_anchor_extended_past_overlap_disambiguates(self) -> None:
+        # The facilities-plan anchors rely on this: a phrase duplicated across two
+        # overlapping chunks is ambiguous, but extending it into text unique to one
+        # chunk lands a single match. (The real fix for the delivery-date and
+        # options-table anchors, which the chunker's overlap duplicated.)
+        overlap = [
+            {"id": 300, "chunk_index": 0, "content": "Delivered to District on: 02.19.2025"},
+            {
+                "id": 301,
+                "chunk_index": 1,
+                "content": "Delivered to District on: 02.19.2025 THE IMPORTANCE OF planning.",
+            },
+        ]
+        # Bare date line is in both chunks -> ambiguous -> None.
+        assert (
+            resolve_source_anchor(_Client([list(overlap)]), 87, "Delivered to District on") is None
+        )
+        # Extended into the unique "THE IMPORTANCE OF" run -> exactly one match.
+        extended = resolve_source_anchor(
+            _Client([list(overlap)]), 87, "02.19.2025 THE IMPORTANCE OF"
+        )
+        assert extended == 301

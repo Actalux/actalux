@@ -37,9 +37,9 @@
       <div class="stat-label src-note">counted from the location table below</div>
     </div>
     <div class="stat-tile">
-      <div class="stat-value">Feb 2025</div>
-      <div class="stat-label">delivered by {{ plan_consultant }}</div>
-      <div class="stat-label">{{ src(timeline_chunk_id) }}</div>
+      <div class="stat-value">{{ plan_delivered }}</div>
+      <div class="stat-label">delivered to the district {{ src(delivery_chunk_id) }}</div>
+      <div class="stat-label">by {{ plan_consultant }} {{ src(consultant_chunk_id) }}</div>
     </div>
   </div>
 </div>
@@ -210,10 +210,11 @@
 {# H. Funding & the bond. The $90M line is the plan's Feb 2025 projection; the
    measure actually put to voters was the $135M bond shown below. #}
 <section class="fp-section">
-  <div class="section-label">Funding {{ src(funding_chunk_id) }}</div>
+  <div class="section-label">Funding</div>
   <ul class="fp-facts">
-    {% for f in funding_facts %}
-    <li><span class="fact-label">{{ f.label }}</span><span>{{ f.value }}</span></li>
+    {% for f, chunk_id in funding_facts %}
+    <li><span class="fact-label">{{ f.label }}</span><span>{{ f.value }}
+      {{ src(chunk_id) }}</span></li>
     {% endfor %}
   </ul>
 
@@ -228,8 +229,8 @@
         {{ src(bond.ballot_source.chunk_id, prefix="Ballot") }}</span></li>
       <li><span class="fact-label">Estimated debt-service levy</span><span>{{ bond.estimated_levy }}
         {{ src(bond.ballot_source.chunk_id, prefix="Ballot") }}</span></li>
-      <li><span class="fact-label">Result</span><span>{{ bond.result }}
-        {% if bond.result_citation %}{{ src(bond.result_citation.chunk_id, prefix="Result") }}{% else %}<span class="pending">certified-result citation pending</span>{% endif %}</span></li>
+      <li><span class="fact-label">Result</span><span>{{ bond.result }} — {{ bond.result_detail }}
+        {{ src(bond.result_citation.chunk_id, prefix="Certified results") }}</span></li>
     </ul>
   </div>
 </section>
