@@ -247,6 +247,32 @@ class TestCanonicalPick:
         canonical, _others = dedupe.pick_canonical(cluster)
         assert canonical["id"] == 5  # longer content
 
+    def test_draft_loses_to_final_even_at_lower_id(self) -> None:
+        # [#18 draft, #230 final], identical content: the provisional penalty must
+        # beat the lower-id tie-break so the final (not the draft) is canonical.
+        cluster = dedupe.Cluster(
+            rows=[
+                _row(18, source_file="MM draft.pdf", content=_BUDGET_BODY),
+                _row(230, source_file="Meeting Minutes.pdf", content=_BUDGET_BODY),
+            ],
+            reasons=["content_hash"],
+        )
+        canonical, _others = dedupe.pick_canonical(cluster)
+        assert canonical["id"] == 230
+
+    def test_copy_of_loses_to_original_even_with_more_content(self) -> None:
+        # [#269 original, #270 "Copy of ..."]: the copy carries more text, but the
+        # provisional penalty outranks content length, so the original is canonical.
+        cluster = dedupe.Cluster(
+            rows=[
+                _row(269, source_file="Budget.html", content="short"),
+                _row(270, source_file="Copy of Budget.html", content=_BUDGET_BODY),
+            ],
+            reasons=["text-overlap"],
+        )
+        canonical, _others = dedupe.pick_canonical(cluster)
+        assert canonical["id"] == 269
+
 
 class TestPlanDedupe:
     def test_plan_emits_supersession_edges_to_canonical(self) -> None:

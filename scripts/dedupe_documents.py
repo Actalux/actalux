@@ -248,19 +248,30 @@ def cluster_documents(
     return clusters
 
 
-def _canonical_rank(row: dict[str, Any]) -> tuple[int, int, int]:
+# Filename markers that signal a provisional/secondary copy that should lose the
+# canonical pick to its sibling: a working "draft" (vs the adopted/final version)
+# and a "Copy of ..." export (vs the original). Checked on the filename so a
+# longer draft never beats the shorter final on content length alone.
+_PROVISIONAL_RE = re.compile(r"\b(draft|copy of)\b")
+
+
+def _canonical_rank(row: dict[str, Any]) -> tuple[int, int, int, int]:
     """Sort key for canonical preference within a cluster (lower = more canonical).
 
     Preference order, most-preferred first:
       1. embeddable copy — a PDF source_file, or a doc with a video_id (both
          render in-window, unlike an HTML/text twin that falls back to links);
-      2. richer content (longer extracted text = more searchable);
-      3. lower id (older, stable) as the final deterministic tie-break.
+      2. not a provisional copy — a "draft" or "Copy of ..." twin yields to its
+         final/original sibling even when it happens to carry more text;
+      3. richer content (longer extracted text = more searchable);
+      4. lower id (older, stable) as the final deterministic tie-break.
     """
     source_file = (row.get("source_file") or "").lower()
     is_embeddable = source_file.endswith(".pdf") or bool(row.get("video_id"))
+    is_provisional = bool(_PROVISIONAL_RE.search(source_file))
     return (
         0 if is_embeddable else 1,
+        1 if is_provisional else 0,
         -len(row.get("content") or ""),
         row.get("id", 0),
     )
