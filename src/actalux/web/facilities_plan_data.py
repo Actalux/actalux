@@ -260,22 +260,88 @@ PRIORITIES_SOURCE = Source(87, "referred to as “District-Wide Common Master Pl
 
 @dataclass(frozen=True)
 class Milestone:
+    """One dated step in the facilities initiative, with its own citation.
+
+    ``source`` is either a ``Source`` (verbatim anchor resolved at render time) or a
+    ``CitedChunk`` (a stable chunk id), so every milestone deep-links to the exact
+    passage it was read from — the same per-figure grounding the funding facts use.
+    """
+
     when: str
     title: str
+    source: Source | CitedChunk
 
 
-# --- Process timeline (#q1ff7 schedule + #q2013/#q2014 retreats / doc 87).
+# --- Initiative timeline. This spans the FULL arc — plan development (2024-2025),
+# bond authorization (Jan 2026), voter approval (Apr 2026), and the phased
+# implementation now underway — not just the plan document's Feb 2025 delivery.
+# Month-only schedule items map to the plan's stated 2024-2025 window; days are
+# given only where the source prints one. Each milestone carries its own citation.
+#
+# Where dates: doc 87's LRFMP Schedule lists "May: Kickoff... June: Conduct building
+# assessments...", the deliverables list the six Steering Committee meetings, and the
+# retreat block prints "Dec. 4, 2024 / Jan. 8, 2025 / Jan. 22, 2025: BOE Retreat".
+# The schedule block is duplicated across overlapping chunks, so each schedule anchor
+# extends to a chunk-unique boundary to identify a single passage.
 TIMELINE = (
-    Milestone("April 2024", "Board selects Paragon Architecture to lead the plan"),
-    Milestone("May-July 2024", "Kickoff, building assessments, and tours with principals"),
-    Milestone("Aug-Oct 2024", "Steering Committee and building-level Sub-Committee meetings"),
-    Milestone("Nov 13, 2024", "Volume II (Demographic Study) delivered to the district"),
-    Milestone("December 2024", "Board of Education retreat: review of options and cost estimates"),
-    Milestone("January 2025", "Board of Education retreat: design options refined"),
-    Milestone("Feb 19, 2025", "Final presentation by Paragon; Volume I delivered"),
-)
-# The bare "BOARD OF EDUCATION RETREAT" heading recurs across chunks; the unique
-# anchor is the December-2024 Board retreat narrative passage.
-TIMELINE_SOURCE = Source(
-    87, "At the Board Retreat, the focus shifted to reviewing the proposed design options"
+    Milestone(
+        "May 2024",
+        "Kickoff meeting and Board of Education introduction",
+        Source(
+            87,
+            "solutions that benefit the entire Clayton Community.\n\n10\n"
+            "LRFMP Schedule:\nMay:   Kickoff meeting and BOE introduction",
+        ),
+    ),
+    Milestone(
+        "Summer 2024",
+        "District-wide building assessments",
+        Source(
+            87,
+            "solutions that benefit the entire Clayton Community.\n\n10\n"
+            "LRFMP Schedule:\nMay:   Kickoff meeting and BOE introduction\n"
+            "June:   Conduct building assessments",
+        ),
+    ),
+    Milestone(
+        "Aug 2024 - Jan 2025",
+        "Steering Committee and building-level Sub-Committee meetings",
+        Source(87, "community connections for years to come. INTRODUCTION\n\n4"),
+    ),
+    Milestone(
+        "Nov 13, 2024",
+        "Volume II (Demographic Study) delivered to the district",
+        Source(88, "to the district on Nov. 13, 2024"),
+    ),
+    Milestone(
+        "Dec 4, 2024 - Jan 22, 2025",
+        "Board of Education retreats on options, costs, and funding",
+        Source(
+            87,
+            "Dec. 4, 2024: BOE Retreat\n•\t\nJan. 8, 2025: BOE Retreat (virtual)\n•\t\n"
+            "Jan. 22, 2025: BOE Retreat and Master Plan Update\n•\t\n"
+            "Feb. 19, 2025: BOE Final Presentation of Long-Range Facility Master Plan"
+            "\n\nThank you",
+        ),
+    ),
+    Milestone(
+        "Feb 19, 2025",
+        "Volume I (the master plan) delivered to the district",
+        DELIVERY_SOURCE,  # reuses the verified delivery-date anchor (chunk 8177)
+    ),
+    Milestone(
+        "Jan 21, 2026",
+        "Board adopts the resolution calling the $135M bond election",
+        CitedChunk(8140),  # board minutes Jan 21, 2026 (doc 501, #q1fcc) — as the bond cite
+    ),
+    Milestone(
+        "April 7, 2026",
+        "Voters approve Proposition O (2,516 to 303)",
+        CitedChunk(8710),  # St. Louis County certified results (doc 504)
+    ),
+    Milestone(
+        "Underway",
+        "Phased implementation of prioritized projects",
+        Source(505, "committed to a phased approach"),
+    ),
 )

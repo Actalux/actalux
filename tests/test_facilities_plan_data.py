@@ -121,3 +121,52 @@ class TestLedeGrounding:
         # ambiguous bare "Paragon Architecture" string.
         assert "Paragon Architecture" in fpd.CONSULTANT_SOURCE.anchor
         assert fpd.PLAN_DELIVERED == "Feb 2025"
+
+
+class TestTimelineGrounding:
+    """The timeline spans the full initiative and grounds every milestone."""
+
+    def test_every_milestone_has_a_citation(self) -> None:
+        # Each milestone carries its own Source (anchor) or CitedChunk (chunk id);
+        # none is left ungrounded.
+        assert fpd.TIMELINE  # non-empty
+        for m in fpd.TIMELINE:
+            assert isinstance(m.source, (fpd.Source, fpd.CitedChunk))
+            if isinstance(m.source, fpd.Source):
+                assert m.source.anchor.strip()
+            else:
+                assert m.source.chunk_id > 0
+
+    def test_no_april_2024_selection_milestone(self) -> None:
+        # The ungrounded "April 2024 Board selects Paragon Architecture" step was
+        # dropped — there is no April-2024 selection basis in the cited records.
+        for m in fpd.TIMELINE:
+            assert "selects" not in m.title.lower()
+            assert m.when != "April 2024"
+
+    def test_timeline_spans_beyond_plan_delivery(self) -> None:
+        # The arc must reach bond authorization, voter approval, and implementation
+        # — not end at the Feb 2025 plan-document delivery.
+        titles = " ".join(m.title.lower() for m in fpd.TIMELINE)
+        whens = " ".join(m.when.lower() for m in fpd.TIMELINE)
+        assert "proposition o" in titles  # voter approval step
+        assert "bond election" in titles  # bond authorization step
+        assert "implementation" in titles  # implementation underway
+        assert "2026" in whens  # the arc extends into 2026
+
+    def test_bond_and_approval_milestones_reuse_verified_chunks(self) -> None:
+        # The bond-resolution and voter-approval milestones cite the same verified
+        # chunks the bond block uses (8140 / 8710), by stable chunk id.
+        cited = {m.source.chunk_id for m in fpd.TIMELINE if isinstance(m.source, fpd.CitedChunk)}
+        assert 8140 in cited  # board resolution (doc 501)
+        assert 8710 in cited  # certified results (doc 504)
+
+    def test_no_milestone_anchor_carries_tax_framing(self) -> None:
+        # No milestone anchor string introduces the campaign tax-rate framing or the
+        # campaign URL into Actalux's own copy.
+        for m in fpd.TIMELINE:
+            if isinstance(m.source, fpd.Source):
+                anchor = m.source.anchor.lower()
+                assert "without a tax increase" not in anchor
+                assert "without increasing" not in anchor
+                assert "claytonpropo" not in anchor

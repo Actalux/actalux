@@ -686,6 +686,14 @@ def _facilities_plan_context(client: Client) -> dict[str, Any]:
     def link(source: fpd.Source) -> int | None:
         return resolve_source_anchor(client, source.doc_id, source.anchor, cache=cache)
 
+    def cite(source: fpd.Source | fpd.CitedChunk) -> int | None:
+        """Resolve a citation to a chunk id whether it is an anchor or a chunk id.
+
+        Milestones (and the bond) cite some passages by verbatim anchor and others
+        by a stable chunk id; this collapses both to the chunk id the template links.
+        """
+        return source.chunk_id if isinstance(source, fpd.CitedChunk) else link(source)
+
     tiers = [
         TierBar(label=name, amount=fpd.TIER_TOTALS[name.lower()], immediate=(name == "Red"))
         for name, _gloss in fpd.TIERS
@@ -694,6 +702,10 @@ def _facilities_plan_context(client: Client) -> dict[str, Any]:
     # Each funding fact carries its own anchor; pair each with its resolved chunk id
     # so the template can link the figure to the exact passage it was read from.
     funding_facts = [(f, link(f.source)) for f in fpd.FUNDING_FACTS]
+
+    # Each milestone carries its own citation (anchor or chunk id); pair each with
+    # its resolved chunk id so the template links every step to its source passage.
+    timeline = [(m, cite(m.source)) for m in fpd.TIMELINE]
 
     return {
         "plan_title": fpd.PLAN_TITLE,
@@ -722,8 +734,7 @@ def _facilities_plan_context(client: Client) -> dict[str, Any]:
         "bond": fpd.BOND,
         "district_themes": fpd.DISTRICT_THEMES,
         "priorities_chunk_id": link(fpd.PRIORITIES_SOURCE),
-        "timeline": fpd.TIMELINE,
-        "timeline_chunk_id": link(fpd.TIMELINE_SOURCE),
+        "timeline": timeline,
     }
 
 
