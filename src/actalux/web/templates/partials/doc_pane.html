@@ -1,10 +1,20 @@
 {# Document-level reader pane (browse): summary + original artifact, no cited
    passage (browse opens a whole document, not a search hit). Mirrors the chrome
-   of source_pane.html so the reader column looks consistent either way. #}
+   of source_pane.html so the reader column looks consistent either way.
+
+   source_url is always the real origin link; stored_file_url(source_file)
+   provides the embeddable PDF URL. The two are kept separate: origin links
+   were historically overwritten by upload_to_storage.py (A1 bug). #}
 {% set is_video = document.video_id %}
-{% set is_pdf = document.source_url and document.source_url.lower().endswith('.pdf') %}
+{# Gate PDF embed on the stored file extension BEFORE calling stored_file_url so
+   non-PDF source files (e.g. .txt) never trigger a config load. #}
+{% set _source_file = document.source_file or '' %}
+{% set _is_pdf_source = _source_file.lower().endswith('.pdf') %}
+{% set _pdf_embed_url = stored_file_url(_source_file) if _is_pdf_source else '' %}
+{% set is_pdf = _is_pdf_source and _pdf_embed_url %}
 {% set is_transcript = document.source_portal == 'youtube' %}
-{# A transcript's "original" is its video, never the .txt we derived it from. #}
+{# A transcript's "original" is its video, never the .txt we derived it from.
+   For all other docs, source_url is the real origin — shown only when non-empty. #}
 {% set original_url = ('https://www.youtube.com/watch?v=' ~ document.video_id) if document.video_id else ('' if is_transcript else document.source_url) %}
 {% set cue = 0 %}
 
@@ -31,7 +41,7 @@
 <section class="original-block">
   <div class="block-label">Original document</div>
   <iframe class="pdf-frame"
-          src="{{ document.source_url | safe_url }}"
+          src="{{ _pdf_embed_url | safe_url }}"
           title="{{ document.meeting_title or 'Source PDF' }}"
           loading="lazy"></iframe>
 </section>

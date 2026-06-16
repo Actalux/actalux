@@ -2,10 +2,25 @@
 {% block title %}{{ document | display_title }}{% endblock %}
 {% block content %}
 
-{# A transcript's "original" is its YouTube video, never the .txt we derived it
-   from; for everything else the original is the source_url. #}
+{# Flags for the best-representation logic:
+   - is_video: embed the YouTube player (highest fidelity for board-meeting docs)
+   - is_pdf:   embed the stored PDF via iframe (stored_file_url, not source_url);
+               gated on source_file extension BEFORE calling stored_file_url so
+               non-PDF docs never trigger a config load.
+   - original_url: real-origin link (Diligent/school-site); shown only when non-empty
+   A transcript's "original" is its YouTube video, never the derived .txt.
+   source_url is always the real origin link — used for "Open original ↗" only. #}
 {% set is_transcript = document.source_portal == 'youtube' %}
+{% set is_video = document.video_id %}
+{% set _source_file = document.source_file or '' %}
+{# Check extension first so stored_file_url is only called for actual PDFs. #}
+{% set _is_pdf_source = (not is_video) and _source_file.lower().endswith('.pdf') %}
+{% set _pdf_embed_url = stored_file_url(_source_file) if _is_pdf_source else '' %}
+{% set is_pdf = _is_pdf_source and _pdf_embed_url %}
 {% set original_url = ('https://www.youtube.com/watch?v=' ~ document.video_id) if document.video_id else ('' if is_transcript else document.source_url) %}
+{# Budget and audit document types reference the structured Budget page, where
+   figures are curated with per-row citations and drill-down charts. #}
+{% set is_budget_or_audit = document.document_type in ('budget', 'audit') %}
 
 <section class="pane-header">
   <h2>Document</h2>
@@ -35,7 +50,7 @@
 
     {% if original_url %}
       <span class="label">Original</span>
-      <span class="value"><a href="{{ original_url | safe_url }}" target="_blank" rel="noopener" style="color: var(--accent); word-break: break-all;">{{ 'Watch on YouTube →' if document.video_id else 'Open original →' }}</a></span>
+      <span class="value"><a href="{{ original_url | safe_url }}" target="_blank" rel="noopener" style="color: var(--accent); word-break: break-all;">{{ 'Watch on YouTube →' if is_video else 'Open original →' }}</a></span>
     {% endif %}
 
     {% if document.version %}
@@ -51,15 +66,46 @@
 
   <article class="doc-page">
     <h1>{{ document | display_title }}</h1>
+
+    {# Budget / audit callout: directs readers to the structured Budget page, which
+       carries curated line-item figures with per-row citations (where available).
+       Neutral language — the Budget page may not include every doc's figures. #}
+    {% if is_budget_or_audit %}
+    <div style="margin-bottom: var(--s-5); padding: var(--s-4); border-left: 3px solid var(--accent); background: var(--bg-2, #f9f6f1);">
+      <p style="margin: 0; font-family: var(--font-ui, Geist, sans-serif); font-size: 14px; color: var(--fg-2, var(--fg));">
+        See the <a href="{{ base }}/budget" style="color: var(--accent);">Budget topic page</a>
+        for structured budget figures and cited records.
+      </p>
+    </div>
+    {% endif %}
+
+    {# Best representation: video embed → PDF iframe → reflowed text.
+       Always show "Open original ↗" in the actions sidebar when source_url is set. #}
+    {% if is_video %}
+    <section class="original-block" style="margin-bottom: var(--s-5);">
+      <div class="block-label">Board meeting video</div>
+      {% include "partials/_video_embed.html" %}
+    </section>
+    {% elif is_pdf %}
+    <section class="original-block" style="margin-bottom: var(--s-5);">
+      <div class="block-label">Original document</div>
+      <iframe class="pdf-frame"
+              src="{{ _pdf_embed_url | safe_url }}"
+              title="{{ document.meeting_title or 'Source PDF' }}"
+              loading="lazy"></iframe>
+    </section>
+    {% else %}
+    {# Reflowed text — the extracted content in readable form. #}
     {% for para in document.content | content_paragraphs %}
     <p class="doc-para">{{ para }}</p>
     {% endfor %}
+    {% endif %}
   </article>
 
   <aside class="doc-toc">
     <span class="label">Actions</span>
     <a href="{{ base }}/search?q={{ document.meeting_title or '' }}">Find quotes from this doc</a>
-    {% if original_url %}<a href="{{ original_url | safe_url }}" target="_blank" rel="noopener">{{ 'Watch on YouTube' if document.video_id else 'Open original' }}</a>{% endif %}
+    {% if original_url %}<a href="{{ original_url | safe_url }}" target="_blank" rel="noopener">{{ 'Watch on YouTube' if is_video else 'Open original' }}</a>{% endif %}
     <a href="https://github.com/Actalux/actalux/issues/new?title=Error+report+doc+{{ document.id }}" target="_blank" rel="noopener">Report an error</a>
 
     <span class="label" style="margin-top: var(--s-5);">Browse</span>

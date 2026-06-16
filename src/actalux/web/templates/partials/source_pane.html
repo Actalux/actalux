@@ -1,18 +1,29 @@
 {# Source pane — "passage + original" reader (mockup C).
    Leads with the cited passage (verbatim, reflowed, key sentence highlighted),
    then shows the original artifact in-window below:
-     - PDF source_url -> browser-native iframe viewer
      - YouTube video  -> player cued to the cited moment
+     - PDF source_file -> browser-native iframe via stored_file_url (never source_url
+                          for the embed, because source_url is the origin link)
      - .txt / .html    -> no embed; neighbour chunks give the context, and
                           "Open original" links out.
    The original (PDF/video) is the surrounding context for PDF/video results,
-   so neighbour chunks are only rendered when there is no embed. #}
+   so neighbour chunks are only rendered when there is no embed.
+
+   source_url is always the real origin (Diligent / school-site URL); it is
+   shown as "Open original ↗" and never used as the iframe src.
+   stored_file_url(source_file) provides the embeddable storage URL for PDFs. #}
 {% set ctx_chunk = chunk %}
 {% set is_video = document.video_id %}
-{% set is_pdf = document.source_url and document.source_url.lower().endswith('.pdf') %}
+{# Gate PDF embed on the stored file extension BEFORE calling stored_file_url so
+   non-PDF source files (e.g. .txt) never trigger a config load. #}
+{% set _source_file = document.source_file or '' %}
+{% set _is_pdf_source = _source_file.lower().endswith('.pdf') %}
+{% set _pdf_embed_url = stored_file_url(_source_file) if _is_pdf_source else '' %}
+{% set is_pdf = _is_pdf_source and _pdf_embed_url %}
 {% set is_transcript = document.source_portal == 'youtube' %}
 {% set cue = ctx_chunk.start_seconds if (is_video and ctx_chunk.start_seconds) else 0 %}
-{# A transcript's "original" is its video, never the .txt we derived it from. #}
+{# A transcript's "original" is its video, never the .txt we derived it from.
+   For all other docs, source_url is the real origin — shown only when non-empty. #}
 {% set original_url = ('https://www.youtube.com/watch?v=' ~ document.video_id) if document.video_id else ('' if is_transcript else document.source_url) %}
 
 <div class="provenance">
@@ -53,7 +64,7 @@
 <section class="original-block">
   <div class="block-label">Original document</div>
   <iframe class="pdf-frame"
-          src="{{ document.source_url | safe_url }}"
+          src="{{ _pdf_embed_url | safe_url }}"
           title="{{ document.meeting_title or 'Source PDF' }}"
           loading="lazy"></iframe>
 </section>

@@ -215,10 +215,15 @@ def _to_date(value: str | None) -> date | None:
 
 
 def _source_url(doc: dict) -> str | None:
-    """The original artifact's URL: a video's watch page, else the stored URL.
+    """The real origin URL for a document, suitable for "Open original ↗" links.
 
-    A transcript's source is its YouTube video, never the derived .txt; a
-    transcript with no public video has no external source URL.
+    Returns the YouTube watch page for board-meeting video docs; returns None
+    for transcripts without a public video (source is derived .txt, not an
+    embeddable origin); returns ``documents.source_url`` as-is for everything
+    else — that column holds the Diligent/school-site origin, not a storage URL.
+
+    Never returns a Supabase Storage URL. PDF embeds are built separately via
+    ``stored_file_url(source_file)`` at the template/call site.
     """
     if doc.get("video_id"):
         return f"https://www.youtube.com/watch?v={doc['video_id']}"
