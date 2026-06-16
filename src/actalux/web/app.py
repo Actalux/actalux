@@ -58,6 +58,7 @@ from actalux.web.charts import (
 )
 from actalux.web.display import display_title, first_sentence, source_label
 from actalux.web.retrieval import build_reranker, embed_query, get_config, get_db
+from actalux.web.storage import stored_file_url
 from actalux.web.text_snippets import (
     content_paragraphs,
     extractive_snippet,
@@ -192,6 +193,10 @@ templates.env.filters["source_label"] = source_label
 templates.env.filters["first_sentence"] = first_sentence
 templates.env.filters["usd"] = usd
 templates.env.filters["safe_url"] = _safe_url
+# Public bucket URL for embedding/downloading a stored file (PDF only at the
+# call sites). Lazy config load, so it costs nothing unless a template uses it.
+templates.env.filters["stored_file_url"] = stored_file_url
+templates.env.globals["stored_file_url"] = stored_file_url
 
 # In-process cache for topic page queries (1-hour TTL)
 _topic_cache: dict[str, tuple[float, list[Any]]] = {}
