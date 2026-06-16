@@ -1,13 +1,18 @@
 """Tests for sentence-level extractive snippeting (text_snippets module)."""
 
 from actalux.web.text_snippets import (
+    TRANSCRIPT_CAPTION_LABEL,
     best_sentence_index,
+    clean_text_light,
     content_paragraphs,
+    dedup_rolling_captions,
     extract_query_terms,
     extractive_snippet,
     mark_terms,
+    reflow_transcript,
     split_for_highlight,
     split_sentences,
+    strip_transcript_timestamps,
 )
 
 
@@ -123,3 +128,162 @@ class TestSplitForHighlight:
 
     def test_empty_content(self) -> None:
         assert split_for_highlight("", "budget") == ("", "", "")
+
+
+# ── Transcript cleanup helpers ────────────────────────────────────────────────
+
+
+class TestStripTranscriptTimestamps:
+    """Standalone timestamp lines are dropped; embedded text is preserved."""
+
+    def test_drops_bracket_mm_ss(self) -> None:
+        text = "Some caption.\n[02:14]\nMore caption."
+        result = strip_transcript_timestamps(text)
+        assert "[02:14]" not in result
+        assert "Some caption." in result
+        assert "More caption." in result
+
+    def test_drops_hh_mm_ss(self) -> None:
+        text = "First line.\n0:12:34\nSecond line."
+        result = strip_transcript_timestamps(text)
+        assert "0:12:34" not in result
+        assert "First line." in result
+        assert "Second line." in result
+
+    def test_drops_mm_ss_without_brackets(self) -> None:
+        text = "Before.\n05:30\nAfter."
+        result = strip_transcript_timestamps(text)
+        assert "05:30" not in result
+        assert "Before." in result
+        assert "After." in result
+
+    def test_preserves_time_embedded_in_sentence(self) -> None:
+        # A timestamp within a sentence must NOT be stripped.
+        text = "The meeting began at 7:30 and adjourned."
+        result = strip_transcript_timestamps(text)
+        assert "7:30" in result
+
+    def test_empty_input(self) -> None:
+        assert strip_transcript_timestamps("") == ""
+
+    def test_no_timestamps(self) -> None:
+        text = "Nothing to strip here."
+        assert strip_transcript_timestamps(text) == text
+
+
+class TestDedupRollingCaptions:
+    """Rolling-caption prefix repetition is collapsed when the overlap is long enough."""
+
+    def test_removes_duplicate_prefix_line(self) -> None:
+        # Classic rolling-caption pattern: previous line reappears at start of next.
+        # The prefix is 4 words, which meets the minimum-overlap threshold.
+        text = "and the board approved\nand the board approved the budget"
+        result = dedup_rolling_captions(text)
+        # Only the longer (supersetting) line survives.
+        assert "and the board approved the budget" in result
+        # The shorter duplicate prefix is gone.
+        assert result.count("and the board approved") == 1
+
+    def test_short_prefix_not_collapsed_for_verbatim_safety(self) -> None:
+        # "Thank you" → "Thank you for coming": a 2-word prefix — NOT collapsed
+        # because the threshold guards against removing intentional repeated speech.
+        text = "Thank you\nThank you for coming"
+        result = dedup_rolling_captions(text)
+        # Both lines survive (verbatim safety).
+        assert "Thank you\n" in result
+        assert "Thank you for coming" in result
+
+    def test_non_overlapping_lines_both_kept(self) -> None:
+        text = "The president called the meeting to order.\nThe secretary read the minutes."
+        result = dedup_rolling_captions(text)
+        assert "president" in result
+        assert "secretary" in result
+
+    def test_empty_lines_preserved(self) -> None:
+        text = "First.\n\nSecond."
+        result = dedup_rolling_captions(text)
+        assert "\n\n" in result
+
+    def test_empty_input(self) -> None:
+        assert dedup_rolling_captions("") == ""
+
+    def test_single_line_unchanged(self) -> None:
+        text = "Just one line."
+        assert dedup_rolling_captions(text) == text
+
+
+class TestReflowTranscript:
+    """End-to-end transcript reflow: timestamps stripped, paragraphed (no dedup in pipeline)."""
+
+    def test_removes_timestamps_and_collapses_lines(self) -> None:
+        text = "[00:05]\nwelcome. I apologize that we are a few\nminutes late getting\nstarted."
+        result = reflow_transcript(text)
+        # Timestamp gone, intra-block newlines collapsed.
+        assert "[00:05]" not in " ".join(result)
+        assert any("welcome" in p for p in result)
+        # All words are joined into flowing text.
+        assert any("minutes late getting started" in p for p in result)
+
+    def test_splits_on_blank_lines(self) -> None:
+        # Blocks must be long enough (>= _MIN_PARAGRAPH_WORDS=8) to not be merged.
+        text = (
+            "The board called the meeting to order at seven PM.\n\n"
+            "The superintendent presented the annual report to the board."
+        )
+        result = reflow_transcript(text)
+        assert len(result) == 2
+        assert "called the meeting" in result[0]
+        assert "superintendent" in result[1]
+
+    def test_merges_short_trailing_fragment(self) -> None:
+        # A very short block (fewer than _MIN_PARAGRAPH_WORDS) gets merged.
+        text = (
+            "The board discussed the curriculum and budget planning.\n\n"
+            "Thank you."  # too short to stand alone
+        )
+        result = reflow_transcript(text)
+        # Short fragment merged into the previous paragraph.
+        assert len(result) == 1
+        assert "Thank you." in result[0]
+
+    def test_empty_input(self) -> None:
+        assert reflow_transcript("") == []
+
+    def test_verbatim_word_preservation(self) -> None:
+        # Only whitespace is modified — every word must survive.
+        text = "the board voted unanimously to approve the FY2025 operating budget"
+        result = reflow_transcript(text)
+        joined = " ".join(result)
+        assert "unanimously" in joined
+        assert "FY2025" in joined
+        assert "operating budget" in joined
+
+    def test_caption_label_constant_is_non_empty(self) -> None:
+        # The label constant is used in the template; verify it's non-empty.
+        assert TRANSCRIPT_CAPTION_LABEL
+        assert "captions" in TRANSCRIPT_CAPTION_LABEL.lower()
+
+
+class TestCleanTextLight:
+    """Light whitespace normalizer for non-transcript chunk text."""
+
+    def test_collapses_whitespace_runs(self) -> None:
+        assert clean_text_light("hello   world") == "hello world"
+
+    def test_collapses_newlines_to_space(self) -> None:
+        # Does NOT split on blank lines (contrast with content_paragraphs).
+        text = "line one\n\nline two"
+        result = clean_text_light(text)
+        assert result == "line one line two"
+
+    def test_strips_leading_trailing(self) -> None:
+        assert clean_text_light("  trim me  ") == "trim me"
+
+    def test_empty_returns_empty(self) -> None:
+        assert clean_text_light("") == ""
+        assert clean_text_light("   ") == ""
+
+    def test_words_unchanged(self) -> None:
+        # Word characters are never modified — only whitespace.
+        text = "FY2025 budget: $58.3 million (audited)"
+        assert clean_text_light(text) == text

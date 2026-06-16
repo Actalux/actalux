@@ -80,8 +80,10 @@
     {% endif %}
 
     {# Best representation: video embed → PDF iframe → reflowed text.
-       Always show "Open original ↗" in the actions sidebar when source_url is set. #}
+       Always show "Open original ↗" in the actions sidebar when source_url is set.
+       cue=0 matches doc_pane.html so _video_embed.html has a defined start value. #}
     {% if is_video %}
+    {% set cue = 0 %}
     <section class="original-block" style="margin-bottom: var(--s-5);">
       <div class="block-label">Board meeting video</div>
       {% include "partials/_video_embed.html" %}

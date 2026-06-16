@@ -24,14 +24,37 @@
   <span>{{ ctx_chunk.id | chunk_hash_id }}</span>
 </div>
 
+{# Portal-aware context rendering:
+   - YouTube transcripts: reflow via reflow_transcript (strips standalone timestamps,
+     groups into paragraphs); label the block with transcript_caption_label (the
+     constant from text_snippets.py, registered as a Jinja2 global).
+   - All other portals: light whitespace normalisation only (clean_text_light).
+     Do NOT run content_paragraphs on non-transcript chunks — its blank-line
+     split would break tabular/budget extracts.
+   The cited-passage highlight (.cited) is preserved on the matching chunk. #}
 <div class="doc-page" style="padding-top: var(--s-4);">
-  {% for c in context %}
-    {% if c.id == ctx_chunk.id %}
-      <p><span class="cited">{{ c.content }}</span></p>
-    {% else %}
-      <p style="color: var(--muted);">{{ c.content }}</p>
-    {% endif %}
-  {% endfor %}
+  {% if _is_transcript %}
+    <p class="caption-label" style="font-family: var(--font-ui, Geist, sans-serif); font-size: 12px; color: var(--muted); margin-bottom: var(--s-3);">{{ transcript_caption_label }}</p>
+    {% for c in context %}
+      {% if c.id == ctx_chunk.id %}
+        {% for para in c.content | reflow_transcript %}
+          <p><span class="cited">{{ para }}</span></p>
+        {% endfor %}
+      {% else %}
+        {% for para in c.content | reflow_transcript %}
+          <p style="color: var(--muted);">{{ para }}</p>
+        {% endfor %}
+      {% endif %}
+    {% endfor %}
+  {% else %}
+    {% for c in context %}
+      {% if c.id == ctx_chunk.id %}
+        <p><span class="cited">{{ c.content | clean_text_light }}</span></p>
+      {% else %}
+        <p style="color: var(--muted);">{{ c.content | clean_text_light }}</p>
+      {% endif %}
+    {% endfor %}
+  {% endif %}
 </div>
 
 <div style="margin-top: var(--s-5); padding-top: var(--s-4); border-top: 1px solid var(--rule); display: flex; gap: var(--s-3); flex-wrap: wrap;">

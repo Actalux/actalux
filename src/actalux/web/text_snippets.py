@@ -25,6 +25,21 @@ from html import escape
 _WORD_RE = re.compile(r"[A-Za-z0-9]{3,}")
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
 _WHITESPACE_RE = re.compile(r"\s+")
+
+# Timestamp patterns found in YouTube auto-captions:
+#   [mm:ss]       bracket form:   [02:14]
+#   HH:MM:SS      plain colon:    0:02:14  or  02:14
+# A "standalone" timestamp line is one where the entire stripped line is a
+# timestamp (possibly with surrounding brackets/whitespace).  We drop those
+# lines rather than inline-timestamp markers that happen to appear mid-sentence.
+_STANDALONE_TIMESTAMP_RE = re.compile(
+    r"^\s*"
+    r"(?:"
+    r"\[?\d{1,2}:\d{2}(?::\d{2})?\]?"  # [mm:ss], mm:ss, [HH:MM:SS], HH:MM:SS
+    r")"
+    r"\s*$",
+    re.MULTILINE,
+)
 _STOPWORDS = frozenset(
     {
         "the",
@@ -106,6 +121,125 @@ def content_paragraphs(text: str) -> list[str]:
     """
     blocks = _BLANK_LINE_RE.split((text or "").strip())
     return [_WHITESPACE_RE.sub(" ", b).strip() for b in blocks if b.strip()]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Transcript-specific presentation helpers (YouTube / auto-caption source only)
+# ──────────────────────────────────────────────────────────────────────────────
+# ALL transforms here are MECHANICAL — they touch only whitespace, duplicate
+# tokens, and timestamp-only lines.  Word content is NEVER changed so that
+# a displayed passage remains verbatim for citation purposes.
+
+#: Label shown above every reflowed auto-caption block.
+TRANSCRIPT_CAPTION_LABEL = "Auto-generated captions — may contain errors."
+
+
+def strip_transcript_timestamps(text: str) -> str:
+    """Remove lines that consist solely of a timestamp marker.
+
+    Drops lines like ``[02:14]``, ``0:02:14``, ``02:14``, ``[0:12:34]``.
+    These appear as standalone caption-navigation markers in YouTube
+    auto-captions and add noise without contributing word content.
+
+    Only standalone timestamp lines are removed — timestamps embedded
+    mid-sentence are left alone (rare in practice, but verbatim-safe rule).
+    """
+    # Split → drop matching lines → rejoin with the same newlines.
+    lines = text.split("\n")
+    kept = [line for line in lines if not _STANDALONE_TIMESTAMP_RE.match(line)]
+    return "\n".join(kept)
+
+
+def dedup_rolling_captions(text: str) -> str:
+    """Collapse rolling-caption prefix repetition where the whole prior line repeats.
+
+    YouTube auto-captions sometimes repeat the previous caption line as the
+    first words of the next line (a rolling-window overlap).  This function
+    handles the case where the ENTIRE previous line is an exact word-for-word
+    prefix of the current line, e.g.::
+
+        and the board approved
+        and the board approved the budget
+
+    Only exact whole-line-prefix matches are collapsed — not partial overlaps.
+    This conservative approach avoids silently removing real repeated speech
+    (e.g. "Thank you" followed by "Thank you for coming" is *not* collapsed,
+    because the intent cannot be determined mechanically).
+
+    .. warning::
+        Not called from :func:`reflow_transcript` because even this conservative
+        form can remove intentional repetition (verbatim-safety rule for a citation
+        archive).  Available for callers that accept this tradeoff.
+    """
+    lines = text.split("\n")
+    result: list[str] = []
+    for line in lines:
+        stripped = line.rstrip()
+        if not result or not stripped:
+            result.append(stripped)
+            continue
+        prev = result[-1]
+        # Require a minimum overlap length to reduce false collapses on short phrases.
+        # Compare lowercased to handle case drift in auto-captions.
+        prev_words = prev.lower().split()
+        cur_words = stripped.lower().split()
+        if prev_words and len(prev_words) >= 4 and cur_words[: len(prev_words)] == prev_words:
+            # Current line fully contains the previous line as a prefix — replace.
+            result[-1] = stripped
+        else:
+            result.append(stripped)
+    return "\n".join(result)
+
+
+# Minimum word count for a block to be kept as its own paragraph; shorter
+# fragments are merged into the previous block when possible.
+_MIN_PARAGRAPH_WORDS = 8
+
+
+def reflow_transcript(text: str) -> list[str]:
+    """Reflow YouTube auto-caption text into readable paragraphs.
+
+    Pipeline (all mechanical, no LLM, verbatim-safe):
+    1. Strip standalone timestamp lines (no word content; safe to drop).
+    2. Split on blank lines to get raw caption blocks.
+    3. Collapse intra-block newlines to spaces (60-char hard-wraps → prose).
+    4. Merge short trailing fragments into the previous paragraph.
+
+    Rolling-caption deduplication (:func:`dedup_rolling_captions`) is deliberately
+    NOT applied here: it could silently remove intentional repeated speech from a
+    citation archive — the verbatim-safety risk exceeds the presentation benefit.
+
+    Returns a list of paragraph strings.  Each paragraph retains the original
+    verbatim words; only whitespace is changed.
+    """
+    cleaned = strip_transcript_timestamps(text)
+    raw_blocks = _BLANK_LINE_RE.split(cleaned.strip())
+    paragraphs: list[str] = []
+    for block in raw_blocks:
+        para = _WHITESPACE_RE.sub(" ", block).strip()
+        if not para:
+            continue
+        # Merge short fragments into the previous paragraph to avoid
+        # one-sentence stubs that read as orphaned bullets.
+        if paragraphs and len(para.split()) < _MIN_PARAGRAPH_WORDS:
+            paragraphs[-1] = paragraphs[-1] + " " + para
+        else:
+            paragraphs.append(para)
+    return paragraphs
+
+
+def clean_text_light(text: str) -> str:
+    """Collapse runs of whitespace to single spaces; strip leading/trailing.
+
+    A lighter alternative to ``content_paragraphs`` for non-transcript chunks
+    in the reader pane.  Does NOT split on blank lines (which would wreck
+    tabular/budget content) and does NOT apply any transcript-specific
+    deduplication.  Only whitespace is changed; all words are verbatim.
+    """
+    return _WHITESPACE_RE.sub(" ", (text or "").strip())
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 
 
 def split_sentences(text: str) -> list[str]:

@@ -629,6 +629,102 @@ class TestApiSourceUrl:
         assert hit["source_url"] == "https://www.youtube.com/watch?v=VidId999"
 
 
+class TestReaderPanePortalAware:
+    """reader_pane.html renders portal-aware: transcript reflow vs light clean_text."""
+
+    # ── YouTube / transcript portal ────────────────────────────────────────
+    _TRANSCRIPT_CHUNK = {
+        "id": 7777,
+        "document_id": 308,
+        "content": (
+            "[01:05]\n"
+            "welcome and thank you for joining\n"
+            "us tonight for this board meeting\n"
+            "\n"
+            "we will now hear from the superintendent"
+        ),
+        "section": "",
+        "speaker": "",
+        "chunk_index": 0,
+        "start_seconds": 65,
+    }
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity", return_value=_FAKE_ENTITY)
+    @patch("actalux.web.app.get_document", return_value=_FAKE_VIDEO_DOC)
+    def test_transcript_chunk_has_caption_label(self, mock_doc, mock_ent, mock_db) -> None:
+        """YouTube transcript reader pane shows the auto-caption disclaimer."""
+        mock_ctx = {"chunk": self._TRANSCRIPT_CHUNK, "context": [self._TRANSCRIPT_CHUNK]}
+        with patch("actalux.web.app.get_chunk_with_context", return_value=mock_ctx):
+            r = client.get("/chunk/7777/source?embed=1")
+        assert r.status_code == 200
+        assert "Auto-generated captions" in r.text
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity", return_value=_FAKE_ENTITY)
+    @patch("actalux.web.app.get_document", return_value=_FAKE_VIDEO_DOC)
+    def test_transcript_timestamps_stripped(self, mock_doc, mock_ent, mock_db) -> None:
+        """Standalone timestamp markers are stripped from the transcript display."""
+        mock_ctx = {"chunk": self._TRANSCRIPT_CHUNK, "context": [self._TRANSCRIPT_CHUNK]}
+        with patch("actalux.web.app.get_chunk_with_context", return_value=mock_ctx):
+            r = client.get("/chunk/7777/source?embed=1")
+        assert r.status_code == 200
+        # [01:05] is a standalone timestamp line — must not appear in output.
+        assert "[01:05]" not in r.text
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity", return_value=_FAKE_ENTITY)
+    @patch("actalux.web.app.get_document", return_value=_FAKE_VIDEO_DOC)
+    def test_transcript_cited_chunk_has_cited_class(self, mock_doc, mock_ent, mock_db) -> None:
+        """The cited chunk carries the .cited span regardless of portal."""
+        mock_ctx = {"chunk": self._TRANSCRIPT_CHUNK, "context": [self._TRANSCRIPT_CHUNK]}
+        with patch("actalux.web.app.get_chunk_with_context", return_value=mock_ctx):
+            r = client.get("/chunk/7777/source?embed=1")
+        assert r.status_code == 200
+        assert 'class="cited"' in r.text
+
+    # ── Non-transcript portal (diligent / minutes) ─────────────────────────
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity", return_value=_FAKE_ENTITY)
+    @patch("actalux.web.app.get_document", return_value=_FAKE_DOC)
+    def test_non_transcript_no_caption_label(self, mock_doc, mock_ent, mock_db) -> None:
+        """Non-transcript reader pane does not show the auto-caption label."""
+        mock_ctx = {"chunk": _FAKE_CHUNK, "context": [_FAKE_CHUNK]}
+        with patch("actalux.web.app.get_chunk_with_context", return_value=mock_ctx):
+            r = client.get("/chunk/9001/source?embed=1")
+        assert r.status_code == 200
+        assert "Auto-generated captions" not in r.text
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity", return_value=_FAKE_ENTITY)
+    @patch("actalux.web.app.get_document", return_value=_FAKE_DOC)
+    def test_non_transcript_cited_chunk_has_cited_class(self, mock_doc, mock_ent, mock_db) -> None:
+        """Non-transcript reader pane still shows the .cited highlight."""
+        mock_ctx = {"chunk": _FAKE_CHUNK, "context": [_FAKE_CHUNK]}
+        with patch("actalux.web.app.get_chunk_with_context", return_value=mock_ctx):
+            r = client.get("/chunk/9001/source?embed=1")
+        assert r.status_code == 200
+        assert 'class="cited"' in r.text
+        # The chunk content appears (whitespace-normalised).
+        assert "The board approved the minutes" in r.text
+
+    # ── Video embed in document.html ──────────────────────────────────────
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity", return_value=_FAKE_ENTITY)
+    @patch("actalux.web.app.get_document", return_value=_FAKE_VIDEO_DOC)
+    def test_document_view_transcript_shows_video_embed(self, mock_doc, mock_ent, mock_db) -> None:
+        """Full /document/{id} page for a transcript with video_id embeds the player."""
+        with _mock_stored_file_url(""):
+            r = client.get("/document/308")
+        assert r.status_code == 200
+        # The YouTube facade embed must appear.
+        assert "yt-facade" in r.text
+        assert "AbCdEf123" in r.text
+        # No PDF iframe (it's a video/transcript).
+        assert "pdf-frame" not in r.text
+
+
 class TestReportError:
     """Error reporting endpoint."""
 
