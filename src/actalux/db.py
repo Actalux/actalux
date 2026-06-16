@@ -47,6 +47,7 @@ def insert_document(client: Client, doc: Document) -> int:
         "content": doc.content,
         "content_hash": doc.content_hash,
         "source_portal": doc.source_portal,
+        "source_ref": doc.source_ref,
         "video_id": doc.video_id,
         "version": doc.version,
     }
@@ -238,6 +239,84 @@ def find_document_by_source(
     return result.data[0] if result.data else None
 
 
+def find_document_by_source_ref(
+    client: Client, source_portal: str, source_ref: str
+) -> dict[str, Any] | None:
+    """Find the current document for a stable external id within a portal.
+
+    ``source_ref`` is the normalized canonical origin URL (see
+    ``Document.source_ref``); it is the dedup identity that survives a
+    PDF/HTML-twin or a filename change. An empty ``source_ref`` has no stable
+    identity to match on, so the lookup short-circuits to None and the caller
+    falls back to content-hash / filename dedup.
+
+    Parameters
+    ----------
+    client
+        Supabase client.
+    source_portal
+        Portal the document belongs to (``"diligent"``, ``"claytonschools"``,
+        ``"youtube"``, ``"manual"``); scopes the match so the same id under
+        different portals cannot collide.
+    source_ref
+        Normalized canonical origin URL.
+
+    Returns
+    -------
+    dict or None
+        The current (``replaces_id IS NULL``) document row, or None if no
+        match exists or ``source_ref`` is empty.
+    """
+    if not source_ref:
+        return None
+    result = (
+        client.table("documents")
+        .select("*")
+        .eq("source_portal", source_portal)
+        .eq("source_ref", source_ref)
+        .is_("replaces_id", "null")
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
+def find_document_by_content_hash(
+    client: Client, content_hash: str, source_portal: str = ""
+) -> dict[str, Any] | None:
+    """Find the current document whose stored content matches ``content_hash``.
+
+    Used as the second dedup tier after ``source_ref``: identical bytes are the
+    same document even when the filename or origin URL has changed. An empty
+    hash short-circuits to None. Optionally scoped to a portal.
+
+    Parameters
+    ----------
+    client
+        Supabase client.
+    content_hash
+        SHA-256 of the parsed content.
+    source_portal
+        Optional portal scope; empty matches any portal.
+
+    Returns
+    -------
+    dict or None
+        The current (``replaces_id IS NULL``) document row, or None.
+    """
+    if not content_hash:
+        return None
+    query = (
+        client.table("documents")
+        .select("*")
+        .eq("content_hash", content_hash)
+        .is_("replaces_id", "null")
+    )
+    if source_portal:
+        query = query.eq("source_portal", source_portal)
+    result = query.execute()
+    return result.data[0] if result.data else None
+
+
 def replace_document(client: Client, old_doc_id: int, new_doc: Document) -> int:
     """Create a new version, mark the old one as replaced.
 
@@ -261,6 +340,30 @@ def update_document_checked(client: Client, doc_id: int) -> None:
 def set_document_video_id(client: Client, doc_id: int, video_id: str) -> None:
     """Set a document's YouTube video_id (writer -- needs the service key under RLS)."""
     client.table("documents").update({"video_id": video_id}).eq("id", doc_id).execute()
+
+
+def backfill_document_source_ref(client: Client, doc_id: int, source_ref: str) -> None:
+    """Set a legacy row's stable external id, only if it has none.
+
+    Rows ingested before ``source_ref`` existed carry the column default ``''``.
+    Re-ingesting an unchanged file reaches them only via the content-hash /
+    filename dedup tiers and would otherwise never gain a ``source_ref`` --
+    leaving a future PDF/HTML twin (different content and filename) unable to
+    match. Persisting the value on the unchanged-skip path makes re-ingest
+    self-healing.
+
+    The ``source_ref = ''`` predicate enforces non-overwriting at the database
+    level, not just at the caller: a row that already has a stable id is never
+    clobbered, even under a stale read or if this helper is reused. Writer --
+    needs the service key under RLS.
+    """
+    (
+        client.table("documents")
+        .update({"source_ref": source_ref})
+        .eq("id", doc_id)
+        .eq("source_ref", "")
+        .execute()
+    )
 
 
 def set_chunk_start_seconds(client: Client, chunk_id: int, start_seconds: int) -> None:

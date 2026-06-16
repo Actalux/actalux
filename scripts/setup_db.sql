@@ -168,6 +168,15 @@ CREATE INDEX IF NOT EXISTS idx_documents_latest
 CREATE INDEX IF NOT EXISTS idx_documents_portal
     ON documents (source_portal);
 
+-- Migration 016: stable external identity for dedup (see migrate_016_source_ref.sql).
+-- The normalized canonical origin URL; dedup keys on it before content_hash and
+-- source_file so PDF/HTML twins of the same record collapse to one current row.
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS source_ref TEXT DEFAULT '';
+
+CREATE INDEX IF NOT EXISTS documents_source_ref
+    ON documents (source_portal, source_ref)
+    WHERE source_ref <> '' AND replaces_id IS NULL;
+
 -- ============================================================
 -- Migration 012: multi-jurisdiction entity model
 -- A "place" is a discovery grouping (mo/clayton), not a legal boundary;

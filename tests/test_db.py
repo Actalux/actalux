@@ -3,7 +3,11 @@
 from dataclasses import replace
 from datetime import date
 
-from actalux.db import get_chunk_with_context, insert_document
+from actalux.db import (
+    backfill_document_source_ref,
+    get_chunk_with_context,
+    insert_document,
+)
 from actalux.models import Document
 
 
@@ -109,6 +113,63 @@ class TestInsertDocumentEntity:
         client = _InsertClient()
         insert_document(client, _doc(entity_id=None))
         assert "entity_id" not in client.captured
+
+
+class TestInsertDocumentSourceRef:
+    """The stable external id must persist, or dedup can't key on it next time."""
+
+    def test_source_ref_written(self) -> None:
+        client = _InsertClient()
+        insert_document(client, _doc(source_ref="https://example.test/document/abc"))
+        assert client.captured["source_ref"] == "https://example.test/document/abc"
+
+    def test_empty_source_ref_written_as_empty(self) -> None:
+        # Always written (matches source_portal/video_id) so the row is explicit;
+        # the column default and "" agree, so legacy/origin-less docs are fine.
+        client = _InsertClient()
+        insert_document(client, _doc(source_ref=""))
+        assert client.captured["source_ref"] == ""
+
+
+class _UpdateTable:
+    """Captures the update payload and the eq() predicate chain."""
+
+    def __init__(self, calls: list[tuple]) -> None:
+        self.calls = calls
+
+    def update(self, data: dict) -> "_UpdateTable":
+        self.calls.append(("update", data))
+        return self
+
+    def eq(self, column: str, value: object) -> "_UpdateTable":
+        self.calls.append(("eq", column, value))
+        return self
+
+    def execute(self) -> _Result:
+        self.calls.append(("execute",))
+        return _Result([])
+
+
+class _UpdateClient:
+    def __init__(self) -> None:
+        self.calls: list[tuple] = []
+
+    def table(self, _name: str) -> _UpdateTable:
+        return _UpdateTable(self.calls)
+
+
+class TestBackfillDocumentSourceRef:
+    """Backfill must be non-overwriting at the DB predicate, not just the caller."""
+
+    def test_guards_on_empty_source_ref_and_id(self) -> None:
+        client = _UpdateClient()
+        backfill_document_source_ref(client, 5, "https://example.test/document/abc")
+
+        assert ("update", {"source_ref": "https://example.test/document/abc"}) in client.calls
+        # The id targets the row; the source_ref="" predicate refuses to clobber a
+        # row that already carries a stable id (stale-read / reuse safety).
+        assert ("eq", "id", 5) in client.calls
+        assert ("eq", "source_ref", "") in client.calls
 
 
 class TestChunkContext:

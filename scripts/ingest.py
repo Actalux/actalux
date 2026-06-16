@@ -30,10 +30,14 @@ import sys
 from datetime import date
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 from actalux.config import load_config
 from actalux.db import (
+    backfill_document_source_ref,
+    find_document_by_content_hash,
     find_document_by_source,
+    find_document_by_source_ref,
     get_client,
     get_entity_by_path,
     insert_chunks,
@@ -310,6 +314,35 @@ def _pii_gate(path: Path, text: str, config: Any) -> bool:
     return block
 
 
+def _find_existing_document(
+    client: Any,
+    *,
+    source_ref: str,
+    file_hash: str,
+    portal: str,
+    filename: str,
+) -> dict[str, Any] | None:
+    """Locate the current document this file should dedup against, or None.
+
+    Lookup order, most stable identity first:
+      1. ``source_ref`` (normalized origin URL) within the same portal -- the
+         identity that survives a PDF/HTML twin or a renamed file. This is what
+         actually prevents the twin-document recurrence.
+      2. ``content_hash`` -- identical bytes are the same document even when the
+         filename and origin both changed.
+      3. ``source_file`` (filename) -- legacy fallback for rows ingested before
+         source_ref existed, or hand-added docs with no origin URL.
+    """
+    if source_ref:
+        existing = find_document_by_source_ref(client, portal, source_ref)
+        if existing:
+            return existing
+    existing = find_document_by_content_hash(client, file_hash, portal)
+    if existing:
+        return existing
+    return find_document_by_source(client, filename)
+
+
 def _ingest_with_dedup(
     client: Any,
     path: Path,
@@ -320,11 +353,12 @@ def _ingest_with_dedup(
     source_portal: str = "",
     entity_id: int | None = None,
 ) -> dict[str, Any]:
-    """Parse a file, check for duplicates by content hash, then ingest.
+    """Parse a file, check for an existing document, then ingest.
 
     Returns {"status": "new"|"updated"|"skipped"|"blocked", "chunks": N}.
-    Documents with high-precision PII are blocked before storage (see
-    `_pii_gate`), so private records never reach the database.
+    Dedup matches on source_ref -> content_hash -> source_file (see
+    ``_find_existing_document``). Documents with high-precision PII are blocked
+    before storage (see `_pii_gate`), so private records never reach the database.
     """
     text = parse_file(path)
     # Restore the subject into Canva curriculum-map content (no-op for everything
@@ -335,14 +369,24 @@ def _ingest_with_dedup(
         text = f"{header}\n\n{text}"
     file_hash = content_hash(text)
     portal = source_portal or _infer_portal(path.name)
+    source_ref = normalize_source_ref(source_url)
 
-    # Check for existing document (by filename only — portal may differ)
-    existing = find_document_by_source(client, path.name)
+    existing = _find_existing_document(
+        client,
+        source_ref=source_ref,
+        file_hash=file_hash,
+        portal=portal,
+        filename=path.name,
+    )
 
     if existing:
         if existing.get("content_hash") == file_hash:
-            # Content unchanged — just mark as checked
+            # Content unchanged — mark as checked, and backfill source_ref onto a
+            # legacy row that lacks one so a future twin can dedup against it.
             update_document_checked(client, existing["id"])
+            if source_ref and not existing.get("source_ref"):
+                backfill_document_source_ref(client, existing["id"], source_ref)
+                logger.info("  BACKFILL source_ref: %s", path.name)
             logger.info("  SKIP (unchanged): %s", path.name)
             return {"status": "skipped", "chunks": 0}
 
@@ -366,6 +410,7 @@ def _ingest_with_dedup(
             config=config,
             source_url=source_url,
             source_portal=portal,
+            source_ref=source_ref,
             version=old_version + 1,
             entity_id=entity_id,
         )
@@ -387,6 +432,7 @@ def _ingest_with_dedup(
         config=config,
         source_url=source_url,
         source_portal=portal,
+        source_ref=source_ref,
         entity_id=entity_id,
     )
     logger.info("  OK %s: %d chunks ingested", path.name, result["chunks"])
@@ -403,10 +449,15 @@ def ingest_single_file(
     file_hash: str = "",
     source_url: str = "",
     source_portal: str = "",
+    source_ref: str = "",
     version: int = 1,
     entity_id: int | None = None,
 ) -> dict[str, int]:
     """Parse, chunk, embed, validate, and store a single document.
+
+    ``source_ref`` is the stable external id (see ``Document.source_ref``); when
+    not supplied it is derived from ``source_url`` so direct callers still
+    persist it.
 
     Returns {"doc_id": N, "chunks": N}.
     """
@@ -424,6 +475,7 @@ def ingest_single_file(
         content=text,
         content_hash=file_hash,
         source_portal=source_portal or _infer_portal(path.name),
+        source_ref=source_ref or normalize_source_ref(source_url),
         entity_id=entity_id,
         version=version,
     )
@@ -452,6 +504,37 @@ def ingest_single_file(
     insert_chunks(client, embedded_chunks)
 
     return {"doc_id": doc_id, "chunks": len(embedded_chunks)}
+
+
+def normalize_source_ref(source_url: str) -> str:
+    """Derive a stable external id from a crawler's canonical origin URL.
+
+    Every manifest entry carries the document's origin URL, and that URL ends in
+    a stable per-document id (Diligent ``/document/{guid}``, claytonschools
+    ``/resource-manager/view/{guid}``, Google Docs ``/document/d/{id}``, Canva
+    ``/design/{designId}/...``). Verified unique per manifest (157/157 diligent,
+    13/13 finance, 24/24 curriculum, 49/49 canva), unlike ``source_file`` which
+    has duplicate keys. Normalizing keeps that identity stable across rotating
+    tracking params: lowercase scheme+host, drop the query string and fragment
+    (``utm_*``, share modes), strip a trailing slash. Returns "" for an empty or
+    unparseable URL, in which case the caller falls back to filename dedup.
+
+    Parameters
+    ----------
+    source_url
+        Canonical origin URL from the manifest entry.
+
+    Returns
+    -------
+    str
+        Normalized origin URL usable as a stable dedup key, or "".
+    """
+    if not source_url:
+        return ""
+    parts = urlsplit(source_url.strip())
+    if not parts.netloc:
+        return ""
+    return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), parts.path.rstrip("/"), "", ""))
 
 
 def _infer_portal(filename: str) -> str:

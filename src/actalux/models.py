@@ -26,6 +26,10 @@ class Document:
     content: str
     content_hash: str = ""
     source_portal: str = ""  # "diligent", "claytonschools", "youtube", "manual"
+    # Stable external identity (normalized canonical origin URL). Dedup keys on
+    # this first so PDF/HTML twins of the same record collapse to one document;
+    # "" for legacy/hand-added docs with no known origin (falls back to filename).
+    source_ref: str = ""
     video_id: str = ""  # YouTube video id for board-meeting docs; "" for non-video docs
     # Owning public body (entities.id). Entity-scoped browse/search filter on it,
     # so a doc with entity_id=None is invisible to those views — ingest must set it.
