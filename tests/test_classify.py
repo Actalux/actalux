@@ -26,6 +26,22 @@ class TestParseMeetingDate:
     def test_fiscal_year_to_july_start(self) -> None:
         assert parse_meeting_date("2024-2025 Clayton Budget.html") == date(2024, 7, 1)
 
+    def test_space_separated_fiscal_year(self) -> None:
+        # "Clayton 2019 2020 Budget.pdf" -> FY2019-2020 -> Jul 1, 2019.
+        assert parse_meeting_date("Clayton 2019 2020 Budget.pdf") == date(2019, 7, 1)
+
+    def test_space_separated_years_only_when_consecutive(self) -> None:
+        # Two unrelated 4-digit years must not be read as a fiscal span.
+        assert parse_meeting_date("survey 2018 2024 results.pdf") is None
+
+    def test_compact_mmddyyyy(self) -> None:
+        # "BOE_Adopt 20-21 Budget_06242020.pdf" -> June 24, 2020.
+        assert parse_meeting_date("BOE_Adopt 20-21 Budget_06242020.pdf") == date(2020, 6, 24)
+
+    def test_compact_mmddyyyy_rejects_invalid(self) -> None:
+        # YYYYMMDD order (month 20) is not a valid MMDDYYYY date -> no false match.
+        assert parse_meeting_date("report_20200624_final.pdf") is None
+
     def test_compact_needs_today(self) -> None:
         assert parse_meeting_date("jan21_board_meeting.txt") is None  # no today -> skip
         got = parse_meeting_date("jan21_board_meeting.txt", today=date(2026, 6, 14))

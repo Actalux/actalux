@@ -44,6 +44,11 @@ _MONTH_YEAR_RE = re.compile(
     r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*(\d{4})(?!\d)", re.I
 )
 _FISCAL_RE = re.compile(r"(\d{4})-(\d{4})(?=[\s_]|$)")
+# Space-separated fiscal year, e.g. "Clayton 2019 2020 Budget". Requires the two
+# years to be consecutive so it can't fire on two unrelated 4-digit numbers.
+_FISCAL_SPACE_RE = re.compile(r"(?<!\d)(\d{4})\s+(\d{4})(?!\d)")
+# Compact MM DD YYYY with no separators, e.g. "BOE_Adopt 20-21 Budget_06242020".
+_MMDDYYYY_RE = re.compile(r"(?<!\d)(\d{2})(\d{2})(\d{4})(?!\d)")
 _COMPACT_RE = re.compile(r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)(\d{1,2})(?!\d)", re.I)
 
 _ANNUAL_RE = re.compile(r"20\d{2}\s*[ _-]\s*20\d{2}")
@@ -71,9 +76,10 @@ def parse_meeting_date(name: str, today: date | None = None) -> date | None:
     """Parse a meeting date from a filename/title, or None if none is confident.
 
     Handles ISO (2024-03-15), "Apr 12, 2023", "11.16.22", "10-29-25", "10 26 22",
-    "Feb2025" (day defaults to 1), fiscal "2024-2025" (-> Jul 1 of start year), and
-    compact "jan21" (year inferred as the most recent past occurrence; needs
-    ``today``). Fiscal/compact are last so explicit full dates win.
+    compact "06242020" (MMDDYYYY), "Feb2025" (day defaults to 1), fiscal
+    "2024-2025" or "2024 2025" (-> Jul 1 of start year), and compact "jan21" (year
+    inferred as the most recent past occurrence; needs ``today``). Fiscal/compact
+    are last so explicit full dates win.
     """
     name = name or ""
 
@@ -93,6 +99,11 @@ def parse_meeting_date(name: str, today: date | None = None) -> date | None:
             d = _safe_date(2000 + int(m.group(3)), int(m.group(1)), int(m.group(2)))
             if d:
                 return d
+    m = _MMDDYYYY_RE.search(name)
+    if m:
+        d = _safe_date(int(m.group(3)), int(m.group(1)), int(m.group(2)))
+        if d:
+            return d
     m = _MONTH_YEAR_RE.search(name)
     if m:
         d = _safe_date(int(m.group(2)), _MONTHS[m.group(1).lower()[:3]], 1)
@@ -100,6 +111,13 @@ def parse_meeting_date(name: str, today: date | None = None) -> date | None:
             return d
     m = _FISCAL_RE.search(name)
     if m:
+        d = _safe_date(int(m.group(1)), 7, 1)
+        if d:
+            return d
+    # Space-separated fiscal, but only when the two years are consecutive (so a
+    # "2019 2020" budget parses while two unrelated years do not).
+    m = _FISCAL_SPACE_RE.search(name)
+    if m and int(m.group(2)) == int(m.group(1)) + 1:
         d = _safe_date(int(m.group(1)), 7, 1)
         if d:
             return d
