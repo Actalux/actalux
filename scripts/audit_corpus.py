@@ -310,9 +310,14 @@ def _fetch_rows(client: Any) -> list[dict[str, Any]]:
     that, add pagination using .range(start, end). Not needed for the current
     corpus size.
     """
-    query = client.table("documents").is_("replaces_id", "null")
+    # supabase-py requires .select() before filters like .is_().
     try:
-        result = query.select(f"{_BASE_SELECT}, date_source").execute()
+        result = (
+            client.table("documents")
+            .select(f"{_BASE_SELECT}, date_source")
+            .is_("replaces_id", "null")
+            .execute()
+        )
         # If date_source is absent from the schema PostgREST returns an error
         # in result.data (or raises). Validate that at least one known column
         # is present to confirm success.
@@ -327,7 +332,7 @@ def _fetch_rows(client: Any) -> list[dict[str, Any]]:
     # Fallback: omit date_source (pre-A3 schema). The date heuristic will use
     # the meeting_date == created_at comparison instead.
     logger.info("date_source column not available; falling back to base select")
-    result = query.select(_BASE_SELECT).execute()
+    result = client.table("documents").select(_BASE_SELECT).is_("replaces_id", "null").execute()
     return result.data or []
 
 

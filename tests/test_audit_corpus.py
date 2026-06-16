@@ -469,3 +469,44 @@ class TestRunAudit:
         report = mod.run_audit([])
         assert report["doc_count"] == 0
         assert all(v == [] for k, v in report.items() if k != "doc_count")
+
+
+class TestFetchRowsBuilderOrder:
+    """Guard the supabase-py call order: .select() MUST precede filters like
+    .is_(). The fake table builder below has no .is_() (mirroring the real
+    SyncRequestBuilder), so filtering before selecting would AttributeError."""
+
+    class _Exec:
+        def __init__(self, data: list[dict]) -> None:
+            self.data = data
+
+    class _Query:
+        def __init__(self, data: list[dict]) -> None:
+            self._data = data
+
+        def is_(self, _col: str, _val: str) -> TestFetchRowsBuilderOrder._Query:
+            return self
+
+        def execute(self) -> TestFetchRowsBuilderOrder._Exec:
+            return TestFetchRowsBuilderOrder._Exec(self._data)
+
+    class _Table:
+        # Deliberately exposes only .select() (not .is_()), exactly like the real
+        # builder that crashed when _fetch_rows filtered before selecting.
+        def __init__(self, data: list[dict]) -> None:
+            self._data = data
+
+        def select(self, _cols: str) -> TestFetchRowsBuilderOrder._Query:
+            return TestFetchRowsBuilderOrder._Query(self._data)
+
+    class _Client:
+        def __init__(self, data: list[dict]) -> None:
+            self._data = data
+
+        def table(self, _name: str) -> TestFetchRowsBuilderOrder._Table:
+            return TestFetchRowsBuilderOrder._Table(self._data)
+
+    def test_fetch_rows_selects_before_filtering(self) -> None:
+        client = self._Client([{"id": 1, "meeting_date": "2024-01-01", "source_url": ""}])
+        rows = mod._fetch_rows(client)
+        assert rows and rows[0]["id"] == 1
