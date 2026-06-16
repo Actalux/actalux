@@ -101,6 +101,26 @@ class TestIsSuspectedDefaultDate:
         }
         assert mod.is_suspected_default_date(row)
 
+    def test_date_source_unknown_falls_through_to_heuristic(self) -> None:
+        # 'unknown' is the column default for legacy rows ingested before A3.
+        # It should NOT suppress the meeting_date == created_at heuristic — a
+        # row tagged 'unknown' whose date matches the ingest day is still suspect.
+        row = _row(
+            meeting_date="2026-04-11",
+            created_at="2026-04-11T10:00:00Z",
+            date_source="unknown",
+        )
+        assert mod.is_suspected_default_date(row)
+
+    def test_date_source_unknown_non_matching_date_not_flagged(self) -> None:
+        # 'unknown' but the date doesn't match the ingest day — not flagged.
+        row = _row(
+            meeting_date="2024-04-10",
+            created_at="2026-04-11T10:00:00Z",
+            date_source="unknown",
+        )
+        assert not mod.is_suspected_default_date(row)
+
 
 # ---------------------------------------------------------------------------
 # is_bucket_url_issue

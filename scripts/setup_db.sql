@@ -177,6 +177,11 @@ CREATE INDEX IF NOT EXISTS documents_source_ref
     ON documents (source_portal, source_ref)
     WHERE source_ref <> '' AND replaces_id IS NULL;
 
+-- Migration 017: date provenance (see migrate_017_date_source.sql).
+-- Tracks how meeting_date was derived: 'filename' | 'content' | 'manual' |
+-- 'default' (fell back to date.today() — suspect) | 'unknown' (legacy rows).
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS date_source TEXT DEFAULT 'unknown';
+
 -- ============================================================
 -- Migration 012: multi-jurisdiction entity model
 -- A "place" is a discovery grouping (mo/clayton), not a legal boundary;

@@ -122,10 +122,12 @@ def is_suspected_default_date(row: dict[str, Any]) -> bool:
     date_source = row.get("date_source")
     if date_source == "default":
         return True
-    # When date_source is present and set to anything other than 'default', the
-    # date was successfully derived (from filename, content, or a manual fix) —
-    # do not second-guess it with the heuristic below.
-    if date_source is not None:
+    # 'unknown' is the column default for rows ingested before A3: treat it the
+    # same as a missing value — fall through to the heuristic rather than
+    # accepting it as trusted provenance.  Only verified values ('filename',
+    # 'content', 'manual') suppress the heuristic.
+    trusted = {"filename", "content", "manual"}
+    if date_source is not None and date_source in trusted:
         return False
 
     meeting_date = row.get("meeting_date")
@@ -134,8 +136,8 @@ def is_suspected_default_date(row: dict[str, Any]) -> bool:
         return False
 
     # Both are ISO strings: "2026-04-11" and "2026-04-11T14:23:07.123Z". Compare
-    # only the date portion (first 10 characters). This heuristic fires only when
-    # the date_source column is absent (pre-A3-migration rows).
+    # only the date portion (first 10 characters). Fires for pre-A3 rows and for
+    # rows whose date_source is 'unknown' (legacy/unverified).
     return str(meeting_date)[:10] == str(created_at)[:10]
 
 

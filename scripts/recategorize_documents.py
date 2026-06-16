@@ -82,8 +82,24 @@ def plan_changes(docs: list[dict]) -> list[dict]:
         effective_type = new_type or d["document_type"]
         if effective_type != "schedule" and not is_annual_schedule(title):
             parsed = derive_meeting_date(title, sf)
-            if parsed and parsed.isoformat() != str(d.get("meeting_date")):
-                update["meeting_date"] = parsed.isoformat()
+            if parsed:
+                date_matches = parsed.isoformat() == str(d.get("meeting_date"))
+                current_source = d.get("date_source")
+                # Trusted values: date was set from a verifiable source better than
+                # filename parsing.  Never downgrade 'content' or 'manual' to
+                # 'filename' even when the filename happens to parse to the same date.
+                _trusted = {"content", "manual"}
+                if not date_matches:
+                    # Date differs: write both the corrected date and its provenance,
+                    # but only when we're not clobbering a more-reliable source.
+                    if current_source not in _trusted:
+                        update["meeting_date"] = parsed.isoformat()
+                        update["date_source"] = "filename"
+                elif current_source not in _trusted and current_source != "filename":
+                    # Date already correct but provenance is stale or absent
+                    # ('default', 'unknown', None — all pre-A3 legacy signals).
+                    # Write provenance only so the column converges after --apply.
+                    update["date_source"] = "filename"
 
         if update:
             changes.append({"id": d["id"], "title": title, "from": d, "update": update})
@@ -107,7 +123,7 @@ def main() -> int:
     client = get_client(url, key)
     docs = (
         client.table("documents")
-        .select("id, document_type, meeting_date, meeting_title, source_file")
+        .select("id, document_type, meeting_date, date_source, meeting_title, source_file")
         .is_("replaces_id", "null")
         .execute()
     ).data or []
@@ -115,13 +131,19 @@ def main() -> int:
     changes = plan_changes(docs)
     retypes = [c for c in changes if "document_type" in c["update"]]
     redates = [c for c in changes if "meeting_date" in c["update"]]
+    # Provenance-only fixes: date_source corrected without changing the date
+    # itself (a legacy 'default'/'unknown' row whose date was already right).
+    reprovenance = [
+        c for c in changes if "date_source" in c["update"] and "meeting_date" not in c["update"]
+    ]
 
     logger.info(
-        "Scanned %d documents; %d changes (%d re-type, %d re-date).",
+        "Scanned %d documents; %d changes (%d re-type, %d re-date, %d re-provenance).",
         len(docs),
         len(changes),
         len(retypes),
         len(redates),
+        len(reprovenance),
     )
 
     logger.info("\n-- RE-TYPE (%d) --", len(retypes))
@@ -143,6 +165,17 @@ def main() -> int:
             c["update"]["meeting_date"],
             c["title"][:42],
         )
+
+    if reprovenance:
+        logger.info("\n-- RE-PROVENANCE (date unchanged, %d) --", len(reprovenance))
+        for c in reprovenance:
+            logger.info(
+                "   #%s  date_source %s -> %s | %s",
+                c["id"],
+                c["from"].get("date_source"),
+                c["update"]["date_source"],
+                c["title"][:42],
+            )
 
     if not args.apply:
         logger.info("\nDRY RUN — no changes written. Re-run with --apply to write.")

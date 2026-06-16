@@ -180,7 +180,12 @@ def ingest_directory(data_dir: Path, entity_path: str = DEFAULT_ENTITY_PATH) -> 
     if flat_files:
         logger.info("Found %d files in flat directory %s", len(flat_files), data_dir)
         for doc_file in flat_files:
-            meeting_date = infer_meeting_date(doc_file.name) or date.today()
+            _parsed_date = infer_meeting_date(doc_file.name)
+            meeting_date = _parsed_date or date.today()
+            # 'filename' when the date is parsed from the filename; 'default' when
+            # no date was found and we fell back to today (the most common source
+            # of wrong dates — docs with no date in their filename).
+            flat_date_source = "filename" if _parsed_date else "default"
             meeting_title = infer_meeting_title(doc_file.name)
 
             try:
@@ -191,6 +196,7 @@ def ingest_directory(data_dir: Path, entity_path: str = DEFAULT_ENTITY_PATH) -> 
                     meeting_title=meeting_title,
                     config=config,
                     entity_id=entity_id,
+                    date_source=flat_date_source,
                 )
                 if result["status"] == "skipped":
                     continue
@@ -205,7 +211,11 @@ def ingest_directory(data_dir: Path, entity_path: str = DEFAULT_ENTITY_PATH) -> 
 
     # Process subdirectories (grouped by meeting)
     for meeting_dir in meeting_dirs:
-        meeting_date = infer_meeting_date(meeting_dir.name)
+        _parsed_date = infer_meeting_date(meeting_dir.name)
+        meeting_date = _parsed_date  # may be None; resolved per-doc below
+        # 'filename' when the directory name parses to a date; 'default' when
+        # no date pattern matched (the subdirectory name lacks a recognisable date).
+        dir_date_source = "filename" if _parsed_date else "default"
         meeting_title = infer_meeting_title(meeting_dir.name)
 
         doc_files = sorted(
@@ -238,6 +248,7 @@ def ingest_directory(data_dir: Path, entity_path: str = DEFAULT_ENTITY_PATH) -> 
                     meeting_title=meeting_title,
                     config=config,
                     entity_id=entity_id,
+                    date_source=dir_date_source,
                 )
                 if result["status"] == "skipped":
                     continue
@@ -352,6 +363,7 @@ def _ingest_with_dedup(
     source_url: str = "",
     source_portal: str = "",
     entity_id: int | None = None,
+    date_source: str = "unknown",
 ) -> dict[str, Any]:
     """Parse a file, check for an existing document, then ingest.
 
@@ -359,6 +371,9 @@ def _ingest_with_dedup(
     Dedup matches on source_ref -> content_hash -> source_file (see
     ``_find_existing_document``). Documents with high-precision PII are blocked
     before storage (see `_pii_gate`), so private records never reach the database.
+
+    ``date_source`` records how ``meeting_date`` was derived; passed through to
+    ``ingest_single_file`` so the provenance lands on every inserted row.
     """
     text = parse_file(path)
     # Restore the subject into Canva curriculum-map content (no-op for everything
@@ -413,6 +428,7 @@ def _ingest_with_dedup(
             source_ref=source_ref,
             version=old_version + 1,
             entity_id=entity_id,
+            date_source=date_source,
         )
         # Mark old document as replaced by the new one
         new_id = result["doc_id"]
@@ -434,6 +450,7 @@ def _ingest_with_dedup(
         source_portal=portal,
         source_ref=source_ref,
         entity_id=entity_id,
+        date_source=date_source,
     )
     logger.info("  OK %s: %d chunks ingested", path.name, result["chunks"])
     return {"status": "new", "chunks": result["chunks"]}
@@ -452,12 +469,17 @@ def ingest_single_file(
     source_ref: str = "",
     version: int = 1,
     entity_id: int | None = None,
+    date_source: str = "unknown",
 ) -> dict[str, int]:
     """Parse, chunk, embed, validate, and store a single document.
 
     ``source_ref`` is the stable external id (see ``Document.source_ref``); when
     not supplied it is derived from ``source_url`` so direct callers still
     persist it.
+
+    ``date_source`` records how ``meeting_date`` was derived: ``'filename'`` when
+    ``parse_meeting_date`` succeeded on the title/filename, ``'default'`` when
+    the caller fell back to ``date.today()``.
 
     Returns {"doc_id": N, "chunks": N}.
     """
@@ -478,6 +500,7 @@ def ingest_single_file(
         source_ref=source_ref or normalize_source_ref(source_url),
         entity_id=entity_id,
         version=version,
+        date_source=date_source,
     )
     doc_id = insert_document(client, doc)
 
@@ -581,11 +604,16 @@ def ingest_from_manifest(manifest_path: Path, entity_path: str = DEFAULT_ENTITY_
             total_failed += 1
             continue
 
-        meeting_date = (
-            date.fromisoformat(entry["meeting_date"])
-            if entry.get("meeting_date")
-            else infer_meeting_date(source_file) or date.today()
-        )
+        if entry.get("meeting_date"):
+            meeting_date = date.fromisoformat(entry["meeting_date"])
+            # An explicit manifest date is operator/crawler-supplied, not parsed
+            # from the filename here, so its provenance is 'manual' unless the
+            # crawler declares a more specific source via entry["date_source"].
+            manifest_date_source = entry.get("date_source", "manual")
+        else:
+            _inferred = infer_meeting_date(source_file)
+            meeting_date = _inferred or date.today()
+            manifest_date_source = "filename" if _inferred else "default"
         meeting_title = entry.get("meeting_title", infer_meeting_title(source_file))
 
         try:
@@ -598,6 +626,7 @@ def ingest_from_manifest(manifest_path: Path, entity_path: str = DEFAULT_ENTITY_
                 source_url=entry.get("source_url", ""),
                 source_portal=entry.get("source_portal", ""),
                 entity_id=entity_id,
+                date_source=manifest_date_source,
             )
             if result["status"] == "new":
                 total_new += 1

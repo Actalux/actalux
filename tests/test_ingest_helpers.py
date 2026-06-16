@@ -258,3 +258,75 @@ class TestUnchangedSkipBackfillsSourceRef:
 
         assert result["status"] == "skipped"
         assert backfills == []
+
+
+class TestDateSourcePropagation:
+    """date_source from the call site must reach the Document stored by ingest_single_file.
+
+    The provenance value is set at the point where the date is derived (in the
+    ingest_directory / ingest_from_manifest callers), passed through
+    _ingest_with_dedup, and persisted on every inserted row.  Without this
+    thread the column stays at the 'unknown' default and audits cannot tell
+    'filename'-parsed dates from 'default' fallbacks.
+    """
+
+    def _fake_config(self):
+        """Minimal config with the fields ingest_single_file reads from config."""
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            chunk_target_words=200, chunk_overlap_sentences=2, embedding_model="bge-small"
+        )
+
+    def _setup_new_doc(self, monkeypatch) -> list:
+        """Patches out everything except Document construction; returns captured docs."""
+        captured: list = []
+
+        monkeypatch.setattr(ingest, "parse_file", lambda _p: "body text")
+        monkeypatch.setattr(ingest, "content_hash", lambda _t: "newhash")
+        monkeypatch.setattr(ingest, "_find_existing_document", lambda *_a, **_k: None)
+        monkeypatch.setattr(ingest, "_pii_gate", lambda *_a, **_k: False)
+        monkeypatch.setattr(
+            ingest,
+            "insert_document",
+            lambda _c, doc: captured.append(doc) or 99,
+        )
+        # chunk_document is called with keyword args that include config values;
+        # return a sentinel so validate_chunks has something to pass on.
+        monkeypatch.setattr(ingest, "chunk_document", lambda **_k: ["sentinel_chunk"])
+        # validate_chunks must return the non-empty list; an empty list raises ParseError.
+        monkeypatch.setattr(ingest, "validate_chunks", lambda c, _t: c)
+        monkeypatch.setattr(ingest, "embed_chunks", lambda c, **_k: c)
+        monkeypatch.setattr(ingest, "insert_chunks", lambda *_a, **_k: [])
+        return captured
+
+    def test_filename_date_source_reaches_document(self, monkeypatch) -> None:
+        captured = self._setup_new_doc(monkeypatch)
+
+        _ingest_with_dedup(
+            client=object(),
+            path=Path("April 10, 2024 Meeting Minutes.pdf"),
+            meeting_date=date(2024, 4, 10),
+            meeting_title="April 10, 2024 Meeting Minutes",
+            config=self._fake_config(),
+            date_source="filename",
+        )
+
+        assert captured, "insert_document was never called"
+        assert captured[0].date_source == "filename"
+
+    def test_default_date_source_reaches_document(self, monkeypatch) -> None:
+        # 'default' must also thread through so auditors can surface suspect dates.
+        captured = self._setup_new_doc(monkeypatch)
+
+        _ingest_with_dedup(
+            client=object(),
+            path=Path("some_attachment_no_date.pdf"),
+            meeting_date=date(2026, 6, 16),
+            meeting_title="Some Attachment",
+            config=self._fake_config(),
+            date_source="default",
+        )
+
+        assert captured, "insert_document was never called"
+        assert captured[0].date_source == "default"

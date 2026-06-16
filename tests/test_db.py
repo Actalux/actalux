@@ -131,6 +131,28 @@ class TestInsertDocumentSourceRef:
         assert client.captured["source_ref"] == ""
 
 
+class TestInsertDocumentDateSource:
+    """date_source provenance must be persisted; without it the column is stuck at 'unknown'."""
+
+    def test_filename_provenance_written(self) -> None:
+        client = _InsertClient()
+        insert_document(client, _doc(date_source="filename"))
+        assert client.captured["date_source"] == "filename"
+
+    def test_default_provenance_written(self) -> None:
+        # 'default' means ingest fell back to date.today() — a suspect date that
+        # needs human review.  It must persist so auditors can surface these rows.
+        client = _InsertClient()
+        insert_document(client, _doc(date_source="default"))
+        assert client.captured["date_source"] == "default"
+
+    def test_unknown_provenance_written(self) -> None:
+        # 'unknown' is the Document default — legacy rows ingested before A3.
+        client = _InsertClient()
+        insert_document(client, _doc(date_source="unknown"))
+        assert client.captured["date_source"] == "unknown"
+
+
 class _UpdateTable:
     """Captures the update payload and the eq() predicate chain."""
 

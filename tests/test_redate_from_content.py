@@ -50,11 +50,13 @@ class TestContentDatesTable:
 
 
 def _satisfied_row(spec: dict) -> dict:
-    """A live row that lands `spec` in `already` (anchor present, target date set)."""
+    """A live row that lands `spec` in `already` (anchor present, target date and
+    date_source='content' both set correctly)."""
     return {
         "id": spec["doc_id"],
         "source_file": "x.pdf",
         "meeting_date": spec["date"],
+        "date_source": "content",
         "content": spec["anchor"],
     }
 
@@ -98,3 +100,18 @@ class TestPlan:
         assert not to_apply and not already
         assert len(refused) == len(mod.CONTENT_DATES)
         assert all("not found" in c["reason"] for c in refused)
+
+    def test_updates_provenance_when_date_correct_but_date_source_stale(self) -> None:
+        # A doc already on the target date but with date_source='default' (or any
+        # value other than 'content') must land in to_apply for a provenance-only
+        # write.  Without this, running --apply on previously-redated docs would
+        # leave date_source stuck at 'unknown'/'default'.
+        spec = mod.CONTENT_DATES[0]
+        rows = _rows_for_all_specs()
+        # Correct date, wrong provenance.
+        rows[0]["date_source"] = "default"
+        to_apply, already, refused = mod.plan(_FakeClient(rows))
+        assert any(c["doc_id"] == spec["doc_id"] for c in to_apply), (
+            "stale provenance should queue a provenance-only write"
+        )
+        assert not any(c["doc_id"] == spec["doc_id"] for c in already)

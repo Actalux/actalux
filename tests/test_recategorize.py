@@ -101,7 +101,13 @@ class TestPlanChanges:
             }
         ]
         (change,) = plan_changes(docs)
-        assert change["update"] == {"document_type": "minutes", "meeting_date": "2023-04-12"}
+        # Re-dating also sets date_source='filename' so the provenance is
+        # recorded in the same write (A3 requirement).
+        assert change["update"] == {
+            "document_type": "minutes",
+            "meeting_date": "2023-04-12",
+            "date_source": "filename",
+        }
 
     def test_annual_schedule_not_redated(self) -> None:
         docs = [
@@ -122,8 +128,45 @@ class TestPlanChanges:
                 "id": 3,
                 "document_type": "minutes",
                 "meeting_date": "2024-04-10",
+                # date_source='filename' means provenance is already correct; a
+                # second run should propose nothing.
+                "date_source": "filename",
                 "meeting_title": "April 10, 2024 Meeting Minutes",
                 "source_file": "x.pdf",
             }
         ]
         assert plan_changes(docs) == []
+
+    def test_provenance_only_update_when_date_correct_but_stale(self) -> None:
+        # A doc re-dated by an earlier run may have the right date but stale
+        # date_source ('default' or 'unknown'). plan_changes must propose a
+        # provenance-only write so a subsequent --apply converges the column.
+        docs = [
+            {
+                "id": 4,
+                "document_type": "minutes",
+                "meeting_date": "2024-04-10",
+                "date_source": "default",  # stale — was a fallback at ingest
+                "meeting_title": "April 10, 2024 Meeting Minutes",
+                "source_file": "x.pdf",
+            }
+        ]
+        (change,) = plan_changes(docs)
+        assert change["update"] == {"date_source": "filename"}  # provenance only
+
+    def test_trusted_provenance_not_overwritten(self) -> None:
+        # A doc whose date came from a more reliable source ('content' or 'manual')
+        # must not have its provenance downgraded to 'filename' even when the
+        # filename happens to parse to the same date.
+        for trusted_source in ("content", "manual"):
+            docs = [
+                {
+                    "id": 5,
+                    "document_type": "minutes",
+                    "meeting_date": "2024-04-10",
+                    "date_source": trusted_source,
+                    "meeting_title": "April 10, 2024 Meeting Minutes",
+                    "source_file": "x.pdf",
+                }
+            ]
+            assert plan_changes(docs) == [], f"should be noop for date_source={trusted_source!r}"

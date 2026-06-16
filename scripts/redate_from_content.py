@@ -48,18 +48,31 @@ CONTENT_DATES = [
         "anchor": "to the district on Nov. 13, 2024",
         "note": "LRFMP Volume II (demographic study) delivery date",
     },
+    {
+        "doc_id": 245,
+        "date": "2020-08-04",
+        "anchor": "Adopted this August 4, 2020",
+        "note": "Resolution adoption date stated verbatim in body",
+    },
 ]
 
 
 def plan(client) -> tuple[list[dict], list[dict], list[dict]]:
-    """Return (to_apply, already, refused) for the configured re-dates."""
+    """Return (to_apply, already, refused) for the configured re-dates.
+
+    ``to_apply`` rows need the date written (and date_source='content').
+    ``already`` rows are fully correct: same date AND date_source='content'.
+    Rows whose date is already right but whose date_source is stale (e.g.
+    'default' or 'unknown') are returned in ``to_apply`` as provenance-only
+    updates, so the column converges on 'content' after a single --apply run.
+    """
     to_apply: list[dict] = []
     already: list[dict] = []
     refused: list[dict] = []
     for spec in CONTENT_DATES:
         rows = (
             client.table("documents")
-            .select("id, source_file, meeting_date, content")
+            .select("id, source_file, meeting_date, date_source, content")
             .eq("id", spec["doc_id"])
             .is_("replaces_id", "null")
             .execute()
@@ -80,9 +93,15 @@ def plan(client) -> tuple[list[dict], list[dict], list[dict]]:
             "source_file": doc.get("source_file", ""),
             "from": doc.get("meeting_date"),
         }
-        if str(doc.get("meeting_date")) == spec["date"]:
+        date_correct = str(doc.get("meeting_date")) == spec["date"]
+        provenance_correct = doc.get("date_source") == "content"
+        if date_correct and provenance_correct:
+            # Both the date and its recorded provenance are already right.
             already.append(record)
         else:
+            # Either date is wrong, or provenance is stale (e.g. 'default'/'unknown')
+            # even though the date happened to be set correctly some other way.
+            # Write both together so a single --apply run fully converges.
             to_apply.append(record)
     return to_apply, already, refused
 
@@ -129,7 +148,9 @@ def main() -> int:
         return 0
 
     for c in to_apply:
-        client.table("documents").update({"meeting_date": c["date"]}).eq(
+        # Write both the corrected date and its provenance together so the column
+        # is never left with a stale 'default'/'unknown' value after re-dating.
+        client.table("documents").update({"meeting_date": c["date"], "date_source": "content"}).eq(
             "id", c["doc_id"]
         ).execute()
     logger.info("\nApplied %d re-dates.", len(to_apply))
