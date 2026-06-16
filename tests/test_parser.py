@@ -6,12 +6,37 @@ from textwrap import dedent
 import pytest
 
 from actalux.errors import ParseError
-from actalux.ingest.parser import parse_file
+from actalux.ingest.parser import parse_file, strip_control_chars
 
 
 @pytest.fixture
 def tmp_dir(tmp_path: Path) -> Path:
     return tmp_path
+
+
+class TestStripControlChars:
+    def test_replaces_control_chars_with_space(self) -> None:
+        # The 0x08 / 0x01 artifacts seen in extracted PDFs become spaces.
+        assert strip_control_chars("Planning\x08\n3") == "Planning \n3"
+        assert strip_control_chars("COST\x01\x14ESTIMATE") == "COST  ESTIMATE"
+
+    def test_keeps_tab_newline_carriage_return(self) -> None:
+        assert strip_control_chars("a\tb\nc\rd") == "a\tb\nc\rd"
+
+    def test_strips_c1_controls(self) -> None:
+        # C1 bytes (0x80-0x9f) from broken fonts are artifacts, not punctuation.
+        assert strip_control_chars("bullet\x82 item") == "bullet  item"
+
+    def test_clean_text_unchanged(self) -> None:
+        text = "Ordinary minutes — approved 5-0. The “levy” passed."
+        assert strip_control_chars(text) == text
+
+    def test_applied_during_parse(self, tmp_dir: Path) -> None:
+        md = tmp_dir / "dirty.md"
+        md.write_bytes(b"# Heading\x08\n\nBody\x01text here.")
+        result = parse_file(md)
+        assert "\x08" not in result and "\x01" not in result
+        assert "Body text here." in result
 
 
 class TestParseMarkdown:

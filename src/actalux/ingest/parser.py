@@ -9,11 +9,23 @@ Supported formats:
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
 from actalux.errors import ParseError
 
 logger = logging.getLogger(__name__)
+
+# C0/C1 control characters except tab, newline, and carriage return. PDF text
+# extraction sometimes emits these (stray 0x08, 0x01, file-separator runs, and
+# C1 bytes from broken fonts); they are never document text. Replaced with a
+# space rather than removed so adjacent words can't fuse.
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]")
+
+
+def strip_control_chars(text: str) -> str:
+    """Replace control-character extraction artifacts with spaces (keeps \\t\\n\\r)."""
+    return _CONTROL_CHARS_RE.sub(" ", text)
 
 
 def parse_file(path: Path) -> str:
@@ -41,7 +53,7 @@ def parse_file(path: Path) -> str:
     except Exception as exc:
         raise ParseError(f"Failed to parse {path.name}: {exc}") from exc
 
-    text = text.strip()
+    text = strip_control_chars(text).strip()
     if not text:
         raise ParseError(f"Document is empty after parsing: {path.name}")
 
