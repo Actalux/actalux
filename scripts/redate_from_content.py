@@ -54,6 +54,69 @@ CONTENT_DATES = [
         "anchor": "Adopted this August 4, 2020",
         "note": "Resolution adoption date stated verbatim in body",
     },
+    # Diligent library items carry a "Release Date" (the date the district posted
+    # the item); for governance/reference docs with no meeting date that is the
+    # authoritative publication date stated verbatim in the page body.
+    {
+        "doc_id": 163,
+        "date": "2005-11-26",
+        "anchor": "Release Date November 26, 2005",
+        "note": "Diligent portal Release Date for governance library item",
+    },
+    {
+        "doc_id": 250,
+        "date": "2020-12-02",
+        "anchor": "Release Date December 2, 2020",
+        "note": "Diligent portal Release Date for Strategic Plan 2020-2023 library item",
+    },
+    {
+        "doc_id": 251,
+        "date": "2020-08-04",
+        "anchor": "approved at our August 4, 2020 meeting",
+        "note": "ABAR Resolution adoption date (HTML twin of doc 245), stated in body",
+    },
+    {
+        "doc_id": 252,
+        "date": "2020-06-02",
+        "anchor": "Release Date June 2, 2020",
+        "note": "Diligent portal Release Date for BOE Orientation Materials library item",
+    },
+    {
+        "doc_id": 253,
+        "date": "2020-01-13",
+        "anchor": "Release Date January 13, 2020",
+        "note": "Diligent portal Release Date for Board Candidate Resource Guide library item",
+    },
+    {
+        "doc_id": 255,
+        "date": "2018-07-23",
+        "anchor": "Release Date July 23, 2018",
+        "note": "Diligent portal Release Date for Missouri Sunshine Law library item",
+    },
+    {
+        "doc_id": 256,
+        "date": "2018-07-22",
+        "anchor": "Release Date July 22, 2018",
+        "note": "Diligent portal Release Date for Gifted Education Documents library item",
+    },
+    {
+        "doc_id": 271,
+        "date": "2022-01-20",
+        "anchor": "Release Date January 20, 2022",
+        "note": "Diligent portal Release Date for Livestream instructions library item",
+    },
+    {
+        "doc_id": 272,
+        "date": "2020-03-23",
+        "anchor": "Release Date March 23, 2020",
+        "note": "Diligent portal Release Date for public-comment instructions library item",
+    },
+    {
+        "doc_id": 164,
+        "date": "2022-11-20",
+        "anchor": "Created - Nov 20, 2022",
+        "note": "Meeting-schedule document creation date in its footer (covers SY2023-2024)",
+    },
 ]
 
 
