@@ -7,6 +7,7 @@ for data operations and raw SQL (via RPC) for pgvector queries.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 from supabase import Client, create_client
@@ -336,6 +337,208 @@ def update_document_checked(client: Client, doc_id: int) -> None:
 
     now = datetime.now(UTC).isoformat()
     client.table("documents").update({"last_checked_at": now}).eq("id", doc_id).execute()
+
+
+# --- Supersession resolution -----------------------------------------------
+# When a document is replaced (a new version, or a duplicate twin canonicalised
+# by A2 dedup), the old row gets ``replaces_id`` set to the surviving canonical
+# id, and the canonical row keeps ``replaces_id IS NULL``. Listings already hide
+# superseded rows, but raw-id entrypoints (/document/{id}, /chunk/{id}/source,
+# and their panes) can still be deep-linked to a superseded row — these helpers
+# resolve such a deep-link to its current version without ever silently sending a
+# citation to a different passage.
+
+# Bound on chain length so a malformed ``replaces_id`` cycle (a → b → a) cannot
+# loop forever. Real chains are at most a few versions deep.
+_MAX_SUPERSESSION_HOPS = 16
+
+
+@dataclass(frozen=True)
+class CanonicalDocument:
+    """Result of resolving a (possibly superseded) document to its current version.
+
+    Attributes
+    ----------
+    document
+        The current document row (``replaces_id IS NULL``), or None if the
+        requested id does not exist.
+    superseded
+        True when the requested id was an older version that pointed forward
+        through ``replaces_id`` to ``document``. False when the requested id was
+        already current (or did not exist).
+    requested_id
+        The id originally requested, so callers can report "you asked for X,
+        here is its current version".
+    """
+
+    document: dict[str, Any] | None
+    superseded: bool
+    requested_id: int
+
+
+def resolve_canonical_document(client: Client, doc_id: int) -> CanonicalDocument:
+    """Follow the ``replaces_id`` chain from ``doc_id`` to its current version.
+
+    A row whose ``replaces_id`` is set has been superseded; the value points at
+    the newer (canonical) row. This walks that chain until it reaches a row with
+    ``replaces_id IS NULL`` (the current version) and reports whether any hop was
+    taken.
+
+    The walk is bounded by ``_MAX_SUPERSESSION_HOPS`` and tracks visited ids, so
+    a malformed self- or mutual-reference cannot loop forever.
+
+    ``superseded`` is True ONLY when the walk reached a true current row
+    (``replaces_id IS NULL``) via at least one hop. If the chain breaks
+    abnormally — a cycle, a dangling ``replaces_id``, or the hop bound — the
+    returned row is still superseded, so ``superseded`` is reported as False:
+    callers must then render the row in place rather than redirect, otherwise a
+    cycle (10 -> 11 -> 10) would produce an HTTP redirect loop.
+
+    Parameters
+    ----------
+    client
+        Supabase client.
+    doc_id
+        The (possibly superseded) document id from the URL.
+
+    Returns
+    -------
+    CanonicalDocument
+        ``document`` is the resolved row (or None if ``doc_id`` does not exist);
+        ``superseded`` is True only when a clean, hop-followed canonical was
+        reached (safe to redirect to). On any abnormal termination (cycle,
+        dangling pointer, hop bound) ``document`` is the ORIGINALLY REQUESTED row
+        and ``superseded`` is False, so the caller renders the requested record
+        in place rather than swapping in a mid-chain row or redirecting.
+    """
+    requested = get_document(client, doc_id)
+    if requested is None:
+        return CanonicalDocument(document=None, superseded=False, requested_id=doc_id)
+
+    current = requested
+    seen: set[int] = {doc_id}
+    hops = 0
+    while current.get("replaces_id") is not None and hops < _MAX_SUPERSESSION_HOPS:
+        next_id = current["replaces_id"]
+        if next_id in seen:
+            # Cycle in the chain — abnormal. Return the requested row, not the
+            # mid-cycle row, so the reader sees what they asked for (and no 301 loop).
+            logger.warning("Supersession cycle at document %d -> %d; stopping.", doc_id, next_id)
+            return CanonicalDocument(document=requested, superseded=False, requested_id=doc_id)
+        nxt = get_document(client, next_id)
+        if nxt is None:
+            # Dangling replaces_id (canonical row deleted): no clean canonical to
+            # offer; render the requested row in place.
+            logger.warning("Document %d replaces_id -> missing %d; stopping.", doc_id, next_id)
+            return CanonicalDocument(document=requested, superseded=False, requested_id=doc_id)
+        seen.add(next_id)
+        current = nxt
+        hops += 1
+
+    if current.get("replaces_id") is not None:
+        # Hit the hop bound without reaching a true canonical — unresolved; render
+        # the requested row in place rather than a still-superseded mid-chain row.
+        logger.warning("Supersession chain from document %d exceeded hop bound.", doc_id)
+        return CanonicalDocument(document=requested, superseded=False, requested_id=doc_id)
+
+    # Clean termination at a current row; superseded iff we actually moved.
+    return CanonicalDocument(document=current, superseded=hops > 0, requested_id=doc_id)
+
+
+@dataclass(frozen=True)
+class CanonicalChunk:
+    """Result of mapping a superseded-document chunk to the canonical document.
+
+    Chunks have no stored canonical mapping (only ``document_id`` +
+    ``chunk_index``), so a citation deep-link into a superseded document is
+    resolved by best-effort content match, never a blind redirect.
+
+    Attributes
+    ----------
+    chunk
+        The matched chunk row in the canonical document, or None when no
+        confident match was found (caller then shows the old passage under a
+        "superseded version" notice rather than jumping to a different one).
+    superseded
+        True when the original chunk's document was superseded.
+    """
+
+    chunk: dict[str, Any] | None
+    superseded: bool
+
+
+def _normalize_chunk_text(text: str) -> str:
+    """Whitespace-normalised, case-folded chunk text for content matching.
+
+    Two chunks are "the same passage" when their verbatim content matches after
+    collapsing whitespace and case — robust to the cosmetic reflow differences
+    between a PDF twin and an HTML twin without changing any words.
+    """
+    return " ".join((text or "").split()).casefold()
+
+
+def resolve_canonical_chunk(
+    client: Client, chunk: dict[str, Any], canonical_doc_id: int
+) -> dict[str, Any] | None:
+    """Best-effort map a superseded-document chunk to the canonical document's chunk.
+
+    Resolution order (never a blind positional redirect):
+      1. Exact normalised-content match within the canonical document. A unique
+         content match is the only fully safe mapping — it is the same passage.
+      2. Fallback to the same ``chunk_index`` ONLY when its normalised content
+         also matches the original chunk's content. Same position with different
+         text is treated as no match (returns None) so a citation is never sent
+         to a different passage.
+
+    Parameters
+    ----------
+    client
+        Supabase client.
+    chunk
+        The original chunk row (from the superseded document).
+    canonical_doc_id
+        The current document's id (from ``resolve_canonical_document``).
+
+    Returns
+    -------
+    dict or None
+        The matching chunk row in the canonical document, or None when no
+        confident match exists.
+    """
+    target_text = _normalize_chunk_text(chunk.get("content") or "")
+    if not target_text:
+        return None
+
+    rows = (
+        client.table("chunks")
+        .select("*")
+        .eq("document_id", canonical_doc_id)
+        .order("chunk_index")
+        .execute()
+    ).data or []
+
+    # 1. Unique exact content match.
+    matches = [r for r in rows if _normalize_chunk_text(r.get("content") or "") == target_text]
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        # Ambiguous (repeated passage) — disambiguate by chunk_index when it lines up.
+        idx = chunk.get("chunk_index")
+        for r in matches:
+            if idx is not None and r.get("chunk_index") == idx:
+                return r
+        return None
+
+    # 2. Position fallback, gated on content agreement so we never jump passages.
+    idx = chunk.get("chunk_index")
+    if idx is not None:
+        for r in rows:
+            if r.get("chunk_index") == idx and (
+                _normalize_chunk_text(r.get("content") or "") == target_text
+            ):
+                return r
+
+    return None
 
 
 def set_document_video_id(client: Client, doc_id: int, video_id: str) -> None:

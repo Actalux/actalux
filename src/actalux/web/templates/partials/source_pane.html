@@ -38,6 +38,8 @@
 
 <h3 class="reader-title">{{ document | display_title }}</h3>
 
+{% include "partials/_superseded_notice.html" %}
+
 {% if document.summary %}
 <div class="reader-summary">{{ document.summary }}</div>
 {% endif %}

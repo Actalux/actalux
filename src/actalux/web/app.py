@@ -37,6 +37,8 @@ from actalux.db import (
     insert_correction,
     list_documents,
     list_entities,
+    resolve_canonical_chunk,
+    resolve_canonical_document,
 )
 from actalux.errors import SearchError, SummaryError
 from actalux.models import Correction, chunk_hash_id
@@ -697,31 +699,93 @@ async def topic_facilities_redirect(request: Request) -> RedirectResponse:
 # Document and chunk pages stay flat (IDs are globally unique, reached only via
 # their body's results). They resolve their body from the document so the page
 # chrome (sidebar, top-bar) renders under the right jurisdiction.
-@app.get("/document/{doc_id}", response_class=HTMLResponse)
-async def document_view(request: Request, doc_id: int) -> HTMLResponse:
-    """Full document view."""
+@app.get("/document/{doc_id}", response_class=HTMLResponse, response_model=None)
+async def document_view(request: Request, doc_id: int) -> HTMLResponse | RedirectResponse:
+    """Full document view; redirects a superseded id to its current version."""
     client = _get_db()
-    doc = get_document(client, doc_id)
-    if not doc:
+    resolved = resolve_canonical_document(client, doc_id)
+    if resolved.document is None:
         raise HTTPException(status_code=404, detail="Document not found")
+    # A superseded deep-link is a stale URL for an old version: send the reader to
+    # the current document instead of rendering an outdated record. 301 (permanent)
+    # because the supersession mapping is durable.
+    if resolved.superseded:
+        return RedirectResponse(f"/document/{resolved.document['id']}", status_code=301)
 
-    view = _entity_view_for_document(client, doc)
-    return templates.TemplateResponse(request, "document.html", _page(view, document=doc))
+    view = _entity_view_for_document(client, resolved.document)
+    return templates.TemplateResponse(
+        request, "document.html", _page(view, document=resolved.document)
+    )
 
 
-@app.get("/document/{doc_id}/pane", response_class=HTMLResponse)
-async def document_pane(request: Request, doc_id: int) -> HTMLResponse:
+@app.get("/document/{doc_id}/pane", response_class=HTMLResponse, response_model=None)
+async def document_pane(request: Request, doc_id: int) -> HTMLResponse | RedirectResponse:
     """Document-level reader pane (summary + original embed) for browse clicks.
 
     Unlike the chunk source pane, there is no cited passage — browse opens a
-    whole document, not a search hit.
+    whole document, not a search hit. A superseded id redirects to the current
+    version's pane (HTMX follows the 3xx transparently).
     """
     client = _get_db()
-    doc = get_document(client, doc_id)
-    if not doc:
+    resolved = resolve_canonical_document(client, doc_id)
+    if resolved.document is None:
         raise HTTPException(status_code=404, detail="Document not found")
-    view = _entity_view_for_document(client, doc)
-    return templates.TemplateResponse(request, "partials/doc_pane.html", _page(view, document=doc))
+    if resolved.superseded:
+        return RedirectResponse(f"/document/{resolved.document['id']}/pane", status_code=301)
+    view = _entity_view_for_document(client, resolved.document)
+    return templates.TemplateResponse(
+        request, "partials/doc_pane.html", _page(view, document=resolved.document)
+    )
+
+
+def _resolve_cited_chunk(
+    client: Client, chunk: dict[str, Any], doc: dict[str, Any] | None
+) -> dict[str, Any]:
+    """Resolve a cited chunk against document supersession, without ever jumping passages.
+
+    A citation deep-link points at a specific ``chunk_id`` in a specific document.
+    If that document has been superseded, chunks carry no canonical mapping (only
+    ``document_id`` + ``chunk_index``), so we do NOT blind-redirect. Instead:
+      * resolve the document's current version;
+      * best-effort find the *same passage* in the current document (content
+        match, position only as a content-confirmed fallback);
+      * surface a "superseded version" notice either way.
+
+    Returns the template-context overrides: the document to render under
+    (canonical when the citation could be confidently re-anchored, else the
+    original superseded doc so the cited words still match), plus the notice
+    flags. The chunk itself is never swapped for a different passage — only a
+    content-confirmed canonical chunk replaces it.
+    """
+    overrides: dict[str, Any] = {
+        "document": doc,
+        "superseded": False,
+        "canonical_document": None,
+    }
+    if doc is None or doc.get("replaces_id") is None:
+        return overrides
+
+    resolved = resolve_canonical_document(client, doc["id"])
+    # Only treat the citation as superseded when the chain resolved cleanly to a
+    # current row. A broken chain (cycle / dangling / hop bound) reports
+    # superseded=False with the requested row as document, in which case we keep
+    # the original cited document and show no (unreliable) "current version" link.
+    if not resolved.superseded or resolved.document is None:
+        return overrides
+
+    canonical = resolved.document
+    overrides["superseded"] = True
+    overrides["canonical_document"] = canonical
+    if canonical["id"] == doc["id"]:
+        return overrides
+
+    canonical_chunk = resolve_canonical_chunk(client, chunk, canonical["id"])
+    if canonical_chunk is not None:
+        # Same passage confidently located in the current version — re-anchor the
+        # citation to it (verbatim content match guarantees it is the same quote).
+        overrides["chunk"] = canonical_chunk
+        overrides["document"] = canonical
+    return overrides
 
 
 @app.get("/chunk/{chunk_id}/source", response_class=HTMLResponse)
@@ -729,7 +793,9 @@ async def chunk_source(request: Request, chunk_id: int, embed: int = 0) -> HTMLR
     """Citation context: the chunk plus surrounding chunks.
 
     If `embed=1`, returns a partial suitable for injection into the search
-    reader pane via HTMX. Otherwise returns the full page.
+    reader pane via HTMX. Otherwise returns the full page. A citation into a
+    superseded document is annotated (never blind-redirected) — see
+    ``_resolve_cited_chunk``.
     """
     client = _get_db()
     context = get_chunk_with_context(client, chunk_id, context_count=2)
@@ -737,13 +803,31 @@ async def chunk_source(request: Request, chunk_id: int, embed: int = 0) -> HTMLR
         raise HTTPException(status_code=404, detail="Chunk not found")
 
     doc = get_document(client, context["chunk"]["document_id"])
-    view = _entity_view_for_document(client, doc)
+    resolved = _resolve_cited_chunk(client, context["chunk"], doc)
+    render_doc = resolved["document"]
+    render_chunk = resolved.get("chunk", context["chunk"])
+    # When the citation was re-anchored to the canonical document, pull that
+    # document's surrounding context so neighbours match the rendered chunk.
+    render_context = context["context"]
+    if render_chunk is not context["chunk"]:
+        rechunked = get_chunk_with_context(client, render_chunk["id"], context_count=2)
+        if rechunked["chunk"]:
+            render_context = rechunked["context"]
+
+    view = _entity_view_for_document(client, render_doc)
     template = "partials/reader_pane.html" if embed else "chunk_source.html"
 
     return templates.TemplateResponse(
         request,
         template,
-        _page(view, chunk=context["chunk"], context=context["context"], document=doc),
+        _page(
+            view,
+            chunk=render_chunk,
+            context=render_context,
+            document=render_doc,
+            superseded=resolved["superseded"],
+            canonical_document=resolved["canonical_document"],
+        ),
     )
 
 
@@ -754,7 +838,8 @@ async def chunk_source_pane(request: Request, chunk_id: int, q: str = "") -> HTM
     Called by HTMX when the user clicks a search result. Fetches the
     chunk and two neighbors for in-context display. Per-card AI
     summaries (doc summary + match summary) are generated separately
-    on the result cards, not here.
+    on the result cards, not here. Superseded citations are annotated, never
+    blind-redirected — see ``_resolve_cited_chunk``.
     """
     client = _get_db()
     ctx = get_chunk_with_context(client, chunk_id, context_count=2)
@@ -762,19 +847,30 @@ async def chunk_source_pane(request: Request, chunk_id: int, q: str = "") -> HTM
         raise HTTPException(status_code=404, detail="Chunk not found")
 
     doc = get_document(client, ctx["chunk"]["document_id"])
-    view = _entity_view_for_document(client, doc)
-    target_hash = chunk_hash_id(chunk_id)
+    resolved = _resolve_cited_chunk(client, ctx["chunk"], doc)
+    render_doc = resolved["document"]
+    render_chunk = resolved.get("chunk", ctx["chunk"])
+    render_context = ctx["context"]
+    if render_chunk is not ctx["chunk"]:
+        rechunked = get_chunk_with_context(client, render_chunk["id"], context_count=2)
+        if rechunked["chunk"]:
+            render_context = rechunked["context"]
+
+    view = _entity_view_for_document(client, render_doc)
+    target_hash = chunk_hash_id(render_chunk["id"])
 
     return templates.TemplateResponse(
         request,
         "partials/source_pane.html",
         _page(
             view,
-            chunk=ctx["chunk"],
-            context=ctx["context"],
-            document=doc,
+            chunk=render_chunk,
+            context=render_context,
+            document=render_doc,
             query=q,
             target_hash=target_hash,
+            superseded=resolved["superseded"],
+            canonical_document=resolved["canonical_document"],
         ),
     )
 

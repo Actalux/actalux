@@ -1,0 +1,21 @@
+{# Superseded-citation notice for the reader/source panes.
+   Shown when a citation deep-links into a document version that has since been
+   replaced. Chunks have no canonical mapping, so we never blind-redirect a
+   citation; this notice tells the reader the cited passage is from an older
+   version and links to the current document when one is known.
+   Styling follows the budget callout in document.html (3px accent left-border)
+   per DESIGN.md (single accent colour, no border-radius, no icon library). #}
+{% if superseded %}
+<div class="superseded-notice"
+     style="margin-bottom: var(--s-4); padding: var(--s-3) var(--s-4); border-left: 3px solid var(--accent); background: var(--bg-2, #f9f6f1);">
+  <p style="margin: 0; font-family: var(--font-ui, Geist, sans-serif); font-size: 13px; color: var(--fg-2, var(--fg));">
+    This citation is from a superseded version of this record.
+    {% if canonical_document and canonical_document.id != document.id %}
+      A current version is available —
+      <a href="/document/{{ canonical_document.id }}" style="color: var(--accent);">open the current document →</a>
+    {% else %}
+      The passage below is shown as originally cited.
+    {% endif %}
+  </p>
+</div>
+{% endif %}

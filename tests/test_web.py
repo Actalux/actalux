@@ -191,6 +191,18 @@ _FAKE_DOC = {
 _FAKE_STORED_FILE_URL = "https://storage.example.test/public/documents/minutes.pdf"
 
 
+def _canon(doc: dict | None, *, superseded: bool = False, requested_id: int = 0):
+    """Wrap a doc in a CanonicalDocument for patching resolve_canonical_document.
+
+    Document routes resolve supersession before rendering, so route tests mock
+    ``resolve_canonical_document`` rather than the lower-level ``get_document``.
+    """
+    from actalux.db import CanonicalDocument
+
+    rid = requested_id or (doc["id"] if doc else 0)
+    return CanonicalDocument(document=doc, superseded=superseded, requested_id=rid)
+
+
 @contextmanager
 def _mock_stored_file_url(return_value: str = _FAKE_STORED_FILE_URL):
     """Context manager: swap stored_file_url in the Jinja2 globals for one request.
@@ -338,14 +350,14 @@ class TestDocumentEndpoint:
     """Document view (mocked DB)."""
 
     @patch("actalux.web.app._get_db")
-    @patch("actalux.web.app.get_document", return_value=None)
+    @patch("actalux.web.app.resolve_canonical_document", return_value=_canon(None))
     def test_missing_document_returns_404(self, mock_doc, mock_db) -> None:
         response = client.get("/document/99999")
         assert response.status_code == 404
 
     @patch("actalux.web.app._get_db")
     @patch("actalux.web.app.get_entity", return_value=_FAKE_ENTITY)
-    @patch("actalux.web.app.get_document", return_value=_FAKE_DOC)
+    @patch("actalux.web.app.resolve_canonical_document", return_value=_canon(_FAKE_DOC))
     def test_document_pane_renders_pdf_embed_from_stored_file(
         self, mock_doc, mock_ent, mock_db
     ) -> None:
@@ -364,8 +376,8 @@ class TestDocumentEndpoint:
     @patch("actalux.web.app._get_db")
     @patch("actalux.web.app.get_entity", return_value=_FAKE_ENTITY)
     @patch(
-        "actalux.web.app.get_document",
-        return_value={**_FAKE_DOC, "source_url": "", "source_file": ""},
+        "actalux.web.app.resolve_canonical_document",
+        return_value=_canon({**_FAKE_DOC, "source_url": "", "source_file": ""}),
     )
     def test_document_pane_hides_origin_link_when_source_url_empty(
         self, mock_doc, mock_ent, mock_db
@@ -378,7 +390,7 @@ class TestDocumentEndpoint:
         assert "pdf-frame" not in r.text
 
     @patch("actalux.web.app._get_db")
-    @patch("actalux.web.app.get_document", return_value=None)
+    @patch("actalux.web.app.resolve_canonical_document", return_value=_canon(None))
     def test_document_pane_404(self, mock_doc, mock_db) -> None:
         r = client.get("/document/99999/pane")
         assert r.status_code == 404
@@ -429,12 +441,204 @@ class TestChunkSourceEndpoint:
         assert response.status_code == 404
 
 
+# A superseded version of _FAKE_DOC: replaces_id points at the canonical 196.
+_FAKE_SUPERSEDED_DOC = {**_FAKE_DOC, "id": 195, "replaces_id": 196}
+_FAKE_CANONICAL_DOC = {**_FAKE_DOC, "id": 196, "replaces_id": None}
+
+
+class TestDocumentSupersession:
+    """Superseded DOCUMENT deep-links redirect to the canonical version (A2)."""
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.resolve_canonical_document")
+    def test_document_view_redirects_to_canonical(self, mock_resolve, mock_db) -> None:
+        from actalux.db import CanonicalDocument
+
+        mock_resolve.return_value = CanonicalDocument(
+            document=_FAKE_CANONICAL_DOC, superseded=True, requested_id=195
+        )
+        r = client.get("/document/195", follow_redirects=False)
+        assert r.status_code == 301
+        assert r.headers["location"] == "/document/196"
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.resolve_canonical_document")
+    def test_document_pane_redirects_to_canonical_pane(self, mock_resolve, mock_db) -> None:
+        from actalux.db import CanonicalDocument
+
+        mock_resolve.return_value = CanonicalDocument(
+            document=_FAKE_CANONICAL_DOC, superseded=True, requested_id=195
+        )
+        r = client.get("/document/195/pane", follow_redirects=False)
+        assert r.status_code == 301
+        assert r.headers["location"] == "/document/196/pane"
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity", return_value=_FAKE_ENTITY)
+    @patch("actalux.web.app.resolve_canonical_document")
+    def test_current_document_renders_without_redirect(
+        self, mock_resolve, mock_ent, mock_db
+    ) -> None:
+        from actalux.db import CanonicalDocument
+
+        mock_resolve.return_value = CanonicalDocument(
+            document=_FAKE_CANONICAL_DOC, superseded=False, requested_id=196
+        )
+        with _mock_stored_file_url(_FAKE_STORED_FILE_URL):
+            r = client.get("/document/196", follow_redirects=False)
+        assert r.status_code == 200
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.resolve_canonical_document")
+    def test_missing_document_404(self, mock_resolve, mock_db) -> None:
+        from actalux.db import CanonicalDocument
+
+        mock_resolve.return_value = CanonicalDocument(
+            document=None, superseded=False, requested_id=999
+        )
+        r = client.get("/document/999", follow_redirects=False)
+        assert r.status_code == 404
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity", return_value=_FAKE_ENTITY)
+    @patch("actalux.web.app.resolve_canonical_document")
+    def test_cycle_renders_in_place_no_redirect(self, mock_resolve, mock_ent, mock_db) -> None:
+        """A cycle resolves to superseded=False, so the route renders (no 301 loop)."""
+        from actalux.db import CanonicalDocument
+
+        # The resolver reports not-superseded on a cycle; the route must render,
+        # not redirect, so two superseded rows can't bounce a 301 loop.
+        mock_resolve.return_value = CanonicalDocument(
+            document=_FAKE_DOC, superseded=False, requested_id=195
+        )
+        with _mock_stored_file_url(_FAKE_STORED_FILE_URL):
+            r = client.get("/document/195", follow_redirects=False)
+        assert r.status_code == 200
+
+
+class TestChunkSupersession:
+    """Superseded CHUNK deep-links are NEVER blind-redirected (A2)."""
+
+    _OLD_CHUNK = {
+        "id": 9001,
+        "document_id": 195,
+        "content": "The board approved the minutes.",
+        "section": "Approval",
+        "speaker": "",
+        "chunk_index": 0,
+        "start_seconds": None,
+    }
+    _CANON_CHUNK = {
+        "id": 9100,
+        "document_id": 196,
+        "content": "The board approved the minutes.",
+        "section": "Approval",
+        "speaker": "",
+        "chunk_index": 0,
+        "start_seconds": None,
+    }
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity", return_value=_FAKE_ENTITY)
+    @patch("actalux.web.app.resolve_canonical_chunk")
+    @patch("actalux.web.app.resolve_canonical_document")
+    @patch("actalux.web.app.get_document")
+    @patch("actalux.web.app.get_chunk_with_context")
+    def test_superseded_chunk_shows_notice_not_redirect(
+        self, mock_ctx, mock_doc, mock_resolve, mock_chunk, mock_ent, mock_db
+    ) -> None:
+        from actalux.db import CanonicalDocument
+
+        # First get_chunk_with_context: the original (superseded-doc) chunk.
+        # Second call (re-anchored): the canonical chunk's context.
+        mock_ctx.side_effect = [
+            {"chunk": self._OLD_CHUNK, "context": [self._OLD_CHUNK]},
+            {"chunk": self._CANON_CHUNK, "context": [self._CANON_CHUNK]},
+        ]
+        mock_doc.return_value = _FAKE_SUPERSEDED_DOC
+        mock_resolve.return_value = CanonicalDocument(
+            document=_FAKE_CANONICAL_DOC, superseded=True, requested_id=195
+        )
+        mock_chunk.return_value = self._CANON_CHUNK
+
+        with _mock_stored_file_url(""):
+            r = client.get("/chunk/9001/source?embed=1", follow_redirects=False)
+        # No redirect — citations never blind-jump.
+        assert r.status_code == 200
+        assert "superseded version" in r.text
+        # The re-anchored canonical document is offered as the current version.
+        assert "/document/196" in r.text
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity", return_value=_FAKE_ENTITY)
+    @patch("actalux.web.app.resolve_canonical_chunk", return_value=None)
+    @patch("actalux.web.app.resolve_canonical_document")
+    @patch("actalux.web.app.get_document")
+    @patch("actalux.web.app.get_chunk_with_context")
+    def test_superseded_chunk_no_match_keeps_old_passage(
+        self, mock_ctx, mock_doc, mock_resolve, mock_chunk, mock_ent, mock_db
+    ) -> None:
+        from actalux.db import CanonicalDocument
+
+        mock_ctx.return_value = {"chunk": self._OLD_CHUNK, "context": [self._OLD_CHUNK]}
+        mock_doc.return_value = _FAKE_SUPERSEDED_DOC
+        mock_resolve.return_value = CanonicalDocument(
+            document=_FAKE_CANONICAL_DOC, superseded=True, requested_id=195
+        )
+        with _mock_stored_file_url(""):
+            r = client.get("/chunk/9001/source?embed=1", follow_redirects=False)
+        assert r.status_code == 200
+        assert "superseded version" in r.text
+        # No confident match: the original cited words are still shown verbatim.
+        assert "The board approved the minutes." in r.text
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity", return_value=_FAKE_ENTITY)
+    @patch("actalux.web.app.get_document", return_value=_FAKE_DOC)
+    @patch("actalux.web.app.get_chunk_with_context")
+    def test_current_chunk_has_no_superseded_notice(
+        self, mock_ctx, mock_doc, mock_ent, mock_db
+    ) -> None:
+        # _FAKE_DOC has no replaces_id -> not superseded -> no notice.
+        mock_ctx.return_value = {"chunk": _FAKE_CHUNK, "context": [_FAKE_CHUNK]}
+        with _mock_stored_file_url(""):
+            r = client.get("/chunk/9001/source?embed=1", follow_redirects=False)
+        assert r.status_code == 200
+        assert "superseded version" not in r.text
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity", return_value=_FAKE_ENTITY)
+    @patch("actalux.web.app.resolve_canonical_document")
+    @patch("actalux.web.app.get_document", return_value=_FAKE_SUPERSEDED_DOC)
+    @patch("actalux.web.app.get_chunk_with_context")
+    def test_broken_chain_keeps_original_no_notice(
+        self, mock_ctx, mock_doc, mock_resolve, mock_ent, mock_db
+    ) -> None:
+        """A doc with replaces_id but an unresolved chain (superseded=False): no notice.
+
+        resolve_canonical_document reports superseded=False on a broken chain and
+        returns the requested row; the citation must keep its original document and
+        show no (unreliable) 'current version' link.
+        """
+        from actalux.db import CanonicalDocument
+
+        mock_ctx.return_value = {"chunk": self._OLD_CHUNK, "context": [self._OLD_CHUNK]}
+        # Broken chain: requested row returned, superseded False.
+        mock_resolve.return_value = CanonicalDocument(
+            document=_FAKE_SUPERSEDED_DOC, superseded=False, requested_id=195
+        )
+        with _mock_stored_file_url(""):
+            r = client.get("/chunk/9001/source?embed=1", follow_redirects=False)
+        assert r.status_code == 200
+        assert "superseded version" not in r.text
+
+
 class TestOriginLinks:
     """Template behavior: origin vs storage links, shown/hidden per spec."""
 
     @patch("actalux.web.app._get_db")
     @patch("actalux.web.app.get_entity", return_value=_FAKE_ENTITY)
-    @patch("actalux.web.app.get_document", return_value=_FAKE_DOC)
+    @patch("actalux.web.app.resolve_canonical_document", return_value=_canon(_FAKE_DOC))
     def test_document_view_pdf_embed_uses_stored_file_url(
         self, mock_doc, mock_ent, mock_db
     ) -> None:
@@ -451,7 +655,7 @@ class TestOriginLinks:
 
     @patch("actalux.web.app._get_db")
     @patch("actalux.web.app.get_entity", return_value=_FAKE_ENTITY)
-    @patch("actalux.web.app.get_document", return_value=_FAKE_VIDEO_DOC)
+    @patch("actalux.web.app.resolve_canonical_document", return_value=_canon(_FAKE_VIDEO_DOC))
     def test_document_view_video_embed_no_pdf_frame(self, mock_doc, mock_ent, mock_db) -> None:
         """Video docs: show the YouTube embed, not a PDF iframe."""
         with _mock_stored_file_url(""):
@@ -463,7 +667,7 @@ class TestOriginLinks:
 
     @patch("actalux.web.app._get_db")
     @patch("actalux.web.app.get_entity", return_value=_FAKE_ENTITY)
-    @patch("actalux.web.app.get_document", return_value=_FAKE_BUDGET_DOC)
+    @patch("actalux.web.app.resolve_canonical_document", return_value=_canon(_FAKE_BUDGET_DOC))
     def test_document_view_budget_shows_budget_callout(self, mock_doc, mock_ent, mock_db) -> None:
         """Budget documents: a callout links to the structured Budget page."""
         with _mock_stored_file_url(_FAKE_STORED_FILE_URL):
@@ -476,8 +680,8 @@ class TestOriginLinks:
     @patch("actalux.web.app._get_db")
     @patch("actalux.web.app.get_entity", return_value=_FAKE_ENTITY)
     @patch(
-        "actalux.web.app.get_document",
-        return_value={**_FAKE_DOC, "source_url": "", "source_file": ""},
+        "actalux.web.app.resolve_canonical_document",
+        return_value=_canon({**_FAKE_DOC, "source_url": "", "source_file": ""}),
     )
     def test_document_view_hides_origin_link_when_empty(self, mock_doc, mock_ent, mock_db) -> None:
         """No 'Open original' when source_url is empty."""
@@ -712,7 +916,7 @@ class TestReaderPanePortalAware:
     # ── Video embed in document.html ──────────────────────────────────────
     @patch("actalux.web.app._get_db")
     @patch("actalux.web.app.get_entity", return_value=_FAKE_ENTITY)
-    @patch("actalux.web.app.get_document", return_value=_FAKE_VIDEO_DOC)
+    @patch("actalux.web.app.resolve_canonical_document", return_value=_canon(_FAKE_VIDEO_DOC))
     def test_document_view_transcript_shows_video_embed(self, mock_doc, mock_ent, mock_db) -> None:
         """Full /document/{id} page for a transcript with video_id embeds the player."""
         with _mock_stored_file_url(""):

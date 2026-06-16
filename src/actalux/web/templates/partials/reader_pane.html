@@ -24,6 +24,8 @@
   <span>{{ ctx_chunk.id | chunk_hash_id }}</span>
 </div>
 
+{% include "partials/_superseded_notice.html" %}
+
 {# Portal-aware context rendering:
    - YouTube transcripts: reflow via reflow_transcript (strips standalone timestamps,
      groups into paragraphs); label the block with transcript_caption_label (the
