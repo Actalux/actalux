@@ -273,8 +273,10 @@ class Milestone:
 
 
 # --- Initiative timeline. This spans the FULL arc — plan development (2024-2025),
-# bond authorization (Jan 2026), voter approval (Apr 2026), and the phased
-# implementation now underway — not just the plan document's Feb 2025 delivery.
+# bond authorization (Jan 2026), and voter approval (Apr 2026) — not just the plan
+# document's Feb 2025 delivery. (No "implementation underway" milestone: the only
+# corpus source for it was the district's news release, which carries campaign
+# framing + a campaign URL; it was removed rather than surface non-neutral content.)
 # Month-only schedule items map to the plan's stated 2024-2025 window; days are
 # given only where the source prints one. Each milestone carries its own citation.
 #
@@ -338,10 +340,5 @@ TIMELINE = (
         "April 7, 2026",
         "Voters approve Proposition O (2,516 to 303)",
         CitedChunk(8710),  # St. Louis County certified results (doc 504)
-    ),
-    Milestone(
-        "Underway",
-        "Phased implementation of prioritized projects",
-        Source(505, "committed to a phased approach"),
     ),
 )

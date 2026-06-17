@@ -313,13 +313,14 @@ class TestFacilitiesPlanTopic:
         # Funding facts each render their own figure + citation (grounded per-fact).
         assert "Current debt" in r.text
         assert "Up to $90M of bonds" in r.text
-        # Timeline spans the full initiative (plan -> bond -> approval -> underway),
+        # Timeline spans the full initiative (plan -> bond -> voter approval),
         # reframed away from a Feb-2025 endpoint, with each milestone cited.
-        assert "From plan to bond to projects underway" in r.text
+        assert "From master plan to voter-approved bond" in r.text
         assert "Voters approve Proposition O" in r.text
-        assert "Phased implementation of prioritized projects" in r.text
         # The dropped ungrounded milestone must not reappear.
         assert "Board selects Paragon Architecture" not in r.text
+        # The campaign-tainted district release (doc 505) is not cited anywhere.
+        assert "Phased implementation of prioritized projects" not in r.text
         # CitedChunk milestones link to the verified bond / certified-result chunks,
         # independent of the anchor resolver mock.
         assert "/chunk/8140/source" in r.text

@@ -145,13 +145,12 @@ class TestTimelineGrounding:
             assert m.when != "April 2024"
 
     def test_timeline_spans_beyond_plan_delivery(self) -> None:
-        # The arc must reach bond authorization, voter approval, and implementation
-        # — not end at the Feb 2025 plan-document delivery.
+        # The arc must reach bond authorization and voter approval — not end at the
+        # Feb 2025 plan-document delivery.
         titles = " ".join(m.title.lower() for m in fpd.TIMELINE)
         whens = " ".join(m.when.lower() for m in fpd.TIMELINE)
         assert "proposition o" in titles  # voter approval step
         assert "bond election" in titles  # bond authorization step
-        assert "implementation" in titles  # implementation underway
         assert "2026" in whens  # the arc extends into 2026
 
     def test_bond_and_approval_milestones_reuse_verified_chunks(self) -> None:
