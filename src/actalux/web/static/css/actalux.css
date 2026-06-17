@@ -1224,12 +1224,6 @@ img { max-width: 100%; display: block; }
 }
 .figures-table .num { font-family: var(--mono); text-align: right; }
 .figures-table th.num { text-align: right; }
-.figures-quote td { border-bottom: 1px solid var(--rule); padding-top: 0; }
-.cite-quote {
-  font-family: var(--serif-body); font-style: italic; font-size: 13px; color: var(--muted);
-  background: var(--highlight); box-shadow: -3px 0 0 var(--accent);
-  padding: 2px 4px 2px 8px; box-decoration-break: clone;
-}
 
 .budget-actual-table .variance { color: var(--muted); }
 
