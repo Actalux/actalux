@@ -12,8 +12,10 @@ Endpoints:
 
 from __future__ import annotations
 
+import json
 import logging
 import re
+import threading
 import time
 from dataclasses import dataclass
 from datetime import date
@@ -29,6 +31,7 @@ from fastapi.templating import Jinja2Templates
 from markupsafe import Markup, escape
 from supabase import Client
 
+from actalux.config import Config
 from actalux.db import (
     get_budget_line_items,
     get_chunk_with_context,
@@ -49,9 +52,9 @@ from actalux.errors import SearchError, SummaryError
 from actalux.models import Correction, chunk_hash_id
 from actalux.search.answer import assemble_evidence, enrich_results
 from actalux.search.hybrid import SearchFilters, hybrid_search
-from actalux.search.summarize import generate_summary
+from actalux.search.summarize import condense_question, extract_citation_ids, generate_summary
 from actalux.web import facilities_plan_data as fpd
-from actalux.web.api import api_router
+from actalux.web.api import _enforce_rate, api_router
 from actalux.web.charts import (
     TierBar,
     aggregate_by_year,
@@ -1173,6 +1176,268 @@ async def summarize(
         "partials/summary.html",
         {"summary": summary, "summary_html": summary_html},
     )
+
+
+# --- Ask (cited chatbot) -----------------------------------------------------
+# A multi-turn, server-stateless chat over the same retrieval + citation-verified
+# summary stack /summarize uses. The conversation history travels with each
+# request (a client-carried hidden field), so follow-ups keep context without any
+# stored conversation or user profile. Each turn: condense the follow-up against
+# history into a standalone query, retrieve evidence, and answer with
+# generate_summary -- whose citation verification (drops uncited sentences,
+# abstains when nothing grounds) is the same guarantee the rest of the site makes.
+# It is the most expensive public endpoint and carries no API key, so it is
+# bounded by a per-IP minute limit AND a global per-day message cap.
+
+_ask_daily_count: dict[str, int] = {}
+# The route is sync (threadpool), so the global daily counter needs a lock around
+# its read-check-write to count accurately under concurrent turns.
+_ask_daily_lock = threading.Lock()
+
+
+def _bound_history(history: list[dict[str, str]], cfg: Config) -> list[dict[str, str]]:
+    """Cap a conversation to the most recent turns and a total char budget.
+
+    Keeps the last ``ask_history_max_turns`` entries, then drops oldest-first
+    until under ``ask_history_max_chars`` -- so neither a long genuine chat nor a
+    crafted request can inflate the condense LLM's token cost without limit.
+    """
+    bounded = history[-cfg.ask_history_max_turns :]
+    while bounded and sum(len(t["content"]) for t in bounded) > cfg.ask_history_max_chars:
+        bounded.pop(0)
+    return bounded
+
+
+def _parse_ask_history(raw: str, cfg: Config) -> list[dict[str, str]]:
+    """Parse and bound the client-carried conversation history.
+
+    ``raw`` is the JSON the hidden field round-trips. Anything malformed yields an
+    empty history (the turn just loses prior context, never errors). Only
+    ``user``/``assistant`` entries with non-empty string content survive, and the
+    result is bounded by :func:`_bound_history`.
+    """
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return []
+    if not isinstance(data, list):
+        return []
+    cleaned: list[dict[str, str]] = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        role = item.get("role")
+        content = item.get("content")
+        if role in ("user", "assistant") and isinstance(content, str) and content.strip():
+            cleaned.append({"role": role, "content": content.strip()})
+    return _bound_history(cleaned, cfg)
+
+
+def _register_ask_within_daily_cap(cap: int) -> bool:
+    """Count one Ask turn against the global per-day cap; False when over.
+
+    Keyed by calendar date so the budget resets at midnight. In-process, like the
+    per-IP limiter -- adequate for the single-instance deploy. The lock makes the
+    read-check-write atomic so concurrent turns can't overshoot the cap.
+    """
+    today = date.today().isoformat()
+    with _ask_daily_lock:
+        used = _ask_daily_count.get(today, 0)
+        if used >= cap:
+            return False
+        # Drop stale days so the dict can't grow unbounded.
+        for d in [k for k in _ask_daily_count if k != today]:
+            del _ask_daily_count[d]
+        _ask_daily_count[today] = used + 1
+        return True
+
+
+def _cited_sources(text: str, enriched: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The evidence rows actually cited in the verified answer, in citation order.
+
+    Restricting the "Sources" list to passages the answer kept (post-verification)
+    keeps it honest: it shows what the answer stands on, not the whole candidate
+    pool. Deduplicated by chunk so a passage cited twice lists once.
+    """
+    cited = set(extract_citation_ids(text))
+    seen: set[int] = set()
+    out: list[dict[str, Any]] = []
+    for r in enriched:
+        if r["hash_id"] in cited and r["chunk_id"] not in seen:
+            seen.add(r["chunk_id"])
+            out.append(r)
+    return out
+
+
+def _history_to_turns(history: list[dict[str, str]]) -> list[dict[str, Any]]:
+    """Rebuild display turns from a flat history (non-HTMX full-page fallback).
+
+    Prior answers are shown as plain text (their citation links can't be rebuilt
+    without re-running retrieval); the live turn rendered alongside carries the
+    real links. HTMX -- the supported path -- never uses this.
+    """
+    turns: list[dict[str, Any]] = []
+    i = 0
+    while i < len(history):
+        if history[i]["role"] != "user":
+            i += 1
+            continue
+        question = history[i]["content"]
+        answer = ""
+        if i + 1 < len(history) and history[i + 1]["role"] == "assistant":
+            answer = history[i + 1]["content"]
+            i += 2
+        else:
+            i += 1
+        turns.append(
+            {
+                "question": question,
+                "standalone": "",
+                "answer_html": str(escape(answer)),
+                "summary": None,
+                "sources": [],
+                "blocked": False,
+            }
+        )
+    return turns
+
+
+def _blocked_turn(question: str, message: str) -> dict[str, Any]:
+    """A turn that shows a cap/availability message instead of an answer.
+
+    Blocked turns are never added to the carried history -- they are transient
+    notices, not conversation the next condense should reason over.
+    """
+    return {
+        "question": question,
+        "standalone": "",
+        "answer_html": str(escape(message)),
+        "summary": None,
+        "sources": [],
+        "blocked": True,
+    }
+
+
+@jurisdiction.get("/ask", response_class=HTMLResponse)
+def ask_page(request: Request, view: EntityView = Depends(resolve_entity)) -> HTMLResponse:
+    """The Ask page: multi-turn, citation-backed Q&A over this body's records."""
+    return templates.TemplateResponse(
+        request, "ask.html", _page(view, active="page-ask", turns=[], history_json="[]")
+    )
+
+
+@jurisdiction.post("/ask", response_class=HTMLResponse)
+def ask_post(
+    request: Request,
+    view: EntityView = Depends(resolve_entity),
+    q: str = Form(""),
+    history: str = Form("[]"),
+) -> HTMLResponse:
+    """One conversation turn. The client carries history; the server stays stateless.
+
+    Sync (not async) so the blocking embed + Supabase RPCs + LLM calls run in
+    Starlette's threadpool, matching the search/summarize routes.
+    """
+    cfg = _get_config()
+    is_htmx = bool(request.headers.get("HX-Request"))
+    # Bound the question before any LLM work so a crafted large post can't inflate
+    # condense/embed cost; genuine questions are far shorter than this.
+    question = q.strip()[: cfg.ask_question_max_chars]
+    prior = _parse_ask_history(history, cfg)
+
+    def render(turn: dict[str, Any], new_history: list[dict[str, str]]) -> HTMLResponse:
+        history_json = json.dumps(new_history)
+        if is_htmx:
+            return templates.TemplateResponse(
+                request,
+                "partials/ask_response.html",
+                _page(view, turn=turn, history_json=history_json),
+            )
+        turns = _history_to_turns(prior) + [turn]
+        return templates.TemplateResponse(
+            request,
+            "ask.html",
+            _page(view, active="page-ask", turns=turns, history_json=history_json),
+        )
+
+    if not question:
+        if is_htmx:
+            return HTMLResponse("")
+        return templates.TemplateResponse(
+            request,
+            "ask.html",
+            _page(
+                view,
+                active="page-ask",
+                turns=_history_to_turns(prior),
+                history_json=json.dumps(prior),
+            ),
+        )
+
+    # Per-IP minute limit first (a single abuser hitting it must not spend the
+    # global daily budget). A blocked turn is shown but not added to history.
+    try:
+        _enforce_rate(request, "ask", cfg.rate_limit_ask_per_minute)
+    except HTTPException:
+        return render(
+            _blocked_turn(question, "You're asking quickly — please wait a moment and try again."),
+            prior,
+        )
+
+    if not _register_ask_within_daily_cap(cfg.ask_daily_message_cap):
+        return render(
+            _blocked_turn(
+                question,
+                "Actalux has reached today's question limit. Please try again tomorrow, "
+                "or search the records directly in the meantime.",
+            ),
+            prior,
+        )
+
+    if not cfg.openai_api_key:
+        return render(
+            _blocked_turn(question, "The assistant is temporarily unavailable. Please use search."),
+            prior,
+        )
+
+    client = _get_db()
+    try:
+        standalone = condense_question(prior, question, cfg.openai_api_key, cfg.summary_model)
+        embedding = _embed_query(standalone)
+        filters = SearchFilters(entity_id=view.entity["id"])
+        enriched, route = assemble_evidence(
+            client, standalone, embedding, filters=filters, reranker=_reranker(), max_results=10
+        )
+        logger.info("ask route=%s for: %s", route, standalone)
+        summary = generate_summary(standalone, enriched, cfg.openai_api_key, cfg.summary_model)
+    except (SearchError, SummaryError):
+        logger.exception("Ask failed for: %s", question)
+        return render(
+            _blocked_turn(question, "Something went wrong answering that — please try rephrasing."),
+            prior,
+        )
+
+    turn = {
+        "question": question,
+        # Surface the condensed query only when it actually differs, so a reader
+        # can see how a follow-up was resolved without noise on standalone asks.
+        "standalone": standalone if standalone.strip() != question else "",
+        "answer_html": _render_citation_links(summary.text, enriched),
+        "summary": summary,
+        "sources": _cited_sources(summary.text, enriched),
+        "blocked": False,
+    }
+    new_history = _bound_history(
+        prior
+        + [
+            {"role": "user", "content": question},
+            {"role": "assistant", "content": summary.text},
+        ],
+        cfg,
+    )
+    return render(turn, new_history)
 
 
 # --- Helpers ---

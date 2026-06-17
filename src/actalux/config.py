@@ -60,6 +60,20 @@ class Config:
     # be locked down at deploy time with no code change.
     api_key: str = field(default_factory=lambda: os.environ.get("ACTALUX_API_KEY", ""))
     rate_limit_api_per_minute: int = 60
+    # Ask page (the cited chatbot). It is the most expensive public endpoint
+    # (condense + retrieve + rerank + generate per turn) and has no API key, so
+    # it carries both a per-IP minute limit and a global per-day message cap to
+    # bound LLM spend. The caps are in-process (single-instance deploy); a
+    # multi-instance deploy would need a shared store.
+    rate_limit_ask_per_minute: int = 8
+    ask_daily_message_cap: int = 400
+    # Bounds on the client-carried conversation history honored per turn, so a
+    # crafted request cannot inflate condense token cost without limit.
+    ask_history_max_turns: int = 8
+    ask_history_max_chars: int = 8000
+    # Upper bound on a single question before any LLM work, so a crafted large
+    # post cannot inflate condense/embed cost. Genuine questions are far shorter.
+    ask_question_max_chars: int = 2000
 
 
 def load_config() -> Config:

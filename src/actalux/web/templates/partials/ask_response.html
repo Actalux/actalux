@@ -1,0 +1,6 @@
+{# HTMX turn response: the new turn is appended to #ask-log (beforeend), and the
+   carried history input is replaced out-of-band so the NEXT request posts the
+   updated conversation. Keep id + name on the OOB input so it stays the form's
+   history field and the target of the following turn's OOB swap. #}
+{% include "partials/ask_turn.html" %}
+<input type="hidden" name="history" id="ask-history" value="{{ history_json }}" hx-swap-oob="true">

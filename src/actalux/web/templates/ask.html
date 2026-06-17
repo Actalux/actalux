@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Ask{% endblock %}
+{% block content %}
+
+<section class="pane-header">
+  <h2>Ask the archive</h2>
+  <span class="meta">{{ entity.display_name if entity else 'Public records' }}</span>
+</section>
+
+<div class="ask">
+  <p class="ask-intro">
+    Ask a question about the public records we have gathered for the
+    {{ entity.display_name if entity else 'district' }}. Every answer is built only
+    from those records, and every claim links to the source passage it came from.
+    The assistant speaks only from documents it can cite, so answers can be partial —
+    this is not the complete record.
+  </p>
+
+  <div class="ask-log" id="ask-log" aria-live="polite">
+    {% for turn in turns %}
+      {% include "partials/ask_turn.html" %}
+    {% endfor %}
+  </div>
+
+  <form class="ask-form" id="ask-form"
+        hx-post="{{ base }}/ask"
+        hx-target="#ask-log"
+        hx-swap="beforeend"
+        hx-disabled-elt="#ask-send"
+        hx-on::after-request="if(event.detail.successful){var t=this.querySelector('textarea');t.value='';t.focus();var l=document.getElementById('ask-log').lastElementChild;if(l){l.scrollIntoView({behavior:'smooth',block:'start'});}}">
+    <input type="hidden" name="history" id="ask-history" value="{{ history_json }}">
+    <textarea class="textarea" name="q" id="ask-q" rows="3"
+              placeholder="e.g. How has the district's fund balance changed over recent years?"
+              aria-label="Your question"></textarea>
+    <div class="ask-form-row">
+      <span class="ask-hint">Answers cite their sources. You can also <a href="{{ base }}/search">search the records</a> directly.</span>
+      <button class="btn btn-primary" id="ask-send" type="submit">
+        Ask<span class="htmx-indicator"> …</span>
+      </button>
+    </div>
+  </form>
+</div>
+
+{% endblock %}

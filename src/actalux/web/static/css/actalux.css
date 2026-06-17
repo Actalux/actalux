@@ -971,6 +971,91 @@ img { max-width: 100%; display: block; }
   letter-spacing: 0.06em;
 }
 
+/* ===== Ask (cited chatbot) ===== */
+.ask { max-width: 720px; padding: 0 var(--s-5) var(--s-6); }
+.ask-intro {
+  font-family: var(--serif-body);
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--ink-soft);
+  margin: var(--s-4) 0 var(--s-5);
+}
+.ask-log { display: flex; flex-direction: column; gap: var(--s-5); }
+.ask-turn { display: flex; flex-direction: column; gap: var(--s-3); }
+.ask-role {
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+.ask-q-text {
+  font-family: var(--serif-body);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--ink);
+  margin: var(--s-1) 0 0;
+}
+.ask-standalone {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  margin: var(--s-1) 0 0;
+}
+/* The shared summary-card carries page margins; reset them inside the ask column. */
+.summary-card.ask-a { margin: 0; }
+.ask-a-note {
+  font-family: var(--serif-body);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--muted);
+  background: var(--paper-warm);
+  border-left: 3px solid var(--rule-strong);
+  padding: var(--s-3) var(--s-4);
+}
+.ask-sources {
+  margin-top: var(--s-3);
+  border-top: 1px solid var(--rule);
+  padding-top: var(--s-2);
+}
+.ask-sources > summary {
+  font-family: var(--sans);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  cursor: pointer;
+}
+.ask-source {
+  display: flex;
+  gap: var(--s-2);
+  align-items: baseline;
+  padding: var(--s-1) 0;
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.ask-source:hover { color: var(--accent); }
+.ask-source .hash { font-family: var(--mono); font-size: 11px; color: var(--accent); }
+.ask-source .src-date { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-left: auto; }
+.ask-form {
+  margin-top: var(--s-5);
+  border-top: 2px solid var(--ink);
+  padding-top: var(--s-4);
+}
+.ask-form-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  margin-top: var(--s-3);
+  flex-wrap: wrap;
+}
+.ask-hint { font-family: var(--sans); font-size: 12px; color: var(--muted); }
+.ask-hint a { color: var(--ink-soft); border-bottom: 1px solid var(--rule-strong); }
+.ask-hint a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
 /* ===== Components ===== */
 .btn {
   font-family: var(--sans);

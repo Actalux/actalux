@@ -1,0 +1,37 @@
+{# One conversation turn: the question, then the cited answer (or a notice).
+   `turn` carries: question, standalone (optional condensed query), answer_html
+   (already-safe HTML), summary (Summary|None for the citation footnote), sources
+   (cited evidence rows), blocked (True for a cap/availability notice). #}
+<div class="ask-turn{% if turn.blocked %} ask-turn-blocked{% endif %}">
+  <div class="ask-q">
+    <span class="ask-role">You asked</span>
+    <p class="ask-q-text">{{ turn.question }}</p>
+    {% if turn.standalone %}<p class="ask-standalone">Understood as: {{ turn.standalone }}</p>{% endif %}
+  </div>
+
+  {% if turn.blocked %}
+  <div class="ask-a ask-a-note">{{ turn.answer_html | safe }}</div>
+  {% else %}
+  <div class="summary-card ask-a">
+    <div class="heading">Answer · every claim cites a source</div>
+    <div class="body">{{ turn.answer_html | safe }}</div>
+    {% if turn.summary %}
+    <div class="footnote">
+      {{ turn.summary.citations_verified }} citation{{ 's' if turn.summary.citations_verified != 1 }} verified{% if turn.summary.citations_dropped > 0 %} · {{ turn.summary.citations_dropped }} unverified claim{{ 's' if turn.summary.citations_dropped != 1 }} removed{% endif %}
+    </div>
+    {% endif %}
+    {% if turn.sources %}
+    <details class="ask-sources">
+      <summary>Sources ({{ turn.sources|length }})</summary>
+      {% for s in turn.sources %}
+      <a class="ask-source" href="/chunk/{{ s.chunk_id }}/source">
+        <span class="hash">{{ s.hash_id }}</span>
+        <span class="src-title">{{ s | display_title }}</span>
+        {% if s.meeting_date %}<span class="src-date">{{ s.meeting_date }}</span>{% endif %}
+      </a>
+      {% endfor %}
+    </details>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
