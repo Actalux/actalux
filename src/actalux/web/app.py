@@ -32,7 +32,9 @@ from supabase import Client
 from actalux.db import (
     get_budget_line_items,
     get_chunk_with_context,
+    get_dese_line_items,
     get_document,
+    get_documents,
     get_entity,
     get_entity_by_path,
     get_proposed_budget_line_items,
@@ -54,16 +56,20 @@ from actalux.web.charts import (
     TierBar,
     aggregate_by_year,
     budget_vs_actual,
+    build_stack,
     component_trend,
     cross_split,
     function_breakdown,
     fund_breakdown,
     proposed_breakdown,
     revenue_expenditure_svg,
+    short_year,
     source_breakdown,
+    stacked_bar_svg,
     tier_bar_svg,
     trend_svg,
     usd,
+    usd_m,
 )
 from actalux.web.display import display_title, first_sentence, source_label
 from actalux.web.retrieval import build_reranker, embed_query, get_config, get_db
@@ -204,6 +210,8 @@ templates.env.filters["display_title"] = display_title
 templates.env.filters["source_label"] = source_label
 templates.env.filters["first_sentence"] = first_sentence
 templates.env.filters["usd"] = usd
+templates.env.filters["usd_m"] = usd_m
+templates.env.filters["short_year"] = short_year
 templates.env.filters["safe_url"] = _safe_url
 # Transcript-specific reflow (YouTube portal only): strips standalone timestamps
 # and paragraph-groups the result.  Rolling-caption dedup is NOT applied (verbatim
@@ -601,6 +609,76 @@ def _proposed_budget_context(client: Client) -> dict[str, Any]:
     }
 
 
+def _dese_filed_reports(client: Client, items: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """Per fiscal year, the public URL of the official filing the figures were read from.
+
+    Each DESE fiscal year is one ingested document; its uploaded source PDF lives in
+    storage under the document's ``source_file`` with a ``.pdf`` extension. Returns
+    ``[{"fiscal_year", "url"}]`` oldest year first, skipping any year whose PDF key
+    cannot be derived, so a missing upload simply omits the link rather than 404-ing.
+    """
+    fy_to_doc: dict[str, int] = {}
+    for item in items:
+        fy_to_doc.setdefault(item["fiscal_year"], item["document_id"])
+    docs = get_documents(client, list(fy_to_doc.values()))
+    reports: list[dict[str, str]] = []
+    for fy in sorted(fy_to_doc):
+        source_file = (docs.get(fy_to_doc[fy]) or {}).get("source_file") or ""
+        if not source_file.endswith(".md"):
+            continue
+        reports.append({"fiscal_year": fy, "url": stored_file_url(source_file[:-3] + ".pdf")})
+    return reports
+
+
+def _dese_section_context(client: Client) -> dict[str, Any]:
+    """The "Multi-year actuals — state filings (DESE)" section: three stacked views.
+
+    Object-level expenditure and per-fund reserves come from the ASBR filings (12
+    years); per-school spending comes from the Per-Pupil filings (7 years). All
+    three read the namespaced DESE dimensions via ``get_dese_line_items`` and so
+    never mix into the GAAP/budgetary charts above. Returns ``{"dese": None}`` when
+    no DESE rows are present (e.g. before the loaders have run), so the section
+    simply does not render.
+    """
+    object_items = get_dese_line_items(client, "asbr_object")
+    fund_items = get_dese_line_items(client, "asbr_fund")
+    school_items = get_dese_line_items(client, "perpupil_building")
+    if not (object_items or fund_items or school_items):
+        return {"dese": None}
+
+    objects = build_stack(object_items, group_key="subcategory")
+    # "Reserves" = the year-end fund balance line of the per-fund statement.
+    reserves = build_stack(
+        fund_items,
+        group_key="fund",
+        where={"category": "fund_balance", "subcategory": "Ending Fund Balance"},
+    )
+    # Per school = building-level + district-level allocated, summed across both.
+    schools = build_stack(school_items, group_key="subcategory")
+
+    return {
+        "dese": {
+            "objects": {
+                "chart": objects,
+                "svg": stacked_bar_svg(objects, aria_label="Expenditure by object, by fiscal year"),
+                "reports": _dese_filed_reports(client, object_items),
+            },
+            "reserves": {
+                "chart": reserves,
+                "svg": stacked_bar_svg(
+                    reserves, aria_label="Year-end fund balance by fund, by fiscal year"
+                ),
+                "reports": _dese_filed_reports(client, fund_items),
+            },
+            "schools": {
+                "chart": schools,
+                "svg": stacked_bar_svg(schools, aria_label="Expenditure by school, by fiscal year"),
+                "reports": _dese_filed_reports(client, school_items),
+            },
+        }
+    }
+
+
 @jurisdiction.get("/budget", response_class=HTMLResponse)
 async def budget(request: Request, view: EntityView = Depends(resolve_entity)) -> HTMLResponse:
     """First-class Budget page: charts from budget_line_items plus cited quotes.
@@ -632,6 +710,7 @@ async def budget(request: Request, view: EntityView = Depends(resolve_entity)) -
             budget_actual=budget_actual,
             sections=_budget_quote_sections(view.entity["id"]),
             **_proposed_budget_context(client),
+            **_dese_section_context(client),
             **breakdown,
         ),
     )

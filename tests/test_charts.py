@@ -5,20 +5,25 @@ from __future__ import annotations
 from decimal import Decimal
 
 from actalux.web.charts import (
+    STACK_RAMP_STEPS,
     TierBar,
     _axis_label,
     aggregate_by_year,
     budget_vs_actual,
+    build_stack,
     component_trend,
     cross_split,
     function_breakdown,
     fund_breakdown,
     proposed_breakdown,
     revenue_expenditure_svg,
+    short_year,
     source_breakdown,
+    stacked_bar_svg,
     tier_bar_svg,
     trend_svg,
     usd,
+    usd_m,
 )
 
 
@@ -353,6 +358,132 @@ class TestUsd:
     def test_thousands_separator_no_cents(self):
         assert usd(Decimal("1234567.89")) == "$1,234,568"
         assert usd(0) == "$0"
+
+
+class TestUsdM:
+    def test_compact_millions_two_decimals(self):
+        assert usd_m(Decimal("29794237.97")) == "$29.79M"
+        assert usd_m(Decimal("498434")) == "$0.50M"
+        assert usd_m(0) == "$0.00M"
+
+
+class TestShortYear:
+    def test_compacts_fiscal_year(self):
+        assert short_year("2023-2024") == "23-24"
+
+    def test_leaves_other_formats_untouched(self):
+        assert short_year("FY2024") == "FY2024"
+
+
+# DESE-style rows: one document per fiscal year (its chunk), several components
+# per year. Mirrors the asbr_object shape (subcategory = object, all expenditure).
+STACK_ITEMS = [
+    {
+        "fiscal_year": fy,
+        "category": "expenditure",
+        "dimension": "asbr_object",
+        "subcategory": sub,
+        "amount": amt,
+        "chunk_id": chunk,
+    }
+    for fy, sub, amt, chunk in [
+        ("2022-2023", "6110 Certificated Salaries", "30000000", 9001),
+        ("2022-2023", "6200 Employee Benefits", "9000000", 9001),
+        ("2023-2024", "6110 Certificated Salaries", "31000000", 9002),
+        ("2023-2024", "6200 Employee Benefits", "10000000", 9002),
+        # A component absent in the first year (appears only in 2023-2024).
+        ("2023-2024", "6500 Capital Outlay", "2000000", 9002),
+    ]
+]
+
+
+class TestBuildStack:
+    def test_years_oldest_first_and_series_largest_total_first(self):
+        chart = build_stack(STACK_ITEMS, group_key="subcategory")
+        assert chart.fiscal_years == ("2022-2023", "2023-2024")
+        # Certificated Salaries (61M total) > Benefits (19M) > Capital Outlay (2M).
+        assert [s.label for s in chart.series] == [
+            "6110 Certificated Salaries",
+            "6200 Employee Benefits",
+            "6500 Capital Outlay",
+        ]
+
+    def test_cells_sum_per_year_and_keep_their_chunk(self):
+        chart = build_stack(STACK_ITEMS, group_key="subcategory")
+        salaries = next(s for s in chart.series if s.label.startswith("6110"))
+        assert salaries.cells["2023-2024"].amount == Decimal("31000000")
+        assert salaries.cells["2023-2024"].chunk_id == 9002
+        assert salaries.total == Decimal("61000000")
+
+    def test_missing_cell_is_absent_not_zero(self):
+        chart = build_stack(STACK_ITEMS, group_key="subcategory")
+        capital = next(s for s in chart.series if s.label.startswith("6500"))
+        assert "2022-2023" not in capital.cells  # no Capital Outlay that year
+
+    def test_year_totals_sum_every_component(self):
+        chart = build_stack(STACK_ITEMS, group_key="subcategory")
+        assert chart.year_totals["2022-2023"] == Decimal("39000000")
+        assert chart.year_totals["2023-2024"] == Decimal("43000000")
+
+    def test_where_filter_restricts_rows(self):
+        rows = [
+            {
+                "fiscal_year": "2023-2024",
+                "category": "fund_balance",
+                "subcategory": "Ending Fund Balance",
+                "fund": "General",
+                "amount": "25000000",
+            },
+            {
+                "fiscal_year": "2023-2024",
+                "category": "fund_balance",
+                "subcategory": "Beginning Fund Balance",
+                "fund": "General",
+                "amount": "20000000",
+            },
+        ]
+        chart = build_stack(
+            rows,
+            group_key="fund",
+            where={"category": "fund_balance", "subcategory": "Ending Fund Balance"},
+        )
+        # Only the ending-balance row participates.
+        assert chart.series[0].cells["2023-2024"].amount == Decimal("25000000")
+
+    def test_empty(self):
+        chart = build_stack([], group_key="subcategory")
+        assert chart.fiscal_years == ()
+        assert chart.series == ()
+
+
+class TestStackedBarSvg:
+    def test_empty_returns_empty_string(self):
+        assert str(stacked_bar_svg(build_stack([], group_key="subcategory"), aria_label="x")) == ""
+
+    def test_renders_a_segment_per_cell_with_ramp_classes(self):
+        chart = build_stack(STACK_ITEMS, group_key="subcategory")
+        svg = str(stacked_bar_svg(chart, aria_label="Expenditure by object"))
+        assert "<svg" in svg and "</svg>" in svg
+        # Five cells across the two years -> five stacked segments.
+        assert svg.count('class="bar seg ') == 5
+        # Ramp classes stay within the defined step count.
+        assert "bar-stack-0" in svg and "bar-stack-1" in svg
+        assert f"bar-stack-{STACK_RAMP_STEPS}" not in svg
+        assert "22-23" in svg and "23-24" in svg  # short-year x labels
+        # Every (cited) segment deep-links to its source passage.
+        assert svg.count('href="/chunk/') == 5
+
+    def test_ceiling_scales_to_positive_stack_not_net_total(self):
+        # A negative component is skipped in the bars (a stack can't show it) and
+        # must not shrink the axis: the positive stack still fits under the ceiling.
+        rows = [
+            {"fiscal_year": "2023-2024", "subcategory": "A", "amount": "9000000", "chunk_id": 1},
+            {"fiscal_year": "2023-2024", "subcategory": "B", "amount": "-4000000", "chunk_id": 2},
+        ]
+        chart = build_stack(rows, group_key="subcategory")
+        svg = str(stacked_bar_svg(chart, aria_label="x"))
+        # Only the positive component is drawn; the negative one is omitted.
+        assert svg.count('class="bar seg ') == 1
 
 
 class TestAxisLabel:

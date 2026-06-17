@@ -208,6 +208,93 @@ def component_trend(
     return [YearPoint(fy, amount, chunk) for fy, (amount, chunk) in sorted(agg.items())]
 
 
+# --- Stacked multi-year actuals (DESE state filings) ------------------------
+# The DESE section stacks several components (expenditure objects, fund-balance
+# funds, schools) per fiscal year. Each (component, year) cell keeps the chunk it
+# was read from so every charted and tabulated figure deep-links to its source.
+
+# Distinct monochrome ramp steps available as `.bar-stack-{i}` CSS classes; the
+# renderer cycles through them, so a dataset with more series than steps reuses
+# colors rather than indexing past the defined classes.
+STACK_RAMP_STEPS = 7
+
+
+@dataclass(frozen=True)
+class StackCell:
+    """One component's amount in one fiscal year, with the chunk it cites."""
+
+    amount: Decimal
+    chunk_id: int | None
+
+
+@dataclass(frozen=True)
+class StackSeries:
+    """One stacked component (an object, a fund, a school) across fiscal years.
+
+    ``total`` is the component's sum over all years, used to order the stack and
+    legend (largest at the bottom / first) so the ordering is stable year to year.
+    """
+
+    label: str
+    cells: dict[str, StackCell]  # fiscal_year -> cell
+    total: Decimal
+
+
+@dataclass(frozen=True)
+class StackChart:
+    """A complete stacked dataset: ordered fiscal years and components.
+
+    ``series`` is ordered largest-total first (the bottom of each stacked bar and
+    the first legend entry). ``fiscal_years`` is oldest first.
+    """
+
+    fiscal_years: tuple[str, ...]
+    series: tuple[StackSeries, ...]
+
+    @property
+    def year_totals(self) -> dict[str, Decimal]:
+        """Each fiscal year's stacked total (sum of every component that year)."""
+        totals: dict[str, Decimal] = {fy: Decimal(0) for fy in self.fiscal_years}
+        for s in self.series:
+            for fy, cell in s.cells.items():
+                totals[fy] = totals.get(fy, Decimal(0)) + cell.amount
+        return totals
+
+
+def build_stack(
+    items: list[dict[str, Any]], *, group_key: str, where: dict[str, str] | None = None
+) -> StackChart:
+    """Group rows into stacked series by ``group_key``, summed per fiscal year.
+
+    ``where`` restricts which rows participate (e.g.
+    ``{"category": "fund_balance", "subcategory": "Ending Fund Balance"}`` to chart
+    only the reserve line). Each (series, year) cell keeps the chunk id of the first
+    contributing row, so every figure traces to the passage it was read from.
+    Series are ordered largest grand total first; years oldest first.
+    """
+    where = where or {}
+    years: set[str] = set()
+    acc: dict[str, dict[str, list[Any]]] = {}  # label -> fy -> [amount, chunk_id]
+    for item in items:
+        if any(item.get(k) != v for k, v in where.items()):
+            continue
+        label = item.get(group_key) or "Unspecified"
+        fy = item["fiscal_year"]
+        years.add(fy)
+        cell = acc.setdefault(label, {}).setdefault(fy, [Decimal(0), None])
+        cell[0] += Decimal(str(item["amount"]))
+        if cell[1] is None:
+            cell[1] = item.get("chunk_id")
+
+    series: list[StackSeries] = []
+    for label, by_year in acc.items():
+        cells = {fy: StackCell(amount, chunk) for fy, (amount, chunk) in by_year.items()}
+        total = sum((c.amount for c in cells.values()), Decimal(0))
+        series.append(StackSeries(label=label, cells=cells, total=total))
+    series.sort(key=lambda s: s.total, reverse=True)
+    return StackChart(fiscal_years=tuple(sorted(years)), series=tuple(series))
+
+
 @dataclass(frozen=True)
 class BudgetActual:
     """One fund's budget-vs-actual line (revenues or expenditures) for a year."""
@@ -313,7 +400,7 @@ def trend_svg(points: list[YearPoint]) -> Markup:
         )
         parts.append(
             f'<text class="axis-x" x="{cx:.1f}" y="{baseline + 18:.1f}" '
-            f'text-anchor="middle">{escape(_short_year(p.fiscal_year))}</text>'
+            f'text-anchor="middle">{escape(short_year(p.fiscal_year))}</text>'
         )
 
     parts.append(
@@ -393,7 +480,16 @@ def usd(amount: Decimal | float | int) -> str:
     return f"${Decimal(str(amount)):,.0f}"
 
 
-def _short_year(fiscal_year: str) -> str:
+def usd_m(amount: Decimal | float | int) -> str:
+    """Compact millions form for dense matrices, e.g. '$29.79M'.
+
+    Two decimals keeps four significant figures for district-scale dollars; the
+    exact, to-the-cent value is always one click away on the cited source.
+    """
+    return f"${Decimal(str(amount)) / Decimal(1_000_000):,.2f}M"
+
+
+def short_year(fiscal_year: str) -> str:
     """'2023-2024' -> '23-24'; leaves other formats untouched."""
     parts = fiscal_year.split("-")
     if len(parts) == 2 and all(p.isdigit() for p in parts):
@@ -418,6 +514,92 @@ def _axis_label(value: Decimal) -> str:
     if value == 0:
         return "$0"
     return f"${value / Decimal(1_000_000):g}M"
+
+
+def stacked_bar_svg(chart: StackChart, *, aria_label: str) -> Markup:
+    """Stacked bar chart of a StackChart: one bar per fiscal year, components stacked.
+
+    Components stack largest-first from the baseline up, filled with a monochrome
+    warm-grey ramp (``.bar-stack-{i}``) so the series read by value, not hue — the
+    DESIGN.md "texture/value, not a rainbow" rule. A hairline paper stroke (the
+    ``.seg`` class) separates adjacent segments. Each segment carries a ``<title>``
+    for hover and, when its figure cites a chunk, deep-links to
+    ``/chunk/{id}/source`` (the citation-first promise made clickable on the chart
+    too, mirroring the cited matrix below it).
+
+    Only positive cells are drawn (a stacked bar cannot represent a negative
+    component), and the axis ceiling is scaled to the plotted positive stack, so a
+    negative figure can never push a bar past the top of the chart; such a figure
+    still appears, cited, in the matrix below.
+    """
+    if not chart.fiscal_years or not chart.series:
+        return Markup("")
+
+    plot_w = _CHART_W - _PAD_LEFT - _PAD_RIGHT
+    plot_h = _CHART_H - _PAD_TOP - _PAD_BOTTOM
+    baseline = _PAD_TOP + plot_h
+    # Scale to the plotted (positive) stack height, not the net total, so the bars
+    # never exceed the axis when a component is negative (it is skipped below).
+    plotted_totals: dict[str, Decimal] = dict.fromkeys(chart.fiscal_years, Decimal(0))
+    for s in chart.series:
+        for fy, cell in s.cells.items():
+            if cell.amount > 0:
+                plotted_totals[fy] = plotted_totals.get(fy, Decimal(0)) + cell.amount
+    ceiling = _nice_ceiling(max(plotted_totals.values(), default=Decimal(1)))
+
+    def y_for(value: Decimal) -> float:
+        return baseline - float(value / ceiling) * plot_h
+
+    parts: list[str] = [
+        f'<svg class="chart" viewBox="0 0 {_CHART_W} {_CHART_H}" '
+        f'role="img" aria-label="{escape(aria_label)}" preserveAspectRatio="xMidYMid meet">'
+    ]
+    for i in range(_GRIDLINES + 1):
+        gv = ceiling * Decimal(i) / Decimal(_GRIDLINES)
+        gy = y_for(gv)
+        parts.append(
+            f'<line class="grid" x1="{_PAD_LEFT}" y1="{gy:.1f}" '
+            f'x2="{_CHART_W - _PAD_RIGHT}" y2="{gy:.1f}"/>'
+        )
+        parts.append(
+            f'<text class="axis-y" x="{_PAD_LEFT - 8}" y="{gy + 3:.1f}" '
+            f'text-anchor="end">{escape(_axis_label(gv))}</text>'
+        )
+
+    slot_w = plot_w / len(chart.fiscal_years)
+    bar_w = min(slot_w * 0.5, 56)
+    for idx, fy in enumerate(chart.fiscal_years):
+        cx = _PAD_LEFT + slot_w * (idx + 0.5)
+        x = cx - bar_w / 2
+        y_cursor = baseline
+        for si, s in enumerate(chart.series):
+            cell = s.cells.get(fy)
+            if cell is None or cell.amount <= 0:
+                continue
+            seg_h = float(cell.amount / ceiling) * plot_h
+            seg_y = y_cursor - seg_h
+            cls = f"bar-stack-{si % STACK_RAMP_STEPS}"
+            seg = (
+                f"<title>{escape(fy)} · {escape(s.label)} {escape(usd(cell.amount))}</title>"
+                f'<rect class="bar seg {cls}" x="{x:.1f}" y="{seg_y:.1f}" '
+                f'width="{bar_w:.1f}" height="{seg_h:.1f}"/>'
+            )
+            # Deep-link the segment to the passage its figure was read from, when cited.
+            if cell.chunk_id is not None:
+                seg = f'<a href="/chunk/{cell.chunk_id}/source">{seg}</a>'
+            parts.append(seg)
+            y_cursor = seg_y
+        parts.append(
+            f'<text class="axis-x" x="{cx:.1f}" y="{baseline + 18:.1f}" '
+            f'text-anchor="middle">{escape(short_year(fy))}</text>'
+        )
+
+    parts.append(
+        f'<line class="axis-base" x1="{_PAD_LEFT}" y1="{baseline}" '
+        f'x2="{_CHART_W - _PAD_RIGHT}" y2="{baseline}"/>'
+    )
+    parts.append("</svg>")
+    return Markup("".join(parts))
 
 
 def revenue_expenditure_svg(year_totals: list[YearTotals]) -> Markup:
@@ -487,7 +669,7 @@ def revenue_expenditure_svg(year_totals: list[YearTotals]) -> Markup:
         )
         parts.append(
             f'<text class="axis-x" x="{slot_center:.1f}" y="{baseline + 18:.1f}" '
-            f'text-anchor="middle">{escape(_short_year(yt.fiscal_year))}</text>'
+            f'text-anchor="middle">{escape(short_year(yt.fiscal_year))}</text>'
         )
 
     parts.append(

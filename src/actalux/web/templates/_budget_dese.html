@@ -1,0 +1,92 @@
+{# Multi-year actuals — state filings (DESE). Three stacked-bar views over the
+   district's annual filings: expenditure by object and year-end reserves by fund
+   (12 years of ASBR), and spending by school (7 years of Per-Pupil). Charts are
+   always visible; the per-figure cited matrix is collapsed by default to keep the
+   page short. Every cell links to the verbatim figure on its filed source, and
+   each view lists the official PDFs (as filed with DESE). Server-SVG only, no JS.
+   These rows live under namespaced dimensions disjoint from the GAAP charts above
+   (see get_dese_line_items), so the two never mix. #}
+{% macro dese_view(heading, intro, v, group_head) %}
+{% if v.chart.series %}
+<div class="dese-view">
+  <div class="section-label" style="margin-top: var(--s-6);">{{ heading }}</div>
+  <p class="hint">{{ intro }}</p>
+
+  {{ v.svg }}
+  <div class="stack-legend">
+    {% for s in v.chart.series %}
+    <span class="legend-item"><span class="swatch stack-swatch-{{ loop.index0 % 7 }}"></span>{{ s.label }}</span>
+    {% endfor %}
+  </div>
+
+  <details class="dese-details">
+    <summary>Figures &amp; sources <span class="dese-summary-note">— every figure links to the passage it was read from (shown in $millions; click for the exact filed figure)</span></summary>
+    <div class="dese-matrix-wrap">
+      <table class="figures-table dese-matrix">
+        <thead>
+          <tr>
+            <th>{{ group_head }}</th>
+            {% for fy in v.chart.fiscal_years %}<th class="num">{{ fy | short_year }}</th>{% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in v.chart.series %}
+          <tr>
+            <td>{{ s.label }}</td>
+            {% for fy in v.chart.fiscal_years %}
+              {% set cell = s.cells.get(fy) %}
+              <td class="num">
+                {% if cell and cell.chunk_id %}
+                  <a class="dese-cell" href="/chunk/{{ cell.chunk_id }}/source"
+                     title="{{ fy }} · {{ s.label }} · {{ cell.amount | usd }}">{{ cell.amount | usd_m }}</a>
+                {% else %}
+                  {# Fail closed: never show a figure we can't trace to its source. #}
+                  <span class="muted" title="No source on file">&mdash;</span>
+                {% endif %}
+              </td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if v.reports %}
+    <p class="dese-reports">
+      <span class="dese-reports-label">Filed reports (PDF, as filed with DESE):</span>
+      {% for r in v.reports %}{% if r.url %}<a class="hash" href="{{ r.url }}" target="_blank" rel="noopener">{{ r.fiscal_year }}</a>{% if not loop.last %} · {% endif %}{% endif %}{% endfor %}
+    </p>
+    {% endif %}
+  </details>
+</div>
+{% endif %}
+{% endmacro %}
+
+<section class="figures-section dese-section">
+  <div class="section-label">Multi-year actuals &mdash; state filings (DESE)</div>
+  <p class="hint">
+    These figures come from the district's annual reports filed with the Missouri
+    Department of Elementary and Secondary Education (DESE) &mdash; the Annual Secretary
+    of the Board Report (12 years) and the Per-Pupil Building-Level Expenditures
+    summary (7 years). They are filed statements of actual results. Figures are
+    shown in millions for readability; every figure is taken from the official
+    filing and links to the exact passage it was read from.
+  </p>
+
+  {{ dese_view(
+      "Expenditure by object, all funds",
+      "What the district spent each year, split by object — salaries, benefits, purchased
+       services, supplies, and capital outlay — across all funds.",
+      dese.objects, "Object") }}
+
+  {{ dese_view(
+      "Year-end fund balance (reserves) by fund",
+      "The balance carried in each fund at the close of each fiscal year — the district's
+       reserves — from the per-fund statement.",
+      dese.reserves, "Fund") }}
+
+  {{ dese_view(
+      "Spending by school",
+      "Building-level expenditures by school each year, combining building-level and
+       district-level allocated amounts (all funds).",
+      dese.schools, "School") }}
+</section>

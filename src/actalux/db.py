@@ -817,6 +817,32 @@ def get_proposed_budget_line_items(
     return result.data or []
 
 
+def get_dese_line_items(client: Client, dimension: str) -> list[dict[str, Any]]:
+    """Fetch the DESE state-filing actuals for one namespaced dimension, oldest year first.
+
+    The DESE multi-year actuals (ASBR object-level and per-fund, Per-Pupil
+    building-level) are loaded under their own namespaced dimensions
+    ('asbr_object', 'asbr_fund', 'perpupil_building') with ``basis='actual'``,
+    deliberately disjoint from both the GAAP/budgetary actuals (dimensions
+    'fund'/'source'/'function'/'budget') and the proposed figures (basis
+    'proposed'). This helper is the only reader of those rows;
+    ``get_budget_line_items`` and the finance router never see them, so the DESE
+    data surfaces solely in its own Budget-page section.
+
+    ``basis='actual'`` is required alongside the dimension as a second,
+    independent guard against a stray non-actual row sharing a dimension name.
+    """
+    result = (
+        client.table("budget_line_items")
+        .select("*")
+        .eq("dimension", dimension)
+        .eq("basis", "actual")
+        .order("fiscal_year")
+        .execute()
+    )
+    return result.data or []
+
+
 # --- Votes ---
 
 

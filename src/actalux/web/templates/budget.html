@@ -123,6 +123,13 @@
   {% include "_budget_proposed.html" %}
 {% endif %}
 
+{# --- Multi-year actuals from the district's DESE state filings (ASBR object-level
+   + per-fund reserves, Per-Pupil per-school), surfaced from namespaced dimensions
+   that never mix into the charts above --- #}
+{% if dese %}
+  {% include "_budget_dese.html" %}
+{% endif %}
+
 {# --- What the district has said (cited quotes from the corpus) --- #}
 <section class="topic-sections">
   <div class="section-label">What the district has said about the budget</div>
