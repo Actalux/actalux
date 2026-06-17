@@ -253,12 +253,13 @@ class TestProposedSectionRender:
         assert r.status_code == 200
         # The clearly-separated heading.
         assert "Proposed Budget (June 2024)" in r.text
-        # A proposed figure links to its source chunk (citation-first).
+        # A proposed figure links to its source chunk (citation-first). The
+        # verbatim quote itself lives behind that link (/chunk/{id}/source), not
+        # inline on the budget page: the raw-quote rows were removed as noise, so
+        # traceability is the citation link, not an on-page quote dump.
         assert "/chunk/5109/source" in r.text
         # The source document is cited.
         assert "doc #262" in r.text
-        # Each figure shows its verbatim source quote (content policy).
-        assert "Local Revenue 23876630" in r.text
 
     @patch("actalux.web.app._budget_quote_sections", return_value=[])
     @patch("actalux.web.app._get_db")
