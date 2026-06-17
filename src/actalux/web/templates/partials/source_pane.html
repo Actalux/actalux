@@ -44,18 +44,24 @@
 <div class="reader-summary">{{ document.summary }}</div>
 {% endif %}
 
-<div class="block-label">Cited passage{% if is_video %} · transcript{% endif %}</div>
-{% if ctx_chunk.section %}<div class="cite-section">{{ ctx_chunk.section | clean_text }}</div>{% endif %}
-<p class="cited-para">{{ ctx_chunk.content | cited_html(query) }}</p>
+{# When there is an in-window original (PDF/video), that is the default focus and
+   the cited passage is tucked behind a disclosure; with no embed (text/html) the
+   passage IS the content, so it stays open. #}
+{% set _has_embed = is_pdf or is_video %}
+<details class="cited-disclosure"{% if not _has_embed %} open{% endif %}>
+  <summary class="block-label">Cited passage{% if is_video %} · transcript{% endif %}</summary>
+  {% if ctx_chunk.section %}<div class="cite-section">{{ ctx_chunk.section | clean_text }}</div>{% endif %}
+  <p class="cited-para">{{ ctx_chunk.content | cited_html(query) }}</p>
 
-{# Without an in-window original, the neighbour chunks supply the context. #}
-{% if not is_pdf and not is_video %}
-  {% for c in context %}
-    {% if c.id != ctx_chunk.id %}
-      <p class="ctx-para">{{ c.content | clean_text }}</p>
-    {% endif %}
-  {% endfor %}
-{% endif %}
+  {# Without an in-window original, the neighbour chunks supply the context. #}
+  {% if not _has_embed %}
+    {% for c in context %}
+      {% if c.id != ctx_chunk.id %}
+        <p class="ctx-para">{{ c.content | clean_text }}</p>
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+</details>
 
 {% if is_video %}
 <section class="original-block">

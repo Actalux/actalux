@@ -773,6 +773,12 @@ img { max-width: 100%; display: block; }
   margin-bottom: var(--s-4);
   max-width: var(--col-reading);
 }
+/* Cited-passage disclosure: closed by default when an original (PDF/video) is
+   embedded, so the original leads and the passage is one click away. display:
+   list-item restores the summary's ▸ marker (.block-label sets display:block). */
+.cited-disclosure > summary { cursor: pointer; display: list-item; }
+.cited-disclosure > summary:hover { color: var(--ink); }
+
 .original-block {
   margin-top: var(--s-6);
   padding-top: var(--s-5);
