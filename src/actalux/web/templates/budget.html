@@ -78,41 +78,18 @@
 </section>
 {% endif %}
 
-{# --- Figures & sources: every number with its citation --- #}
-{% if line_items %}
-<section class="figures-section">
-  <div class="section-label">Figures &amp; sources</div>
-  <p class="hint">Each figure links to the verbatim passage it was read from.</p>
-
-  {% for fy, rows in line_items | groupby('fiscal_year') %}
-  <div class="figures-year" id="fy-{{ fy }}">
-    <h3>{{ fy }}</h3>
-    <table class="figures-table">
-      <thead>
-        <tr><th>Category</th><th>Fund</th><th>Detail</th><th class="num">Amount</th><th>Source</th></tr>
-      </thead>
-      <tbody>
-        {% for r in rows %}
-        <tr>
-          <td>{{ r.category }}</td>
-          <td>{{ r.fund }}</td>
-          <td>{{ r.subcategory }}</td>
-          <td class="num">{{ r.amount | usd }}</td>
-          <td>
-            {% if r.chunk_id %}
-              <a href="/chunk/{{ r.chunk_id }}/source" class="hash">{{ r.chunk_id | chunk_hash_id }}</a>
-            {% else %}
-              <span class="muted">—</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% if r.source_quote %}
-        <tr class="figures-quote"><td colspan="5"><span class="cite-quote">"{{ r.source_quote }}"</span></td></tr>
-        {% endif %}
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+{# --- Audited figures & sources: the GAAP fund ledger as cited matrices (years x
+   fund), replacing the old per-figure raw-quote dump. Each cell links to the
+   audited statement passage it was read from. --- #}
+{% if gaap_matrices %}
+{% from "_cited_matrix.html" import cited_matrix %}
+<section class="figures-section" id="audited-figures">
+  <div class="section-label">Audited figures &amp; sources</div>
+  <p class="hint">The district's audited fund-level revenue, spending, and year-end
+  balances by fiscal year, from the annual financial audits. Every figure links to
+  the verbatim passage it was read from.</p>
+  {% for m in gaap_matrices %}
+    {{ cited_matrix(m.chart, "Fund", summary=m.label) }}
   {% endfor %}
 </section>
 {% endif %}

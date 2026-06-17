@@ -505,6 +505,9 @@ class TestRevenueExpenditureSvg:
         assert "bar-expenditure" in svg
         assert "bar-deficit" in svg  # 2023-2024 is a deficit year
         assert 'id="hatch"' in svg  # expenditure hatch pattern defined
+        # Bars jump to the audited figures ledger, not the removed per-year anchors.
+        assert 'href="#audited-figures"' in svg
+        assert "#fy-" not in svg
 
 
 class TestTierBarSvg:

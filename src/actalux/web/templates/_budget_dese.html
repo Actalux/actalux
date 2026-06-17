@@ -6,6 +6,7 @@
    each view lists the official PDFs (as filed with DESE). Server-SVG only, no JS.
    These rows live under namespaced dimensions disjoint from the GAAP charts above
    (see get_dese_line_items), so the two never mix. #}
+{% from "_cited_matrix.html" import cited_matrix %}
 {% macro dese_view(heading, intro, v, group_head) %}
 {% if v.chart.series %}
 <div class="dese-view">
@@ -19,44 +20,7 @@
     {% endfor %}
   </div>
 
-  <details class="dese-details">
-    <summary>Figures &amp; sources <span class="dese-summary-note">— every figure links to the passage it was read from (shown in $millions; click for the exact filed figure)</span></summary>
-    <div class="dese-matrix-wrap">
-      <table class="figures-table dese-matrix">
-        <thead>
-          <tr>
-            <th>{{ group_head }}</th>
-            {% for fy in v.chart.fiscal_years %}<th class="num">{{ fy | short_year }}</th>{% endfor %}
-          </tr>
-        </thead>
-        <tbody>
-          {% for s in v.chart.series %}
-          <tr>
-            <td>{{ s.label }}</td>
-            {% for fy in v.chart.fiscal_years %}
-              {% set cell = s.cells.get(fy) %}
-              <td class="num">
-                {% if cell and cell.chunk_id %}
-                  <a class="dese-cell" href="/chunk/{{ cell.chunk_id }}/source"
-                     title="{{ fy }} · {{ s.label }} · {{ cell.amount | usd }}">{{ cell.amount | usd_m }}</a>
-                {% else %}
-                  {# Fail closed: never show a figure we can't trace to its source. #}
-                  <span class="muted" title="No source on file">&mdash;</span>
-                {% endif %}
-              </td>
-            {% endfor %}
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% if v.reports %}
-    <p class="dese-reports">
-      <span class="dese-reports-label">Filed reports (PDF, as filed with DESE):</span>
-      {% for r in v.reports %}{% if r.url %}<a class="hash" href="{{ r.url }}" target="_blank" rel="noopener">{{ r.fiscal_year }}</a>{% if not loop.last %} · {% endif %}{% endif %}{% endfor %}
-    </p>
-    {% endif %}
-  </details>
+  {{ cited_matrix(v.chart, group_head, reports=v.reports) }}
 </div>
 {% endif %}
 {% endmacro %}

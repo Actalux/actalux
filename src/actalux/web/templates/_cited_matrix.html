@@ -1,0 +1,46 @@
+{# Shared cited-figure matrix: a collapsible (years × series) table where every
+   cell links to the verbatim passage its figure was read from. Used by both the
+   DESE state-filings section and the audited GAAP fund ledger so the two read
+   identically. Figures are shown compact ($millions); the exact value + source is
+   one click away on /chunk/{id}/source. `chart` is a charts.StackChart. Pass
+   `reports` (a list of {fiscal_year, url}) to append official-PDF links. #}
+{% macro cited_matrix(chart, group_head, summary="Figures & sources", reports=None) %}
+<details class="dese-details">
+  <summary>{{ summary }} <span class="dese-summary-note">— every figure links to its source (shown in $millions; click for the exact value)</span></summary>
+  <div class="dese-matrix-wrap">
+    <table class="figures-table dese-matrix">
+      <thead>
+        <tr>
+          <th>{{ group_head }}</th>
+          {% for fy in chart.fiscal_years %}<th class="num">{{ fy | short_year }}</th>{% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in chart.series %}
+        <tr>
+          <td>{{ s.label }}</td>
+          {% for fy in chart.fiscal_years %}
+            {% set cell = s.cells.get(fy) %}
+            <td class="num">
+              {% if cell and cell.chunk_id %}
+                <a class="dese-cell" href="/chunk/{{ cell.chunk_id }}/source"
+                   title="{{ fy }} · {{ s.label }} · {{ cell.amount | usd }}">{{ cell.amount | usd_m }}</a>
+              {% else %}
+                {# Fail closed: never show a figure we can't trace to its source. #}
+                <span class="muted" title="No source on file">&mdash;</span>
+              {% endif %}
+            </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if reports %}
+  <p class="dese-reports">
+    <span class="dese-reports-label">Filed reports (PDF, as filed with DESE):</span>
+    {% for r in reports %}{% if r.url %}<a class="hash" href="{{ r.url | safe_url }}" target="_blank" rel="noopener">{{ r.fiscal_year }}</a>{% if not loop.last %} · {% endif %}{% endif %}{% endfor %}
+  </p>
+  {% endif %}
+</details>
+{% endmacro %}

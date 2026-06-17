@@ -679,6 +679,32 @@ def _dese_section_context(client: Client) -> dict[str, Any]:
     }
 
 
+def _gaap_figures_context(line_items: list[dict[str, Any]]) -> dict[str, Any]:
+    """Audited GAAP fund ledger as cited matrices (years x fund) for the figures section.
+
+    Replaces the old per-figure raw-quote dump. Built from the same dimension='fund'
+    rows that drive the charts above (no extra query): one matrix each for revenue,
+    expenditure, and year-end fund balance, grouped by fund. Returns
+    ``{"gaap_matrices": None}`` when there are no rows so the section does not render.
+    """
+    if not line_items:
+        return {"gaap_matrices": None}
+    specs = (
+        ("Revenue by fund", "revenue"),
+        ("Expenditure by fund", "expenditure"),
+        ("Ending fund balance by fund", "fund_balance"),
+    )
+    matrices = [
+        {
+            "label": label,
+            "chart": build_stack(line_items, group_key="fund", where={"category": cat}),
+        }
+        for label, cat in specs
+    ]
+    matrices = [m for m in matrices if m["chart"].series]
+    return {"gaap_matrices": matrices or None}
+
+
 @jurisdiction.get("/budget", response_class=HTMLResponse)
 async def budget(request: Request, view: EntityView = Depends(resolve_entity)) -> HTMLResponse:
     """First-class Budget page: charts from budget_line_items plus cited quotes.
@@ -709,6 +735,7 @@ async def budget(request: Request, view: EntityView = Depends(resolve_entity)) -
             chart_svg=revenue_expenditure_svg(year_totals),
             budget_actual=budget_actual,
             sections=_budget_quote_sections(view.entity["id"]),
+            **_gaap_figures_context(line_items),
             **_proposed_budget_context(client),
             **_dese_section_context(client),
             **breakdown,

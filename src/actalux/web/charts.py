@@ -653,7 +653,9 @@ def revenue_expenditure_svg(year_totals: list[YearTotals]) -> Markup:
         exp_x = slot_center + gap / 2
         rev_y = y_for(yt.revenue)
         exp_y = y_for(yt.expenditure)
-        anchor = f"#fy-{escape(yt.fiscal_year)}"
+        # Jump to the audited figures ledger below (per-year anchors were replaced
+        # by the year x fund matrices, which live under this one section anchor).
+        anchor = "#audited-figures"
         parts.append(
             f'<a href="{anchor}"><title>{escape(yt.fiscal_year)} revenue '
             f"{escape(usd(yt.revenue))}</title>"
