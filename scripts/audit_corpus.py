@@ -289,12 +289,47 @@ def check_classification_anomaly(row: dict[str, Any]) -> str | None:
     return None
 
 
+# Campaign/advocacy markers, for checking ACTALUX-GENERATED text only (the
+# summary field, topic-page copy) — NOT verbatim content. Deliberately specific:
+# board-role words ("treasurer") and official Ethics-Commission disqualification
+# notes ("MEC") are NOT markers — they flooded an early broad scan with false
+# positives. The nonpartisan content policy bars Actalux's own copy from carrying
+# campaign framing; verbatim primary sources may quote it and are archived as-is.
+# Separators are [\s-]+ so hyphenated campaign copy ("vote-yes", "no-tax-increase")
+# is caught as well as the spaced forms.
+_ADVOCACY_RE = re.compile(
+    r"claytonpropo"
+    r"|vote[\s-]+yes|yes[\s-]+on[\s-]+prop|vote[\s-]+for[\s-]+proposition"
+    r"|vote[\s-]+no[\s-]+on"
+    r"|paid[\s-]+for[\s-]+by"
+    r"|without[\s-]+(?:an?[\s-]+)?(?:tax[\s-]+increase|increasing[\s-]+the|raising[\s-]+tax)"
+    r"|no[\s-]+tax[\s-]+increase",
+    re.I,
+)
+
+
+def check_summary_advocacy(row: dict[str, Any]) -> str | None:
+    """Return the matched phrase if the GENERATED summary carries advocacy framing.
+
+    Checks the ``summary`` field (LLM-written Actalux copy), not ``content``: a
+    verbatim board-meeting transcript or district release may legitimately quote
+    campaign language, but Actalux's own generated description must stay neutral.
+    Returns a short snippet around the first match, or None.
+    """
+    summary = " ".join((row.get("summary") or "").split())
+    m = _ADVOCACY_RE.search(summary)
+    if not m:
+        return None
+    i = m.start()
+    return summary[max(0, i - 30) : i + 60].strip()
+
+
 # --- audit runner (calls DB once, then pure functions) --------------------
 
 
 _BASE_SELECT = (
     "id, meeting_date, meeting_title, document_type, source_url, "
-    "source_file, content_hash, source_portal, entity_id, created_at, content"
+    "source_file, content_hash, source_portal, entity_id, created_at, content, summary"
 )
 
 
@@ -352,6 +387,7 @@ def run_audit(rows: list[dict[str, Any]]) -> dict[str, Any]:
           "extraction_issues": [{"id": int, "issues": [str]}, ...],
           "classification_anomalies": [{"id": int, "portal": str, "doc_type": str,
                                         "reason": str}, ...],
+          "summary_advocacy": [{"id": int, "snippet": str}, ...],
         }
     """
     report: dict[str, Any] = {
@@ -361,6 +397,7 @@ def run_audit(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "duplicate_clusters": [],
         "extraction_issues": [],
         "classification_anomalies": [],
+        "summary_advocacy": [],
     }
 
     for row in rows:
@@ -400,6 +437,10 @@ def run_audit(rows: list[dict[str, Any]]) -> dict[str, Any]:
                     "reason": anomaly,
                 }
             )
+
+        advocacy = check_summary_advocacy(row)
+        if advocacy:
+            report["summary_advocacy"].append({"id": doc_id, "snippet": advocacy})
 
     report["duplicate_clusters"] = find_duplicate_candidates(rows)
 
@@ -455,6 +496,12 @@ def _print_report(report: dict[str, Any]) -> None:
         lambda r: f"id={r['id']:>5}  portal={r['portal']:<15}  {r['reason']}",
     )
 
+    section(
+        "Generated-summary advocacy framing",
+        report["summary_advocacy"],
+        lambda r: f"id={r['id']:>5}  ...{r['snippet']}...",
+    )
+
     print(f"\n{'=' * 50}")
     totals = [
         ("suspected-default-dates", len(report["suspected_default_dates"])),
@@ -462,6 +509,7 @@ def _print_report(report: dict[str, Any]) -> None:
         ("duplicate-clusters", len(report["duplicate_clusters"])),
         ("extraction-issues", len(report["extraction_issues"])),
         ("classification-anomalies", len(report["classification_anomalies"])),
+        ("summary-advocacy", len(report["summary_advocacy"])),
     ]
     for label, n in totals:
         flag = " *" if n else ""

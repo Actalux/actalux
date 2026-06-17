@@ -375,6 +375,46 @@ class TestCheckClassificationAnomaly:
 
 
 # ---------------------------------------------------------------------------
+# check_summary_advocacy (Actalux-generated copy must stay neutral)
+# ---------------------------------------------------------------------------
+
+
+class TestCheckSummaryAdvocacy:
+    def test_clean_summary_not_flagged(self) -> None:
+        row = {"summary": "A Feb 2025 board presentation on the facilities plan."}
+        assert mod.check_summary_advocacy(row) is None
+
+    def test_tax_neutral_framing_flagged(self) -> None:
+        row = {"summary": "Borrowing up to $90M without increasing the levy."}
+        assert mod.check_summary_advocacy(row) is not None
+
+    def test_campaign_url_flagged(self) -> None:
+        row = {"summary": "For approved projects visit www.claytonpropo.org today."}
+        assert "claytonpropo" in (mod.check_summary_advocacy(row) or "")
+
+    def test_vote_yes_flagged(self) -> None:
+        row = {"summary": "Residents were urged to vote yes on the measure."}
+        assert mod.check_summary_advocacy(row) is not None
+
+    def test_hyphenated_forms_flagged(self) -> None:
+        # Hyphenated campaign copy must be caught too (separators are [\s-]+).
+        assert mod.check_summary_advocacy({"summary": "A vote-yes push for the bond."})
+        assert mod.check_summary_advocacy({"summary": "Touted as no-tax-increase."})
+
+    def test_advocacy_in_content_only_not_flagged(self) -> None:
+        # Targets the GENERATED summary, not verbatim content: a transcript that
+        # quotes "vote yes" must not be flagged when its summary is neutral.
+        row = {
+            "summary": "Board meeting transcript covering the bond discussion.",
+            "content": "a board member said people will vote yes on the bond",
+        }
+        assert mod.check_summary_advocacy(row) is None
+
+    def test_missing_summary_not_flagged(self) -> None:
+        assert mod.check_summary_advocacy({}) is None
+
+
+# ---------------------------------------------------------------------------
 # run_audit (integration: wires all per-row checks + duplicate clustering)
 # ---------------------------------------------------------------------------
 
@@ -469,6 +509,20 @@ class TestRunAudit:
         report = mod.run_audit([])
         assert report["doc_count"] == 0
         assert all(v == [] for k, v in report.items() if k != "doc_count")
+
+    def test_summary_advocacy_flagged_in_report(self) -> None:
+        # A clean row whose generated summary carries advocacy framing is flagged
+        # under summary_advocacy and nowhere else.
+        row = _row(id=9, content_hash="adv9")
+        row["summary"] = "Bonds up to $90M without increasing the levy."
+        report = mod.run_audit([row])
+        assert any(r["id"] == 9 for r in report["summary_advocacy"])
+        # "nowhere else": the row is otherwise clean.
+        assert report["suspected_default_dates"] == []
+        assert report["bucket_url_issues"] == []
+        assert report["extraction_issues"] == []
+        assert report["classification_anomalies"] == []
+        assert report["duplicate_clusters"] == []
 
 
 class TestFetchRowsBuilderOrder:
