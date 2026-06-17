@@ -46,6 +46,7 @@ from actalux.db import (
     list_entities,
     resolve_canonical_chunk,
     resolve_canonical_document,
+    resolve_chunk_ref,
     resolve_source_anchor,
 )
 from actalux.errors import SearchError, SummaryError
@@ -997,16 +998,20 @@ def _resolve_cited_chunk(
     return overrides
 
 
-@app.get("/chunk/{chunk_id}/source", response_class=HTMLResponse)
-async def chunk_source(request: Request, chunk_id: int, embed: int = 0) -> HTMLResponse:
+@app.get("/chunk/{ref}/source", response_class=HTMLResponse)
+async def chunk_source(request: Request, ref: str, embed: int = 0) -> HTMLResponse:
     """Citation context: the chunk plus surrounding chunks.
 
-    If `embed=1`, returns a partial suitable for injection into the search
-    reader pane via HTMX. Otherwise returns the full page. A citation into a
-    superseded document is annotated (never blind-redirected) — see
-    ``_resolve_cited_chunk``.
+    ``ref`` is a stable citation_id (8 hex) or a legacy numeric chunk id; both
+    resolve via ``resolve_chunk_ref``. If `embed=1`, returns a partial suitable
+    for injection into the search reader pane via HTMX. Otherwise returns the full
+    page. A citation into a superseded document is annotated (never blind-
+    redirected) — see ``_resolve_cited_chunk``.
     """
     client = _get_db()
+    chunk_id = resolve_chunk_ref(client, ref)
+    if chunk_id is None:
+        raise HTTPException(status_code=404, detail="Chunk not found")
     context = get_chunk_with_context(client, chunk_id, context_count=2)
     if not context["chunk"]:
         raise HTTPException(status_code=404, detail="Chunk not found")
@@ -1040,17 +1045,20 @@ async def chunk_source(request: Request, chunk_id: int, embed: int = 0) -> HTMLR
     )
 
 
-@app.get("/chunk/{chunk_id}/source-pane", response_class=HTMLResponse)
-async def chunk_source_pane(request: Request, chunk_id: int, q: str = "") -> HTMLResponse:
+@app.get("/chunk/{ref}/source-pane", response_class=HTMLResponse)
+async def chunk_source_pane(request: Request, ref: str, q: str = "") -> HTMLResponse:
     """Return the source pane only (native-format document view) for a chunk.
 
-    Called by HTMX when the user clicks a search result. Fetches the
-    chunk and two neighbors for in-context display. Per-card AI
-    summaries (doc summary + match summary) are generated separately
-    on the result cards, not here. Superseded citations are annotated, never
-    blind-redirected — see ``_resolve_cited_chunk``.
+    Called by HTMX when the user clicks a search result. ``ref`` is a stable
+    citation_id (8 hex) or a legacy numeric chunk id. Fetches the chunk and two
+    neighbors for in-context display. Per-card AI summaries (doc summary + match
+    summary) are generated separately on the result cards, not here. Superseded
+    citations are annotated, never blind-redirected — see ``_resolve_cited_chunk``.
     """
     client = _get_db()
+    chunk_id = resolve_chunk_ref(client, ref)
+    if chunk_id is None:
+        raise HTTPException(status_code=404, detail="Chunk not found")
     ctx = get_chunk_with_context(client, chunk_id, context_count=2)
     if not ctx["chunk"]:
         raise HTTPException(status_code=404, detail="Chunk not found")
@@ -1066,7 +1074,7 @@ async def chunk_source_pane(request: Request, chunk_id: int, q: str = "") -> HTM
             render_context = rechunked["context"]
 
     view = _entity_view_for_document(client, render_doc)
-    target_hash = chunk_hash_id(render_chunk["id"])
+    target_hash = chunk_hash_id(render_chunk.get("citation_id") or render_chunk["id"])
 
     return templates.TemplateResponse(
         request,
@@ -1444,22 +1452,27 @@ def ask_post(
 
 
 def _render_citation_links(text: str, results: list[dict[str, Any]]) -> str:
-    """Replace [#qXXXX] citations with HTML links to chunk source pages."""
+    """Replace [#qXXXX] citations with HTML links to chunk source pages.
+
+    Links route on each result's ``cite_ref`` — the stable citation_id when the
+    chunk has one, else the numeric chunk id (legacy). The /chunk resolver serves
+    both. Falls back to ``chunk_id`` for any result predating the cite_ref shape.
+    """
     import re
 
-    # Build a lookup from hash_id to chunk_id
-    id_map: dict[str, int] = {}
+    # Map the displayed hash to its routing reference (stable id or numeric id).
+    id_map: dict[str, int | str] = {}
     for r in results:
-        id_map[r["hash_id"]] = r["chunk_id"]
+        id_map[r["hash_id"]] = r.get("cite_ref", r["chunk_id"])
 
     parts: list[str] = []
     last = 0
 
     def replace_citation(match: re.Match[str]) -> str:
         hash_id = match.group(1)
-        chunk_id = id_map.get(hash_id)
-        if chunk_id is not None:
-            return f'<a href="/chunk/{chunk_id}/source" class="source-link">[{hash_id}]</a>'
+        cite_ref = id_map.get(hash_id)
+        if cite_ref is not None:
+            return f'<a href="/chunk/{cite_ref}/source" class="source-link">[{hash_id}]</a>'
         return str(escape(match.group(0)))
 
     for match in re.finditer(r"\[(#q[0-9a-f]{4,})\]", text):

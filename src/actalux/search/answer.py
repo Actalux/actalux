@@ -20,7 +20,7 @@ from typing import Any
 
 from supabase import Client
 
-from actalux.db import get_documents
+from actalux.db import get_chunk_citation_ids, get_documents
 from actalux.models import chunk_hash_id
 from actalux.search.finance import build_finance_evidence, finance_intent
 from actalux.search.hybrid import Reranker, SearchFilters, SearchResult, hybrid_search
@@ -37,16 +37,23 @@ def enrich_results(client: Client, results: list[SearchResult]) -> list[dict[str
 
     Produces the dict shape the summary builder (hash_id, content, meeting_date,
     section), the result cards (chunk_id, meeting_title, document_type, summary),
-    and the citation linker (hash_id -> chunk_id) all consume.
+    and the citation linker (hash_id -> cite_ref) all consume. ``cite_ref`` is the
+    stable citation_id when the chunk has one, else the numeric chunk id, so both
+    the displayed hash and the /chunk/{ref} link route on the durable identity.
     """
     docs = get_documents(client, [r.document_id for r in results])
+    citation_ids = get_chunk_citation_ids(client, [r.chunk_id for r in results])
     enriched: list[dict[str, Any]] = []
     for r in results:
         doc = docs.get(r.document_id, {})
+        citation_id = citation_ids.get(r.chunk_id, "")
+        cite_ref: str | int = citation_id or r.chunk_id
         enriched.append(
             {
                 "chunk_id": r.chunk_id,
-                "hash_id": chunk_hash_id(r.chunk_id),
+                "citation_id": citation_id,
+                "cite_ref": cite_ref,
+                "hash_id": chunk_hash_id(cite_ref),
                 "content": r.content,
                 "section": r.section,
                 "speaker": r.speaker,

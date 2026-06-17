@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 import scripts.ingest as ingest
+from actalux.models import Chunk
 from scripts.ingest import (
     _find_existing_document,
     _ingest_with_dedup,
@@ -292,8 +293,11 @@ class TestDateSourcePropagation:
             lambda _c, doc: captured.append(doc) or 99,
         )
         # chunk_document is called with keyword args that include config values;
-        # return a sentinel so validate_chunks has something to pass on.
-        monkeypatch.setattr(ingest, "chunk_document", lambda **_k: ["sentinel_chunk"])
+        # return a real Chunk so validate_chunks passes it on and the citation-id
+        # stamping (which reads chunk.content) has something to work with.
+        monkeypatch.setattr(
+            ingest, "chunk_document", lambda **_k: [Chunk(document_id=0, content="body text")]
+        )
         # validate_chunks must return the non-empty list; an empty list raises ParseError.
         monkeypatch.setattr(ingest, "validate_chunks", lambda c, _t: c)
         monkeypatch.setattr(ingest, "embed_chunks", lambda c, **_k: c)

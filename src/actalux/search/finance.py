@@ -411,9 +411,15 @@ def build_finance_evidence(
     for r in display:
         doc = docs.get(r.document_id or -1, {})
         chunk_id = r.chunk_id
+        # Phase 2: finance citations still route on the numeric chunk id (the
+        # legacy form the /chunk resolver still serves); Phase 3 swaps in the
+        # budget figure's stable citation_id. cite_ref keeps the shape uniform
+        # with the text path so the citation linker treats both identically.
         evidence.append(
             {
                 "chunk_id": chunk_id,
+                "citation_id": "",
+                "cite_ref": chunk_id,
                 "hash_id": chunk_hash_id(chunk_id),
                 "content": _render_content(r),
                 "section": "Budget figure",

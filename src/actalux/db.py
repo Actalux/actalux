@@ -7,6 +7,7 @@ for data operations and raw SQL (via RPC) for pgvector queries.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -594,12 +595,79 @@ def insert_chunks(client: Client, chunks: list[Chunk]) -> list[int]:
         }
         if chunk.embedding:
             row["embedding"] = chunk.embedding
+        if chunk.citation_id:
+            row["citation_id"] = chunk.citation_id
         rows.append(row)
 
     result = client.table("chunks").insert(rows).execute()
     ids = [r["id"] for r in result.data]
     logger.info("Inserted %d chunks for document %d", len(ids), chunks[0].document_id)
     return ids
+
+
+# A stable citation id is exactly CITATION_ID_LEN (8) lowercase-hex chars; a
+# legacy deep-link is a short decimal row id. The pattern tells the two apart at
+# the route boundary so /chunk/{ref} serves both.
+_CITATION_ID_RE = re.compile(r"^[0-9a-f]{8}$")
+
+
+def get_chunk_citation_ids(client: Client, chunk_ids: list[int]) -> dict[int, str]:
+    """Map chunk id -> stable citation_id in one round-trip (empty string if unset).
+
+    Lets the answer/search path render and link citations on the stable id without
+    threading citation_id through the search RPCs. Missing ids are simply absent.
+    """
+    if not chunk_ids:
+        return {}
+    unique = list(dict.fromkeys(chunk_ids))
+    rows = client.table("chunks").select("id, citation_id").in_("id", unique).execute().data or []
+    return {r["id"]: (r.get("citation_id") or "") for r in rows}
+
+
+def _prefer_current_chunk(client: Client, rows: list[dict[str, Any]]) -> int:
+    """Pick one chunk id from citation_id candidates, preferring a current version.
+
+    A citation_id can be shared by a current chunk and its superseded twins (the
+    same passage across versions). Routing prefers the chunk whose document is
+    current (``replaces_id IS NULL``); ties and all-superseded sets fall back to
+    the lowest chunk id (deterministic), logging any genuine current-vs-current
+    ambiguity so it is visible rather than silent.
+    """
+    if len(rows) == 1:
+        return rows[0]["id"]
+    doc_ids = list({r["document_id"] for r in rows})
+    docs = client.table("documents").select("id, replaces_id").in_("id", doc_ids).execute().data
+    current_docs = {d["id"] for d in (docs or []) if d.get("replaces_id") is None}
+    current_chunks = sorted(r["id"] for r in rows if r["document_id"] in current_docs)
+    if current_chunks:
+        if len(current_chunks) > 1:
+            logger.warning(
+                "citation_id resolves to %d current chunks; using lowest id %d",
+                len(current_chunks),
+                current_chunks[0],
+            )
+        return current_chunks[0]
+    return sorted(r["id"] for r in rows)[0]
+
+
+def resolve_chunk_ref(client: Client, ref: str) -> int | None:
+    """Resolve a chunk reference (stable citation_id or legacy numeric id) to a row id.
+
+    New citations route on the 8-hex ``citation_id``; links published before the
+    stable id existed route on the numeric SERIAL id. An 8-hex ref is looked up as
+    a citation_id first (preferring a current-version chunk); if nothing matches it
+    falls through to a numeric interpretation, so an all-digit ref still resolves.
+    Returns the numeric chunk id, or None when the ref names nothing.
+    """
+    if _CITATION_ID_RE.match(ref):
+        rows = (
+            client.table("chunks").select("id, document_id").eq("citation_id", ref).execute().data
+        ) or []
+        if rows:
+            return _prefer_current_chunk(client, rows)
+    if ref.isdigit():
+        return int(ref)
+    return None
 
 
 def get_chunk_with_context(client: Client, chunk_id: int, context_count: int = 2) -> dict[str, Any]:

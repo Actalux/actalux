@@ -7,11 +7,20 @@ from datetime import date, datetime
 from decimal import Decimal
 
 
-def chunk_hash_id(chunk_id: int | None) -> str:
-    """Return the display hash for a chunk ID."""
-    if chunk_id is None:
+def chunk_hash_id(ref: int | str | None) -> str:
+    """Return the display hash for a chunk.
+
+    Accepts either a stable ``citation_id`` (the content-addressed string, e.g.
+    ``"a3f91c08"`` -> ``"#qa3f91c08"``) or a legacy numeric row id (rendered as
+    hex, ``8140`` -> ``"#q1fcc"``). The numeric branch is a transition shim for
+    call sites that still pass a row id (budget figures, facilities) until they
+    carry ``citation_id``; it is removed once every caller passes the stable id.
+    """
+    if ref is None or ref == "":
         return "#unknown"
-    return f"#q{chunk_id:04x}"
+    if isinstance(ref, int):
+        return f"#q{ref:04x}"
+    return f"#q{ref}"
 
 
 @dataclass(frozen=True)
@@ -57,12 +66,17 @@ class Chunk:
     chunk_index: int = 0
     embedding: list[float] = field(default_factory=list)
     start_seconds: int | None = None  # video offset for YouTube transcript chunks
+    # Stable, content-addressed citation id (see ingest.hashing.compute_citation_id):
+    # survives re-ingest's SERIAL-id reassignment, so it is what citations render
+    # and route on. "" only for a chunk ingested before the column existed (the
+    # backfill fills those; render falls back to the row id while empty).
+    citation_id: str = ""
     id: int | None = None
 
     @property
     def hash_id(self) -> str:
-        """Short deterministic hash for display (e.g., #q3f8a)."""
-        return chunk_hash_id(self.id)
+        """Display hash, from the stable citation_id when set, else the row id."""
+        return chunk_hash_id(self.citation_id or self.id)
 
 
 @dataclass(frozen=True)

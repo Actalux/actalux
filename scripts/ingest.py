@@ -27,6 +27,7 @@ import argparse
 import logging
 import re
 import sys
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -50,7 +51,7 @@ from actalux.ingest import pii_guard
 from actalux.ingest.chunker import chunk_document, validate_chunks
 from actalux.ingest.classify import classify_document_type, parse_meeting_date
 from actalux.ingest.embedder import embed_chunks
-from actalux.ingest.hashing import content_hash
+from actalux.ingest.hashing import assign_citation_ids, content_hash, doc_stable_key
 from actalux.ingest.parser import parse_file
 from actalux.models import Document, IngestRun
 
@@ -524,6 +525,17 @@ def ingest_single_file(
         raise ParseError(f"All chunks failed validation for {path.name}")
 
     embedded_chunks = embed_chunks(valid_chunks, model_name=config.embedding_model)
+
+    # Stamp each chunk with its stable, content-addressed citation id (what
+    # citations render and route on, surviving this row's eventual re-ingest).
+    # The doc key comes from the document built above, so a re-ingest of the same
+    # source reproduces the same ids.
+    doc_key = doc_stable_key(doc.source_ref, doc.content_hash, doc.source_file)
+    citation_ids = assign_citation_ids(doc_key, [c.content for c in embedded_chunks])
+    embedded_chunks = [
+        replace(chunk, citation_id=cid)
+        for chunk, cid in zip(embedded_chunks, citation_ids, strict=True)
+    ]
     insert_chunks(client, embedded_chunks)
 
     return {"doc_id": doc_id, "chunks": len(embedded_chunks)}

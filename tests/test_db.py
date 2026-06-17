@@ -5,8 +5,10 @@ from datetime import date
 
 from actalux.db import (
     backfill_document_source_ref,
+    get_chunk_citation_ids,
     get_chunk_with_context,
     insert_document,
+    resolve_chunk_ref,
     resolve_source_anchor,
 )
 from actalux.models import Document
@@ -36,6 +38,10 @@ class _Query:
 
     def lte(self, column: str, value: object) -> "_Query":
         self.calls.append(("lte", column, value))
+        return self
+
+    def in_(self, column: str, values: object) -> "_Query":
+        self.calls.append(("in_", column, values))
         return self
 
     def order(self, column: str) -> "_Query":
@@ -312,3 +318,46 @@ class TestResolveSourceAnchor:
             _Client([list(overlap)]), 87, "02.19.2025 THE IMPORTANCE OF"
         )
         assert extended == 301
+
+
+class TestResolveChunkRef:
+    """A chunk ref resolves a stable citation_id (8 hex) or a legacy numeric id."""
+
+    def test_citation_id_single_match(self) -> None:
+        client = _Client([[{"id": 976, "document_id": 5}]])
+        assert resolve_chunk_ref(client, "0f7e408e") == 976
+
+    def test_citation_id_prefers_current_version(self) -> None:
+        # Two chunks share the citation_id (a passage across versions); the chunk
+        # in the current (replaces_id IS NULL) document wins.
+        client = _Client(
+            [
+                [{"id": 47, "document_id": 10}, {"id": 8017, "document_id": 487}],
+                [{"id": 10, "replaces_id": 99}, {"id": 487, "replaces_id": None}],
+            ]
+        )
+        assert resolve_chunk_ref(client, "9f0a7e9e") == 8017
+
+    def test_legacy_numeric_id_no_db(self) -> None:
+        # A short numeric ref is interpreted directly, without a citation lookup.
+        client = _Client([])  # table() must never be called
+        assert resolve_chunk_ref(client, "976") == 976
+
+    def test_unknown_citation_id_falls_through_to_none(self) -> None:
+        client = _Client([[]])
+        assert resolve_chunk_ref(client, "deadbeef") is None
+
+    def test_eight_digit_ref_falls_back_to_numeric(self) -> None:
+        # "00123456" matches the 8-hex shape but no chunk has it; falls back to
+        # the numeric interpretation rather than 404ing.
+        client = _Client([[]])
+        assert resolve_chunk_ref(client, "00123456") == 123456
+
+
+class TestGetChunkCitationIds:
+    def test_maps_ids_to_citation_ids(self) -> None:
+        client = _Client([[{"id": 1, "citation_id": "aaaa1111"}, {"id": 2, "citation_id": None}]])
+        assert get_chunk_citation_ids(client, [1, 2]) == {1: "aaaa1111", 2: ""}
+
+    def test_empty_input(self) -> None:
+        assert get_chunk_citation_ids(_Client([]), []) == {}
