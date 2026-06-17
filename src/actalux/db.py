@@ -611,17 +611,32 @@ def insert_chunks(client: Client, chunks: list[Chunk]) -> list[int]:
 _CITATION_ID_RE = re.compile(r"^[0-9a-f]{8}$")
 
 
+# Cap on ids per ``in_`` lookup so a large id set can't overrun the PostgREST
+# URL/row limits (which would silently drop rows). 300 keeps the query string well
+# within limits while staying one round-trip for the search/answer path's handful.
+_CITATION_LOOKUP_BATCH = 300
+
+
 def get_chunk_citation_ids(client: Client, chunk_ids: list[int]) -> dict[int, str]:
-    """Map chunk id -> stable citation_id in one round-trip (empty string if unset).
+    """Map chunk id -> stable citation_id (empty string if unset).
 
     Lets the answer/search path render and link citations on the stable id without
-    threading citation_id through the search RPCs. Missing ids are simply absent.
+    threading citation_id through the search RPCs. Batched so a large id set (e.g.
+    a corpus-wide backfill) can't exceed the API's URL/row caps; missing ids are
+    simply absent.
     """
     if not chunk_ids:
         return {}
     unique = list(dict.fromkeys(chunk_ids))
-    rows = client.table("chunks").select("id, citation_id").in_("id", unique).execute().data or []
-    return {r["id"]: (r.get("citation_id") or "") for r in rows}
+    result: dict[int, str] = {}
+    for start in range(0, len(unique), _CITATION_LOOKUP_BATCH):
+        batch = unique[start : start + _CITATION_LOOKUP_BATCH]
+        rows = (
+            client.table("chunks").select("id, citation_id").in_("id", batch).execute().data or []
+        )
+        for r in rows:
+            result[r["id"]] = r.get("citation_id") or ""
+    return result
 
 
 def _prefer_current_chunk(client: Client, rows: list[dict[str, Any]]) -> int:
@@ -826,6 +841,8 @@ def insert_budget_line_items(client: Client, items: list[BudgetLineItem]) -> lis
             row["basis"] = item.basis
         if item.chunk_id is not None:
             row["chunk_id"] = item.chunk_id
+        if item.citation_id:
+            row["citation_id"] = item.citation_id
         rows.append(row)
 
     result = client.table("budget_line_items").insert(rows).execute()

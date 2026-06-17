@@ -26,8 +26,9 @@
       <td>{{ s.label }}</td>
       <td class="num">{{ s.amount | usd }}</td>
       <td>
-        {% if s.chunk_id %}
-          <a href="/chunk/{{ s.chunk_id }}/source" class="hash">{{ s.chunk_id | chunk_hash_id }}</a>
+        {% set _ref = s.cite_ref if s.cite_ref is not none else s.chunk_id %}
+        {% if _ref %}
+          <a href="/chunk/{{ _ref }}/source" class="hash">{{ _ref | chunk_hash_id }}</a>
         {% else %}
           <span class="muted">&mdash;</span>
         {% endif %}

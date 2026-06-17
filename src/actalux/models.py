@@ -134,6 +134,9 @@ class BudgetLineItem:
     subcategory: str = ""
     basis: str | None = None  # budget-vs-actual only: "original", "final", "actual"
     chunk_id: int | None = None
+    # Stable citation reference (chunks.citation_id) so the figure keeps citing the
+    # same passage when its source document is re-ingested and chunk_id is nulled.
+    citation_id: str = ""
     source_quote: str = ""
     note: str = ""
     id: int | None = None

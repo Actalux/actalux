@@ -540,3 +540,75 @@ class TestTierBarSvg:
         assert len(widths) == 2
         assert widths[0] > widths[1]
         assert abs(widths[1] / widths[0] - 0.5) < 0.01
+
+
+class TestCiteRefPropagation:
+    """Every citation-bearing cell carries cite_ref = citation_id (else chunk_id),
+    so figures render and route on the durable id and survive re-ingest."""
+
+    def test_build_stack_prefers_citation_id(self) -> None:
+        items = [
+            {
+                "fiscal_year": "2023",
+                "fund": "General",
+                "amount": "100",
+                "chunk_id": 5109,
+                "citation_id": "aaaa1111",
+            },
+            {"fiscal_year": "2024", "fund": "General", "amount": "200", "chunk_id": 5110},
+        ]
+        chart = build_stack(items, group_key="fund")
+        gen = next(s for s in chart.series if s.label == "General")
+        # With a citation_id, cite_ref is the stable id; without, it falls back.
+        assert gen.cells["2023"].cite_ref == "aaaa1111"
+        assert gen.cells["2024"].cite_ref == 5110
+
+    def test_proposed_breakdown_cite_ref(self) -> None:
+        items = [
+            {
+                "fiscal_year": "2024-2025",
+                "subcategory": "Local Revenue",
+                "amount": "100",
+                "chunk_id": 5109,
+                "citation_id": "bbbb2222",
+            },
+        ]
+        shares = proposed_breakdown(items)
+        assert shares[0].cite_ref == "bbbb2222"
+
+    def test_component_trend_cite_ref(self) -> None:
+        items = [
+            {
+                "fiscal_year": "2023",
+                "category": "expenditure",
+                "subcategory": "Instruction",
+                "amount": "100",
+                "chunk_id": 7154,
+                "citation_id": "cccc3333",
+            },
+        ]
+        trend = component_trend(
+            items, category="expenditure", key="subcategory", value="Instruction"
+        )
+        assert trend[0].cite_ref == "cccc3333"
+
+    def test_budget_vs_actual_cite_ref(self) -> None:
+        rows = [
+            {
+                "fiscal_year": "2024",
+                "fund": "General",
+                "category": "revenue",
+                "basis": b,
+                "amount": "100",
+                "chunk_id": 9002,
+                "citation_id": "dddd4444",
+            }
+            for b in ("original", "final", "actual")
+        ]
+        lines = budget_vs_actual(rows, "2024")
+        assert lines and lines[0].cite_ref == "dddd4444"
+
+    def test_cite_ref_falls_back_to_chunk_id(self) -> None:
+        items = [{"fiscal_year": "2023", "fund": "General", "amount": "100", "chunk_id": 42}]
+        chart = build_stack(items, group_key="fund")
+        assert chart.series[0].cells["2023"].cite_ref == 42

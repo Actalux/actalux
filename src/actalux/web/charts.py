@@ -97,6 +97,10 @@ class CitedShare:
     amount: Decimal
     pct: float  # 0-100, share of the breakdown total
     chunk_id: int | None = None
+    # Durable citation reference for the link/hash: the stable citation_id when
+    # the source row has one, else the numeric chunk_id. Renders via chunk_hash_id
+    # and routes via /chunk/{ref}; survives the source document's re-ingest.
+    cite_ref: int | str | None = None
     source_quote: str = ""
 
 
@@ -119,6 +123,7 @@ def proposed_breakdown(
     where = where or {}
     totals: dict[str, Decimal] = {}
     chunks: dict[str, int | None] = {}
+    refs: dict[str, int | str | None] = {}
     quotes: dict[str, str] = {}
     for item in items:
         if any(item.get(k) != v for k, v in where.items()):
@@ -126,13 +131,19 @@ def proposed_breakdown(
         label = item.get(group_key) or "Unspecified"
         totals[label] = totals.get(label, Decimal(0)) + Decimal(str(item["amount"]))
         chunks.setdefault(label, item.get("chunk_id"))
+        refs.setdefault(label, item.get("citation_id") or item.get("chunk_id"))
         quotes.setdefault(label, item.get("source_quote") or "")
     grand = sum(totals.values())
     if grand <= 0:
         return []
     shares = [
         CitedShare(
-            label, amount, float(amount / grand * 100), chunks.get(label), quotes.get(label, "")
+            label=label,
+            amount=amount,
+            pct=float(amount / grand * 100),
+            chunk_id=chunks.get(label),
+            cite_ref=refs.get(label),
+            source_quote=quotes.get(label, ""),
         )
         for label, amount in totals.items()
     ]
@@ -184,6 +195,8 @@ class YearPoint:
     fiscal_year: str
     amount: Decimal
     chunk_id: int | None = None
+    # Durable citation reference (stable citation_id, else numeric chunk_id).
+    cite_ref: int | str | None = None
 
 
 def component_trend(
@@ -195,17 +208,18 @@ def component_trend(
     summing amounts (e.g. a function summed across its funds) and keeping the
     statement chunk each year traces to.
     """
-    agg: dict[str, tuple[Decimal, int | None]] = {}
+    agg: dict[str, tuple[Decimal, int | None, int | str | None]] = {}
     for item in items:
         if item.get("category") != category or item.get(key) != value:
             continue
         fy = item["fiscal_year"]
-        amount, chunk = agg.get(fy, (Decimal(0), None))
+        amount, chunk, ref = agg.get(fy, (Decimal(0), None, None))
         agg[fy] = (
             amount + Decimal(str(item["amount"])),
             chunk if chunk is not None else item.get("chunk_id"),
+            ref if ref is not None else (item.get("citation_id") or item.get("chunk_id")),
         )
-    return [YearPoint(fy, amount, chunk) for fy, (amount, chunk) in sorted(agg.items())]
+    return [YearPoint(fy, amount, chunk, ref) for fy, (amount, chunk, ref) in sorted(agg.items())]
 
 
 # --- Stacked multi-year actuals (DESE state filings) ------------------------
@@ -225,6 +239,8 @@ class StackCell:
 
     amount: Decimal
     chunk_id: int | None
+    # Durable citation reference (stable citation_id, else numeric chunk_id).
+    cite_ref: int | str | None = None
 
 
 @dataclass(frozen=True)
@@ -274,21 +290,23 @@ def build_stack(
     """
     where = where or {}
     years: set[str] = set()
-    acc: dict[str, dict[str, list[Any]]] = {}  # label -> fy -> [amount, chunk_id]
+    acc: dict[str, dict[str, list[Any]]] = {}  # label -> fy -> [amount, chunk_id, cite_ref]
     for item in items:
         if any(item.get(k) != v for k, v in where.items()):
             continue
         label = item.get(group_key) or "Unspecified"
         fy = item["fiscal_year"]
         years.add(fy)
-        cell = acc.setdefault(label, {}).setdefault(fy, [Decimal(0), None])
+        cell = acc.setdefault(label, {}).setdefault(fy, [Decimal(0), None, None])
         cell[0] += Decimal(str(item["amount"]))
         if cell[1] is None:
             cell[1] = item.get("chunk_id")
+        if cell[2] is None:
+            cell[2] = item.get("citation_id") or item.get("chunk_id")
 
     series: list[StackSeries] = []
     for label, by_year in acc.items():
-        cells = {fy: StackCell(amount, chunk) for fy, (amount, chunk) in by_year.items()}
+        cells = {fy: StackCell(amount, chunk, ref) for fy, (amount, chunk, ref) in by_year.items()}
         total = sum((c.amount for c in cells.values()), Decimal(0))
         series.append(StackSeries(label=label, cells=cells, total=total))
     series.sort(key=lambda s: s.total, reverse=True)
@@ -305,6 +323,8 @@ class BudgetActual:
     final: Decimal
     actual: Decimal
     chunk_id: int | None = None
+    # Durable citation reference (stable citation_id, else numeric chunk_id).
+    cite_ref: int | str | None = None
 
     @property
     def variance(self) -> Decimal:
@@ -329,6 +349,7 @@ def budget_vs_actual(items: list[dict[str, Any]], fiscal_year: str) -> list[Budg
     """
     grouped: dict[tuple[str, str], dict[str, Decimal]] = {}
     chunks: dict[tuple[str, str], int | None] = {}
+    refs: dict[tuple[str, str], int | str | None] = {}
     for item in items:
         if item.get("fiscal_year") != fiscal_year:
             continue
@@ -338,6 +359,7 @@ def budget_vs_actual(items: list[dict[str, Any]], fiscal_year: str) -> list[Budg
         key = (item.get("fund") or "", item.get("category") or "")
         grouped.setdefault(key, {})[basis] = Decimal(str(item["amount"]))
         chunks.setdefault(key, item.get("chunk_id"))
+        refs.setdefault(key, item.get("citation_id") or item.get("chunk_id"))
 
     lines: list[BudgetActual] = []
     for fund in _BUDGET_FUND_ORDER:
@@ -353,6 +375,7 @@ def budget_vs_actual(items: list[dict[str, Any]], fiscal_year: str) -> list[Budg
                     final=vals["final"],
                     actual=vals["actual"],
                     chunk_id=chunks.get((fund, category)),
+                    cite_ref=refs.get((fund, category)),
                 )
             )
     return lines
@@ -584,9 +607,11 @@ def stacked_bar_svg(chart: StackChart, *, aria_label: str) -> Markup:
                 f'<rect class="bar seg {cls}" x="{x:.1f}" y="{seg_y:.1f}" '
                 f'width="{bar_w:.1f}" height="{seg_h:.1f}"/>'
             )
-            # Deep-link the segment to the passage its figure was read from, when cited.
-            if cell.chunk_id is not None:
-                seg = f'<a href="/chunk/{cell.chunk_id}/source">{seg}</a>'
+            # Deep-link the segment to the passage its figure was read from, when
+            # cited. Route on the durable cite_ref (stable id, else numeric).
+            ref = cell.cite_ref if cell.cite_ref is not None else cell.chunk_id
+            if ref is not None:
+                seg = f'<a href="/chunk/{ref}/source">{seg}</a>'
             parts.append(seg)
             y_cursor = seg_y
         parts.append(

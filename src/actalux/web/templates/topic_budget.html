@@ -22,7 +22,7 @@
       <h3>{{ section.label }}</h3>
 
       {% for r in section.results %}
-      <a class="result-item" href="/chunk/{{ r.chunk_id }}/source" style="display: block; border-bottom: 1px solid var(--rule); margin-bottom: 0;">
+      <a class="result-item" href="/chunk/{{ r.cite_ref }}/source" style="display: block; border-bottom: 1px solid var(--rule); margin-bottom: 0;">
         <span class="kind">{{ r.document_type or 'Record' }}</span>
         {% if r.meeting_date %}<span class="date">{{ r.meeting_date }}</span>{% endif %}
         <div class="snippet">{{ r.content | match_snippet(section.query) }}</div>

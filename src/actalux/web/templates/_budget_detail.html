@@ -20,8 +20,9 @@
       <td>{{ p.fiscal_year }}</td>
       <td class="num">{{ p.amount | usd }}</td>
       <td>
-        {% if p.chunk_id %}
-          <a href="/chunk/{{ p.chunk_id }}/source" class="hash">{{ p.chunk_id | chunk_hash_id }}</a>
+        {% set _ref = p.cite_ref if p.cite_ref is not none else p.chunk_id %}
+        {% if _ref %}
+          <a href="/chunk/{{ _ref }}/source" class="hash">{{ _ref | chunk_hash_id }}</a>
         {% else %}
           <span class="muted">&mdash;</span>
         {% endif %}

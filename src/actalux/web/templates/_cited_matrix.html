@@ -22,8 +22,9 @@
           {% for fy in chart.fiscal_years %}
             {% set cell = s.cells.get(fy) %}
             <td class="num">
-              {% if cell and cell.chunk_id %}
-                <a class="dese-cell" href="/chunk/{{ cell.chunk_id }}/source"
+              {% set _ref = cell.cite_ref if (cell and cell.cite_ref is not none) else (cell.chunk_id if cell else none) %}
+              {% if _ref %}
+                <a class="dese-cell" href="/chunk/{{ _ref }}/source"
                    title="{{ fy }} · {{ s.label }} · {{ cell.amount | usd }}">{{ cell.amount | usd_m }}</a>
               {% else %}
                 {# Fail closed: never show a figure we can't trace to its source. #}

@@ -224,14 +224,14 @@
     <p class="bond-figure">{{ bond.amount }}</p>
     <ul class="fp-facts" style="margin-top: var(--s-3);">
       <li><span class="fact-label">Purpose</span><span>{{ bond.purpose }}
-        {{ src(bond.resolution_source.chunk_id, prefix="Resolution") }}</span></li>
+        {{ src(bond_resolution_ref, prefix="Resolution") }}</span></li>
       <li><span class="fact-label">Ballot</span><span>{{ bond.ballot_date }},
         {{ bond.majority_required }} majority required
-        {{ src(bond.ballot_source.chunk_id, prefix="Ballot") }}</span></li>
+        {{ src(bond_ballot_ref, prefix="Ballot") }}</span></li>
       <li><span class="fact-label">Estimated debt-service levy</span><span>{{ bond.estimated_levy }}
-        {{ src(bond.ballot_source.chunk_id, prefix="Ballot") }}</span></li>
+        {{ src(bond_ballot_ref, prefix="Ballot") }}</span></li>
       <li><span class="fact-label">Result</span><span>{{ bond.result }} — {{ bond.result_detail }}
-        {{ src(bond.result_citation.chunk_id, prefix="Certified results") }}</span></li>
+        {{ src(bond_result_ref, prefix="Certified results") }}</span></li>
     </ul>
   </div>
 </section>

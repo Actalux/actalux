@@ -283,6 +283,7 @@ class _Row:
     chunk_id: int | None
     document_id: int | None
     source_quote: str
+    citation_id: str = ""  # stable citation reference; renders/routes over chunk_id
     subcategory: str = ""
     fund: str = ""
     scope: str = ""  # display scope, e.g. "General Fund" or "all governmental funds"
@@ -322,6 +323,7 @@ def _aggregate_across_funds(rows: list[dict[str, Any]]) -> list[_Row]:
                 chunk_id=r.get("chunk_id"),
                 document_id=r.get("document_id"),
                 source_quote=r.get("source_quote") or "",
+                citation_id=r.get("citation_id") or "",
                 subcategory=r.get("subcategory") or "",
                 scope="all governmental funds",
                 extra_funds=[r.get("fund") or ""],
@@ -331,6 +333,8 @@ def _aggregate_across_funds(rows: list[dict[str, Any]]) -> list[_Row]:
             existing.extra_funds.append(r.get("fund") or "")
             if existing.chunk_id is None:
                 existing.chunk_id = r.get("chunk_id")
+            if not existing.citation_id:
+                existing.citation_id = r.get("citation_id") or ""
     return list(groups.values())
 
 
@@ -347,6 +351,7 @@ def _as_rows(rows: list[dict[str, Any]]) -> list[_Row]:
                 chunk_id=r.get("chunk_id"),
                 document_id=r.get("document_id"),
                 source_quote=r.get("source_quote") or "",
+                citation_id=r.get("citation_id") or "",
                 subcategory=r.get("subcategory") or "",
                 fund=fund,
                 scope=f"{fund} Fund" if fund else "",
@@ -411,16 +416,16 @@ def build_finance_evidence(
     for r in display:
         doc = docs.get(r.document_id or -1, {})
         chunk_id = r.chunk_id
-        # Phase 2: finance citations still route on the numeric chunk id (the
-        # legacy form the /chunk resolver still serves); Phase 3 swaps in the
-        # budget figure's stable citation_id. cite_ref keeps the shape uniform
-        # with the text path so the citation linker treats both identically.
+        # Route the citation on the figure's stable citation_id when present, else
+        # the numeric chunk id (the /chunk resolver serves both). cite_ref keeps
+        # the shape uniform with the text path so the citation linker is identical.
+        cite_ref = r.citation_id or chunk_id
         evidence.append(
             {
                 "chunk_id": chunk_id,
-                "citation_id": "",
-                "cite_ref": chunk_id,
-                "hash_id": chunk_hash_id(chunk_id),
+                "citation_id": r.citation_id,
+                "cite_ref": cite_ref,
+                "hash_id": chunk_hash_id(cite_ref),
                 "content": _render_content(r),
                 "section": "Budget figure",
                 "speaker": "",

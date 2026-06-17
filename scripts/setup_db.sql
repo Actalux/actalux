@@ -182,6 +182,19 @@ CREATE INDEX IF NOT EXISTS documents_source_ref
 -- 'default' (fell back to date.today() — suspect) | 'unknown' (legacy rows).
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS date_source TEXT DEFAULT 'unknown';
 
+-- Migration 018: stable, content-addressed citation id for chunks
+-- (see migrate_018_citation_id.sql). Citations render and route on this instead
+-- of the SERIAL id, so they survive a document's re-ingest.
+ALTER TABLE chunks ADD COLUMN IF NOT EXISTS citation_id TEXT;
+CREATE INDEX IF NOT EXISTS chunks_citation_id
+    ON chunks (citation_id)
+    WHERE citation_id IS NOT NULL;
+
+-- Migration 019: durable citation reference for budget figures
+-- (see migrate_019_budget_citation_id.sql). Copied from each figure's chunk so
+-- the figure keeps its source link when chunk_id is nulled on re-ingest.
+ALTER TABLE budget_line_items ADD COLUMN IF NOT EXISTS citation_id TEXT;
+
 -- ============================================================
 -- Migration 012: multi-jurisdiction entity model
 -- A "place" is a discovery grouping (mo/clayton), not a legal boundary;

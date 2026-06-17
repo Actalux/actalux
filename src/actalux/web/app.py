@@ -34,6 +34,7 @@ from supabase import Client
 from actalux.config import Config
 from actalux.db import (
     get_budget_line_items,
+    get_chunk_citation_ids,
     get_chunk_with_context,
     get_dese_line_items,
     get_document,
@@ -792,6 +793,7 @@ def _facilities_plan_context(client: Client) -> dict[str, Any]:
     the priority themes, the process timeline, and the resolved citation chunk ids.
     """
     cache: dict[tuple[int, str], int | None] = {}
+    ref_cache: dict[int, int | str] = {}
 
     def link(source: fpd.Source) -> int | None:
         return resolve_source_anchor(client, source.doc_id, source.anchor, cache=cache)
@@ -804,18 +806,30 @@ def _facilities_plan_context(client: Client) -> dict[str, Any]:
         """
         return source.chunk_id if isinstance(source, fpd.CitedChunk) else link(source)
 
+    def cite_ref(source: fpd.Source | fpd.CitedChunk) -> int | str | None:
+        """Resolve a citation to its durable reference: the chunk's stable
+        citation_id when it has one, else the numeric chunk id. The template links
+        and hashes whatever this returns; routing the stable id keeps facilities
+        citations alive across a source document's re-ingest.
+        """
+        chunk_id = cite(source)
+        if chunk_id is None:
+            return None
+        if chunk_id not in ref_cache:
+            stable = get_chunk_citation_ids(client, [chunk_id]).get(chunk_id, "")
+            ref_cache[chunk_id] = stable or chunk_id
+        return ref_cache[chunk_id]
+
     tiers = [
         TierBar(label=name, amount=fpd.TIER_TOTALS[name.lower()], immediate=(name == "Red"))
         for name, _gloss in fpd.TIERS
     ]
 
-    # Each funding fact carries its own anchor; pair each with its resolved chunk id
-    # so the template can link the figure to the exact passage it was read from.
-    funding_facts = [(f, link(f.source)) for f in fpd.FUNDING_FACTS]
-
-    # Each milestone carries its own citation (anchor or chunk id); pair each with
-    # its resolved chunk id so the template links every step to its source passage.
-    timeline = [(m, cite(m.source)) for m in fpd.TIMELINE]
+    # Each funding fact / milestone carries its own citation (anchor or chunk id);
+    # pair each with its durable reference so the template links every figure and
+    # step to the exact passage it was read from, stable across re-ingest.
+    funding_facts = [(f, cite_ref(f.source)) for f in fpd.FUNDING_FACTS]
+    timeline = [(m, cite_ref(m.source)) for m in fpd.TIMELINE]
 
     return {
         "plan_title": fpd.PLAN_TITLE,
@@ -823,27 +837,34 @@ def _facilities_plan_context(client: Client) -> dict[str, Any]:
         "plan_consultant": fpd.PLAN_CONSULTANT,
         "plan_horizon": fpd.PLAN_HORIZON,
         "plan_delivered": fpd.PLAN_DELIVERED,
-        "delivery_chunk_id": link(fpd.DELIVERY_SOURCE),
-        "consultant_chunk_id": link(fpd.CONSULTANT_SOURCE),
+        # *_chunk_id keys carry the durable reference (stable citation_id, else the
+        # numeric chunk id); the template's src() macro links and hashes it as-is.
+        "delivery_chunk_id": cite_ref(fpd.DELIVERY_SOURCE),
+        "consultant_chunk_id": cite_ref(fpd.CONSULTANT_SOURCE),
         "site_count": fpd.SITE_COUNT,
         "grand_total": fpd.GRAND_TOTAL,
         "tiers": fpd.TIERS,
         "tier_totals": fpd.TIER_TOTALS,
         "tier_bar_svg": tier_bar_svg(tiers),
-        "tier_chunk_id": link(fpd.TIER_SOURCE),
+        "tier_chunk_id": cite_ref(fpd.TIER_SOURCE),
         "scope_costs": fpd.SCOPE_COSTS,
         "location_costs": fpd.LOCATION_COSTS,
-        "cost_chunk_id": link(fpd.COST_SOURCE),
+        "cost_chunk_id": cite_ref(fpd.COST_SOURCE),
         "cost_soft_cost_note": fpd.COST_SOFT_COST_NOTE,
         "renovation_options": fpd.RENOVATION_OPTIONS,
         "renovation_total_label": fpd.RENOVATION_TOTAL_LABEL,
         "new_schools": fpd.NEW_SCHOOLS,
         "new_schools_total_m": fpd.NEW_SCHOOLS_TOTAL_M,
-        "options_chunk_id": link(fpd.OPTIONS_SOURCE),
+        "options_chunk_id": cite_ref(fpd.OPTIONS_SOURCE),
         "funding_facts": funding_facts,
         "bond": fpd.BOND,
+        # Bond citations are read by the template from these resolved refs (not via
+        # the bond's raw source objects) so they too route on the stable id.
+        "bond_resolution_ref": cite_ref(fpd.BOND.resolution_source),
+        "bond_ballot_ref": cite_ref(fpd.BOND.ballot_source),
+        "bond_result_ref": cite_ref(fpd.BOND.result_citation),
         "district_themes": fpd.DISTRICT_THEMES,
-        "priorities_chunk_id": link(fpd.PRIORITIES_SOURCE),
+        "priorities_chunk_id": cite_ref(fpd.PRIORITIES_SOURCE),
         "timeline": timeline,
     }
 

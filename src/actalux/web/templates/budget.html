@@ -65,8 +65,9 @@
         <td class="num">{{ b.actual | usd }}</td>
         <td class="num variance">{% if b.variance >= 0 %}+{{ b.variance | usd }}{% else %}&minus;{{ (-b.variance) | usd }}{% endif %}</td>
         <td>
-          {% if b.chunk_id %}
-            <a href="/chunk/{{ b.chunk_id }}/source" class="hash">{{ b.chunk_id | chunk_hash_id }}</a>
+          {% set _ref = b.cite_ref if b.cite_ref is not none else b.chunk_id %}
+          {% if _ref %}
+            <a href="/chunk/{{ _ref }}/source" class="hash">{{ _ref | chunk_hash_id }}</a>
           {% else %}
             <span class="muted">&mdash;</span>
           {% endif %}
@@ -115,7 +116,7 @@
     <div class="section-group">
       <h3>{{ section.label }}</h3>
       {% for r in section.results %}
-      <a class="result-item" href="/chunk/{{ r.chunk_id }}/source" style="display: block; border-bottom: 1px solid var(--rule); margin-bottom: 0;">
+      <a class="result-item" href="/chunk/{{ r.cite_ref }}/source" style="display: block; border-bottom: 1px solid var(--rule); margin-bottom: 0;">
         <span class="kind">{{ r.document_type or 'Record' }}</span>
         {% if r.meeting_date %}<span class="date">{{ r.meeting_date }}</span>{% endif %}
         <div class="snippet">{{ r.content | match_snippet(section.query) }}</div>
