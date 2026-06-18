@@ -28,6 +28,11 @@ class Config:
         default_factory=lambda: os.environ.get("OPENROUTER_API_KEY", "")
     )
     summary_model: str = "gpt-5-mini"
+    # Follow-ups are condensed into a standalone retrieval query — a mechanical
+    # rewrite, not a reasoning task — so a fast non-reasoning model keeps that
+    # extra LLM hop off the answer's critical path (the reasoning summary model
+    # added ~1.4s per follow-up; see task #19 latency measurement).
+    condense_model: str = "gpt-4o-mini"
     # ZeroEntropy hosted reranker. Key gates the API call; zerank-1-small is the
     # Apache-2.0 model that won the retrieval eval (+24% nDCG@10; see eval/README.md).
     zeroentropy_api_key: str = field(

@@ -1075,3 +1075,32 @@ class TestPdfAvailable:
 
     def test_none_doc_is_available(self) -> None:
         assert _pdf_available(None) is True
+
+
+class TestAskLatencyPhaseA:
+    """Phase-A latency wins for /ask: fast condense model + embedder warm-up (task #19)."""
+
+    def test_condense_model_is_a_fast_non_reasoning_model(self) -> None:
+        from actalux.config import Config
+
+        cfg = Config()
+        # Condensing a follow-up into a standalone query is a mechanical rewrite,
+        # not reasoning — it must not use the slow reasoning summary model.
+        assert cfg.condense_model
+        assert cfg.condense_model != cfg.summary_model
+        # Non-reasoning model => _completion_kwargs won't attach reasoning_effort.
+        assert not cfg.condense_model.split("/")[-1].lower().startswith(("gpt-5", "o1", "o3", "o4"))
+
+    def test_warm_embedder_calls_load_model(self) -> None:
+        from actalux.web.app import _warm_embedder
+
+        with patch("actalux.web.app.load_model") as m:
+            _warm_embedder()
+        m.assert_called_once()
+
+    def test_warm_embedder_swallows_load_errors(self) -> None:
+        from actalux.web.app import _warm_embedder
+
+        # A load failure must not propagate — the model just loads lazily later.
+        with patch("actalux.web.app.load_model", side_effect=RuntimeError("boom")):
+            _warm_embedder()

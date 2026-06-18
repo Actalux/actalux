@@ -17,6 +17,7 @@ import logging
 import re
 import threading
 import time
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -51,6 +52,7 @@ from actalux.db import (
     resolve_source_anchor,
 )
 from actalux.errors import SearchError, SummaryError
+from actalux.ingest.embedder import load_model
 from actalux.models import Correction, chunk_hash_id
 from actalux.search.answer import assemble_evidence, enrich_results
 from actalux.search.hybrid import SearchFilters, hybrid_search
@@ -95,7 +97,29 @@ logger = logging.getLogger(__name__)
 TEMPLATE_DIR = Path(__file__).parent / "templates"
 STATIC_DIR = Path(__file__).parent / "static"
 
-app = FastAPI(title="Actalux", version="0.1.0")
+
+def _warm_embedder() -> None:
+    """Load the bge-small model so the first /search|/ask request doesn't pay it.
+
+    Cold model load is ~8s (measured, task #19); warming it in the background at
+    startup moves that cost off the first user's request. Best-effort: a failure
+    here just means the model loads lazily on first use, as before.
+    """
+    try:
+        load_model()
+    except Exception:
+        logger.warning("embedder warm-up failed; will load lazily on first use", exc_info=True)
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    # Warm the embedder off the request path (daemon thread so startup/health
+    # checks aren't blocked by the ~8s load).
+    threading.Thread(target=_warm_embedder, name="embedder-warmup", daemon=True).start()
+    yield
+
+
+app = FastAPI(title="Actalux", version="0.1.0", lifespan=_lifespan)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 templates.env.filters["chunk_hash_id"] = chunk_hash_id
@@ -1436,7 +1460,7 @@ def ask_post(
 
     client = _get_db()
     try:
-        standalone = condense_question(prior, question, cfg.openai_api_key, cfg.summary_model)
+        standalone = condense_question(prior, question, cfg.openai_api_key, cfg.condense_model)
         embedding = _embed_query(standalone)
         filters = SearchFilters(entity_id=view.entity["id"])
         enriched, route = assemble_evidence(

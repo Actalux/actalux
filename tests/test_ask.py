@@ -43,6 +43,7 @@ _CFG = SimpleNamespace(ask_history_max_turns=8, ask_history_max_chars=8000)
 _ROUTE_CFG = SimpleNamespace(
     openai_api_key="sk-test",
     summary_model="gpt-5-mini",
+    condense_model="gpt-4o-mini",
     rate_limit_ask_per_minute=8,
     ask_daily_message_cap=400,
     ask_history_max_turns=8,
