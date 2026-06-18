@@ -8,6 +8,7 @@ from actalux.web.text_snippets import (
     dedup_rolling_captions,
     extract_query_terms,
     extractive_snippet,
+    lead_sentence,
     mark_terms,
     reflow_transcript,
     split_for_highlight,
@@ -287,3 +288,42 @@ class TestCleanTextLight:
         # Word characters are never modified — only whitespace.
         text = "FY2025 budget: $58.3 million (audited)"
         assert clean_text_light(text) == text
+
+
+class TestLeadSentence:
+    """One clean verbatim sentence for the topic citation lists."""
+
+    def test_picks_query_relevant_sentence(self) -> None:
+        content = (
+            "The meeting opened at 7pm. The budget officer submits a proposed budget. Adjourned."
+        )
+        assert lead_sentence(content, "budget") == "The budget officer submits a proposed budget."
+
+    def test_falls_back_to_first_sentence_when_no_term_matches(self) -> None:
+        content = "First sentence here. Second sentence here."
+        assert lead_sentence(content, "nonexistentterm") == "First sentence here."
+        # No query at all -> first sentence.
+        assert lead_sentence(content) == "First sentence here."
+
+    def test_strips_leading_extraction_noise(self) -> None:
+        # The "[]" / bullet artifacts seen at the head of PDF-extracted chunks.
+        assert lead_sentence("[] Prior to July the officer submits.", "officer") == (
+            "Prior to July the officer submits."
+        )
+        assert lead_sentence("• A bulleted budget line.", "budget") == "A bulleted budget line."
+
+    def test_keeps_words_and_currency_verbatim(self) -> None:
+        # Currency, digits, and words are never stripped — only layout glyphs.
+        content = "The reserve fund holds $58.3 million as of FY2025."
+        assert lead_sentence(content, "reserve") == content
+
+    def test_truncates_overlong_sentence_at_word_boundary(self) -> None:
+        long_sentence = "word " * 100 + "end."
+        out = lead_sentence(long_sentence, "word", max_chars=40)
+        assert out.endswith("…")
+        assert len(out) <= 41
+        assert " wor…" not in out  # no mid-word cut
+
+    def test_empty_returns_empty(self) -> None:
+        assert lead_sentence("") == ""
+        assert lead_sentence("   ", "budget") == ""

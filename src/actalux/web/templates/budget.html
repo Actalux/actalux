@@ -108,25 +108,16 @@
   {% include "_budget_dese.html" %}
 {% endif %}
 
-{# --- What the district has said (cited quotes from the corpus) --- #}
+{# --- What the district has said (cited quotes from the corpus). Each record
+   leads with the document and opens the original in its native form. --- #}
+{% from "_cited_record.html" import cited_record %}
 <section class="topic-sections">
   <div class="section-label">What the district has said about the budget</div>
   {% for section in sections %}
     {% if section.results %}
     <div class="section-group">
       <h3>{{ section.label }}</h3>
-      {% for r in section.results %}
-      <a class="result-item" href="/chunk/{{ r.cite_ref }}/source" style="display: block; border-bottom: 1px solid var(--rule); margin-bottom: 0;">
-        <span class="kind">{{ r.document_type or 'Record' }}</span>
-        {% if r.meeting_date %}<span class="date">{{ r.meeting_date }}</span>{% endif %}
-        <div class="snippet">{{ r.content | match_snippet(section.query) }}</div>
-        <div class="cite-inline">
-          {% if r.meeting_title %}<span>{{ r | display_title }}</span>{% endif %}
-          {% if r.section %}<span>· {{ r.section }}</span>{% endif %}
-          <span class="hash">{{ r.hash_id }}</span>
-        </div>
-      </a>
-      {% endfor %}
+      {% for r in section.results %}{{ cited_record(r, section.query) }}{% endfor %}
     </div>
     {% endif %}
   {% endfor %}

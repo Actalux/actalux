@@ -343,6 +343,36 @@ def extractive_snippet(content: str, query: str, max_chars: int = 220) -> str:
     return ("…" if prefix_cut else "") + mark_terms(core, terms) + ("…" if suffix_cut else "")
 
 
+# Leading layout glyphs left by PDF/markdown extraction (bullets, checkbox
+# artifacts, stray brackets, blockquote/heading markers) that read as noise at
+# the head of a displayed quote. Deliberately excludes letters, digits, quotes,
+# and currency so no semantic character is ever stripped.
+_LEAD_NOISE_RE = re.compile(r"^[\s\[\]•·▪◦‣*|>#…]+")
+
+
+def lead_sentence(content: str, query: str = "", max_chars: int = 240) -> str:
+    """One clean verbatim sentence for a citation list — the most query-relevant
+    sentence, whitespace-normalised, free of highlight markup and extraction noise.
+
+    The topic "what X has said" lists lead with the document and show a single
+    readable quote rather than the raw windowed snippet (which dumped a run-on,
+    ellipsis-bracketed block). Only whitespace and leading layout glyphs are
+    removed; the words themselves stay verbatim, and the full passage is one click
+    away on the source page. A sentence longer than ``max_chars`` is truncated at
+    a word boundary with an ellipsis.
+    """
+    sentences = split_sentences(content)
+    if not sentences:
+        return ""
+    terms = extract_query_terms(query)
+    idx = best_sentence_index(sentences, terms)
+    sentence = sentences[idx] if idx != -1 else sentences[0]
+    sentence = _LEAD_NOISE_RE.sub("", sentence).strip()
+    if len(sentence) > max_chars:
+        sentence = sentence[:max_chars].rsplit(" ", 1)[0].rstrip(",;:—– ") + "…"
+    return sentence
+
+
 def split_for_highlight(content: str, query: str) -> tuple[str, str, str]:
     """Split a cited chunk into (before, key_sentence, after) for the reader pane.
 

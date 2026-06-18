@@ -1,0 +1,23 @@
+{# One cited record in a "what X has said" list: leads with the document identity,
+   shows a single clean verbatim sentence, and links to the source in its native
+   form (/chunk/{ref}/source embeds the original PDF/video). Replaces the old raw
+   windowed-snippet dump — see DESIGN.md "Citations resolve to the original".
+   `r` is an enrich_results row; `query` is the preset query that surfaced it,
+   used only to pick the most relevant sentence. #}
+{% macro cited_record(r, query="") %}
+{% set _quote = r.content | lead_sentence(query) %}
+<a class="cited-record" href="/chunk/{{ r.cite_ref }}/source">
+  <div class="cited-record-meta">
+    <span class="kind">{{ r.document_type or 'Record' }}</span>
+    {% if r.source_portal %}<span>{{ r.source_portal | source_label }}</span>{% endif %}
+    {% if r.meeting_date %}<span class="date">{{ r.meeting_date }}</span>{% endif %}
+  </div>
+  {% if _quote %}<blockquote class="cited-record-quote">&ldquo;{{ _quote }}&rdquo;</blockquote>{% endif %}
+  <div class="cited-record-foot">
+    <span class="src-title">{{ r | display_title }}</span>
+    {% if r.section %}<span>&middot; {{ r.section }}</span>{% endif %}
+    <span class="hash">{{ r.hash_id }}</span>
+    <span class="open-orig">Open the original &rarr;</span>
+  </div>
+</a>
+{% endmacro %}

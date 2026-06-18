@@ -506,6 +506,29 @@ class TestChunkSourceEndpoint:
         response = client.get("/chunk/99999/source")
         assert response.status_code == 404
 
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity", return_value=_FAKE_ENTITY)
+    @patch("actalux.web.app.get_document", return_value=_FAKE_DOC)
+    @patch("actalux.web.app.get_chunk_with_context")
+    def test_full_page_embeds_original_pdf_not_text_dump(
+        self, mock_ctx, mock_doc, mock_ent, mock_db
+    ) -> None:
+        """The full /chunk/{ref}/source page leads with the embedded original PDF
+        and tucks the cited passage behind a disclosure (source_pane treatment),
+        instead of dumping extracted text — see DESIGN.md "Citations resolve to
+        the original"."""
+        mock_ctx.return_value = {"chunk": _FAKE_CHUNK, "context": [_FAKE_CHUNK]}
+        with _mock_stored_file_url(_FAKE_STORED_FILE_URL):
+            r = client.get("/chunk/9001/source")
+        assert r.status_code == 200
+        # Original PDF embedded in native form, cued via the storage URL.
+        assert "pdf-frame" in r.text
+        assert _FAKE_STORED_FILE_URL in r.text
+        # The cited passage sits behind a disclosure, not as the leading content.
+        assert "cited-disclosure" in r.text
+        # The real origin is offered as "Open original".
+        assert "Open original" in r.text
+
 
 # A superseded version of _FAKE_DOC: replaces_id points at the canonical 196.
 _FAKE_SUPERSEDED_DOC = {**_FAKE_DOC, "id": 195, "replaces_id": 196}

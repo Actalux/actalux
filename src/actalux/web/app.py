@@ -84,6 +84,7 @@ from actalux.web.text_snippets import (
     clean_text_light,
     content_paragraphs,
     extractive_snippet,
+    lead_sentence,
     normalize_whitespace,
     reflow_transcript,
     split_for_highlight,
@@ -222,6 +223,10 @@ def _safe_url(value: str) -> str:
 
 
 templates.env.filters["match_snippet"] = _match_snippet
+# One clean verbatim sentence for the topic "what X has said" lists — leads with
+# the document, no raw windowed snippet. See DESIGN.md "Citations resolve to the
+# original".
+templates.env.filters["lead_sentence"] = lead_sentence
 templates.env.filters["cited_html"] = _cited_html
 templates.env.filters["clean_text"] = normalize_whitespace
 templates.env.filters["content_paragraphs"] = content_paragraphs
@@ -1037,62 +1042,15 @@ def _resolve_cited_chunk(
     return overrides
 
 
-@app.get("/chunk/{ref}/source", response_class=HTMLResponse)
-async def chunk_source(request: Request, ref: str, embed: int = 0) -> HTMLResponse:
-    """Citation context: the chunk plus surrounding chunks.
+def _chunk_source_render_context(ref: str) -> tuple[EntityView | None, dict[str, Any]]:
+    """Resolve a citation ref to the render context shared by the source views.
 
-    ``ref`` is a stable citation_id (8 hex) or a legacy numeric chunk id; both
-    resolve via ``resolve_chunk_ref``. If `embed=1`, returns a partial suitable
-    for injection into the search reader pane via HTMX. Otherwise returns the full
-    page. A citation into a superseded document is annotated (never blind-
-    redirected) — see ``_resolve_cited_chunk``.
-    """
-    client = _get_db()
-    chunk_id = resolve_chunk_ref(client, ref)
-    if chunk_id is None:
-        raise HTTPException(status_code=404, detail="Chunk not found")
-    context = get_chunk_with_context(client, chunk_id, context_count=2)
-    if not context["chunk"]:
-        raise HTTPException(status_code=404, detail="Chunk not found")
-
-    doc = get_document(client, context["chunk"]["document_id"])
-    resolved = _resolve_cited_chunk(client, context["chunk"], doc)
-    render_doc = resolved["document"]
-    render_chunk = resolved.get("chunk", context["chunk"])
-    # When the citation was re-anchored to the canonical document, pull that
-    # document's surrounding context so neighbours match the rendered chunk.
-    render_context = context["context"]
-    if render_chunk is not context["chunk"]:
-        rechunked = get_chunk_with_context(client, render_chunk["id"], context_count=2)
-        if rechunked["chunk"]:
-            render_context = rechunked["context"]
-
-    view = _entity_view_for_document(client, render_doc)
-    template = "partials/reader_pane.html" if embed else "chunk_source.html"
-
-    return templates.TemplateResponse(
-        request,
-        template,
-        _page(
-            view,
-            chunk=render_chunk,
-            context=render_context,
-            document=render_doc,
-            superseded=resolved["superseded"],
-            canonical_document=resolved["canonical_document"],
-        ),
-    )
-
-
-@app.get("/chunk/{ref}/source-pane", response_class=HTMLResponse)
-async def chunk_source_pane(request: Request, ref: str, q: str = "") -> HTMLResponse:
-    """Return the source pane only (native-format document view) for a chunk.
-
-    Called by HTMX when the user clicks a search result. ``ref`` is a stable
-    citation_id (8 hex) or a legacy numeric chunk id. Fetches the chunk and two
-    neighbors for in-context display. Per-card AI summaries (doc summary + match
-    summary) are generated separately on the result cards, not here. Superseded
-    citations are annotated, never blind-redirected — see ``_resolve_cited_chunk``.
+    ``ref`` is a stable citation_id (8 hex) or a legacy numeric chunk id. Fetches
+    the chunk plus two neighbours, re-anchoring to the canonical document when the
+    citation points into a superseded one (annotated, never blind-redirected — see
+    ``_resolve_cited_chunk``). Raises 404 when the ref doesn't resolve. Shared by
+    the full-page ``/chunk/{ref}/source`` and the HTMX ``/source-pane`` routes so
+    both show the identical native-format treatment.
     """
     client = _get_db()
     chunk_id = resolve_chunk_ref(client, ref)
@@ -1106,6 +1064,8 @@ async def chunk_source_pane(request: Request, ref: str, q: str = "") -> HTMLResp
     resolved = _resolve_cited_chunk(client, ctx["chunk"], doc)
     render_doc = resolved["document"]
     render_chunk = resolved.get("chunk", ctx["chunk"])
+    # When re-anchored to the canonical document, pull that document's surrounding
+    # context so neighbours match the rendered chunk.
     render_context = ctx["context"]
     if render_chunk is not ctx["chunk"]:
         rechunked = get_chunk_with_context(client, render_chunk["id"], context_count=2)
@@ -1113,22 +1073,46 @@ async def chunk_source_pane(request: Request, ref: str, q: str = "") -> HTMLResp
             render_context = rechunked["context"]
 
     view = _entity_view_for_document(client, render_doc)
-    target_hash = chunk_hash_id(render_chunk.get("citation_id") or render_chunk["id"])
+    return view, {
+        "chunk": render_chunk,
+        "context": render_context,
+        "document": render_doc,
+        "pdf_available": _pdf_available(render_doc),
+        "superseded": resolved["superseded"],
+        "canonical_document": resolved["canonical_document"],
+    }
 
+
+@app.get("/chunk/{ref}/source", response_class=HTMLResponse)
+async def chunk_source(request: Request, ref: str, q: str = "", embed: int = 0) -> HTMLResponse:
+    """Citation context shown as the source in its native form.
+
+    The page leads with the original document — the embedded PDF cued to the
+    passage, or the cued video — and tucks the cited passage behind a disclosure;
+    extracted text is only dumped when there is no embeddable original (see
+    source_pane.html and DESIGN.md "Citations resolve to the original"). ``ref`` is
+    a stable citation_id (8 hex) or a legacy numeric chunk id. ``embed=1`` returns
+    the legacy bare-text partial (reader_pane.html) for callers that want only the
+    text. A citation into a superseded document is annotated, never blind-redirected.
+    """
+    view, ctx = _chunk_source_render_context(ref)
+    template = "partials/reader_pane.html" if embed else "chunk_source.html"
+    return templates.TemplateResponse(request, template, _page(view, query=q, **ctx))
+
+
+@app.get("/chunk/{ref}/source-pane", response_class=HTMLResponse)
+async def chunk_source_pane(request: Request, ref: str, q: str = "") -> HTMLResponse:
+    """Return the source pane only (native-format document view) for a chunk.
+
+    Called by HTMX when the user clicks a search result — the same native-format
+    treatment as the full ``/chunk/{ref}/source`` page, minus the page chrome.
+    """
+    view, ctx = _chunk_source_render_context(ref)
+    target_hash = chunk_hash_id(ctx["chunk"].get("citation_id") or ctx["chunk"]["id"])
     return templates.TemplateResponse(
         request,
         "partials/source_pane.html",
-        _page(
-            view,
-            chunk=render_chunk,
-            context=render_context,
-            document=render_doc,
-            query=q,
-            target_hash=target_hash,
-            pdf_available=_pdf_available(render_doc),
-            superseded=resolved["superseded"],
-            canonical_document=resolved["canonical_document"],
-        ),
+        _page(view, query=q, target_hash=target_hash, **ctx),
     )
 
 

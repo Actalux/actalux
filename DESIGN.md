@@ -281,6 +281,41 @@ When search results contain the user's query term, wrap matches in
 `<mark>` with `background: var(--accent-soft)`. Subtler than the passage
 highlight — this is "we found your word" not "this is the cited passage."
 
+### Citations resolve to the original, never to a text dump
+
+This is a hard presentation rule, project-wide. A citation (`#qXXXX`, a
+figure source, a chatbot source, a topic-list item) must resolve to the
+**source document in its native form**, not to a wall of machine-extracted
+text.
+
+- **The destination is the original.** `/chunk/{ref}/source` and the search
+  reader pane lead with the original artifact — the embedded PDF (cued to the
+  cited passage) or the cued YouTube video — plus an "Open original ↗" link
+  out. The cited passage is tucked behind a disclosure, opened by default
+  only when there is no embeddable original. (Implementation: `source_pane.html`,
+  reached by both the full page and the HTMX pane.)
+- **Extracted text is the exception, and must be beautiful.** Text is shown
+  inline only when there is no embeddable original (a transcript with no
+  public video, a `.txt`/`.html`-only source, or a PDF too large to embed).
+  When it is shown it must be reflowed into clean, readable paragraphs
+  (`reflow_transcript` for transcripts; `clean_text_light` otherwise) — never
+  a raw run-on `match_snippet`/`clean_text` blob.
+- **Citation lists lead with the document, not the snippet.** "What the
+  district has said" topic lists, and any similar curated list, present each
+  hit as a cited-record card: document identity (type · portal · date) first,
+  then at most **one** clean verbatim sentence, then the link to the original.
+  Never a windowed, ellipsis-bracketed snippet dump. (Implementation:
+  `_cited_record.html` + the `lead_sentence` filter.)
+- **Search-result cards are the one place a query snippet belongs** — the
+  user typed a query and wants to see the matching text. That `<mark>`-ed
+  snippet is "we found your word," not the citation presentation itself; the
+  card still opens the native-format source on click.
+
+The failure mode this rule exists to prevent: a user clicks a citation and
+lands on a page of incomprehensible run-on extracted text instead of the
+actual document. If a surface shows extracted text where the original could
+be embedded or linked, it violates this rule.
+
 ### Collapsible sidebar sections
 Sidebar nav groups (Topics, Meetings, Documents) are chevron-toggle
 buttons. State persists in localStorage under `actalux.nav.expanded`.

@@ -62,6 +62,7 @@ def enrich_results(client: Client, results: list[SearchResult]) -> list[dict[str
                 "meeting_title": doc.get("meeting_title", ""),
                 "document_id": r.document_id,
                 "document_type": doc.get("document_type", ""),
+                "source_portal": doc.get("source_portal", ""),
                 "summary": doc.get("summary", ""),
             }
         )

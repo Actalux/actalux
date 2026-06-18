@@ -297,3 +297,46 @@ class TestProposedSectionRender:
         r = client.get("/mo/clayton/schools/budget")
         assert r.status_code == 200
         assert "Proposed Budget (June 2024)" not in r.text
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
+    @patch("actalux.web.app._budget_quote_sections")
+    def test_what_district_said_renders_quote_led_cited_records(
+        self, mock_quotes, mock_ent, mock_db
+    ) -> None:
+        """The 'what the district has said' list is quote-led (cited-record cards):
+        document identity + one clean verbatim sentence + a link to the original,
+        not a raw windowed-snippet dump. See DESIGN.md "Citations resolve to the
+        original"."""
+        mock_quotes.return_value = [
+            {
+                "label": "Budget approval & spending",
+                "query": "budget officer proposed",
+                "results": [
+                    {
+                        "cite_ref": "7a60af78",
+                        "hash_id": "#q7a60af78",
+                        "content": (
+                            "[] Prior to July, the budget officer submits a proposed "
+                            "budget. Other boilerplate follows here."
+                        ),
+                        "document_type": "budget",
+                        "source_portal": "diligent",
+                        "meeting_date": "2020-06-24",
+                        "meeting_title": "June 24, 2020 Budget",
+                        "section": "",
+                    }
+                ],
+            }
+        ]
+        mock_db.return_value = _FakeClient(_make_rows())
+        r = client.get("/mo/clayton/schools/budget")
+        assert r.status_code == 200
+        # Quote-led cited-record card (not the retired raw-snippet result-item).
+        assert "cited-record" in r.text
+        # One clean verbatim sentence, with the leading "[]" extraction noise gone.
+        assert "Prior to July, the budget officer submits a proposed budget." in r.text
+        assert "[] Prior to July" not in r.text
+        # Opens the original; the portal is shown in the record meta.
+        assert "/chunk/7a60af78/source" in r.text
+        assert "Open the original" in r.text
