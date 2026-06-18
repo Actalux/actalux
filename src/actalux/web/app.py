@@ -78,7 +78,7 @@ from actalux.web.charts import (
 )
 from actalux.web.display import display_title, first_sentence, source_label
 from actalux.web.retrieval import build_reranker, embed_query, get_config, get_db
-from actalux.web.storage import stored_file_url
+from actalux.web.storage import stored_file_exists, stored_file_url
 from actalux.web.text_snippets import (
     TRANSCRIPT_CAPTION_LABEL,
     clean_text_light,
@@ -153,6 +153,20 @@ def _entity_view_for_document(client: Client, doc: dict[str, Any] | None) -> Ent
         return None
     entity = get_entity(client, doc["entity_id"])
     return _entity_view(entity) if entity else None
+
+
+def _pdf_available(doc: dict[str, Any] | None) -> bool:
+    """Whether a document's stored PDF object actually exists, for embed-or-degrade.
+
+    True for non-PDF documents (nothing to embed) and for PDFs whose object is
+    served; False only when a PDF source's object is missing (e.g. too large for
+    the storage tier), so the reader shows an "open at source" note instead of a
+    broken iframe. The HEAD check is short-TTL cached in ``storage``.
+    """
+    src = (doc or {}).get("source_file") or ""
+    if not src.lower().endswith(".pdf"):
+        return True
+    return stored_file_exists(src)
 
 
 def _page(ev: EntityView | None, **extra: Any) -> dict[str, Any]:
@@ -945,7 +959,9 @@ async def document_view(request: Request, doc_id: int) -> HTMLResponse | Redirec
 
     view = _entity_view_for_document(client, resolved.document)
     return templates.TemplateResponse(
-        request, "document.html", _page(view, document=resolved.document)
+        request,
+        "document.html",
+        _page(view, document=resolved.document, pdf_available=_pdf_available(resolved.document)),
     )
 
 
@@ -965,7 +981,9 @@ async def document_pane(request: Request, doc_id: int) -> HTMLResponse | Redirec
         return RedirectResponse(f"/document/{resolved.document['id']}/pane", status_code=301)
     view = _entity_view_for_document(client, resolved.document)
     return templates.TemplateResponse(
-        request, "partials/doc_pane.html", _page(view, document=resolved.document)
+        request,
+        "partials/doc_pane.html",
+        _page(view, document=resolved.document, pdf_available=_pdf_available(resolved.document)),
     )
 
 
@@ -1107,6 +1125,7 @@ async def chunk_source_pane(request: Request, ref: str, q: str = "") -> HTMLResp
             document=render_doc,
             query=q,
             target_hash=target_hash,
+            pdf_available=_pdf_available(render_doc),
             superseded=resolved["superseded"],
             canonical_document=resolved["canonical_document"],
         ),

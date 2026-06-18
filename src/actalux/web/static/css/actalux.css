@@ -971,6 +971,19 @@ img { max-width: 100%; display: block; }
   letter-spacing: 0.06em;
 }
 
+/* Shown in place of a PDF embed when the stored object is missing/too large. */
+.embed-unavailable {
+  font-family: var(--serif-body);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--muted);
+  background: var(--paper-warm);
+  border-left: 3px solid var(--rule-strong);
+  padding: var(--s-3) var(--s-4);
+}
+.embed-unavailable a { color: var(--ink-soft); border-bottom: 1px solid var(--rule-strong); }
+.embed-unavailable a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
 /* ===== Ask (cited chatbot) ===== */
 .ask { max-width: 720px; padding: 0 var(--s-5) var(--s-6); }
 .ask-intro {

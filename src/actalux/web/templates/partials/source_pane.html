@@ -22,7 +22,10 @@
 {% set _source_file = document.source_file or '' %}
 {% set _is_pdf_source = _source_file.lower().endswith('.pdf') %}
 {% set _pdf_embed_url = stored_file_url(_source_file) if _is_pdf_source else '' %}
-{% set is_pdf = _is_pdf_source and _pdf_embed_url %}
+{# Embed only when the stored object actually exists; otherwise degrade to a note
+   rather than render the bucket's 404 as a broken iframe. pdf_available defaults
+   true so a context that doesn't compute it keeps the prior behaviour. #}
+{% set is_pdf = _is_pdf_source and _pdf_embed_url and (pdf_available | default(true)) %}
 {% set is_transcript = document.source_portal == 'youtube' %}
 {% set cue = ctx_chunk.start_seconds if (is_video and ctx_chunk.start_seconds) else 0 %}
 {# A transcript's "original" is its video, never the .txt we derived it from.
@@ -78,6 +81,12 @@
           src="{{ _pdf_embed_url | safe_url }}"
           title="{{ document.meeting_title or 'Source PDF' }}"
           loading="lazy"></iframe>
+</section>
+{% elif _is_pdf_source %}
+<section class="original-block">
+  <div class="block-label">Original document</div>
+  <p class="embed-unavailable">This document is too large to preview here.{% if original_url %}
+    <a href="{{ original_url | safe_url }}" target="_blank" rel="noopener">Open the original ↗</a>.{% endif %}</p>
 </section>
 {% endif %}
 

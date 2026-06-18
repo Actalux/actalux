@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from actalux.web.app import _render_citation_links, app, templates
+from actalux.web.app import _pdf_available, _render_citation_links, app, templates
 
 client = TestClient(app, raise_server_exceptions=False)
 
@@ -216,7 +216,10 @@ def _mock_stored_file_url(return_value: str = _FAKE_STORED_FILE_URL):
     templates.env.globals["stored_file_url"] = lambda _f, cfg=None: return_value
     templates.env.filters["stored_file_url"] = lambda _f, cfg=None: return_value
     try:
-        yield
+        # A mocked stored file also "exists" — the route gates the embed on a HEAD
+        # check (stored_file_exists), so mark it available or the embed degrades.
+        with patch("actalux.web.app.stored_file_exists", return_value=True):
+            yield
     finally:
         templates.env.globals["stored_file_url"] = original
         templates.env.filters["stored_file_url"] = original
@@ -420,6 +423,21 @@ class TestDocumentEndpoint:
         # source_url is the Diligent origin link, shown as "Open original ↗"
         assert "diligent.example.test" in r.text
         assert "cited-para" not in r.text  # browse has no cited passage
+
+    @patch("actalux.web.app.stored_file_exists", return_value=False)
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity", return_value=_FAKE_ENTITY)
+    @patch("actalux.web.app.resolve_canonical_document", return_value=_canon(_FAKE_DOC))
+    def test_document_pane_degrades_when_pdf_object_missing(
+        self, mock_doc, mock_ent, mock_db, mock_exists
+    ) -> None:
+        """A PDF whose stored object is missing shows a note, not a broken iframe."""
+        r = client.get("/document/195/pane")
+        assert r.status_code == 200
+        assert "pdf-frame" not in r.text
+        assert "too large to preview" in r.text
+        # The origin link is still offered so the reader can reach the document.
+        assert "diligent.example.test" in r.text
 
     @patch("actalux.web.app._get_db")
     @patch("actalux.web.app.get_entity", return_value=_FAKE_ENTITY)
@@ -1017,3 +1035,20 @@ class TestCitationLinks:
         assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
         assert "<script>" not in html
         assert '<a href="/chunk/65536/source" class="source-link">[#q10000]</a>' in html
+
+
+class TestPdfAvailable:
+    """_pdf_available gates the PDF embed: non-PDFs never HEAD; PDFs delegate."""
+
+    def test_non_pdf_is_available_without_check(self) -> None:
+        with patch("actalux.web.app.stored_file_exists") as m:
+            assert _pdf_available({"source_file": "Oct 12 transcript.txt"}) is True
+            m.assert_not_called()
+
+    def test_pdf_delegates_to_existence_check(self) -> None:
+        with patch("actalux.web.app.stored_file_exists", return_value=False) as m:
+            assert _pdf_available({"source_file": "huge.pdf"}) is False
+            m.assert_called_once()
+
+    def test_none_doc_is_available(self) -> None:
+        assert _pdf_available(None) is True

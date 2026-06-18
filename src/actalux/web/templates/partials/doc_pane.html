@@ -11,7 +11,8 @@
 {% set _source_file = document.source_file or '' %}
 {% set _is_pdf_source = _source_file.lower().endswith('.pdf') %}
 {% set _pdf_embed_url = stored_file_url(_source_file) if _is_pdf_source else '' %}
-{% set is_pdf = _is_pdf_source and _pdf_embed_url %}
+{# Embed only when the stored object exists; otherwise degrade to a note. #}
+{% set is_pdf = _is_pdf_source and _pdf_embed_url and (pdf_available | default(true)) %}
 {% set is_transcript = document.source_portal == 'youtube' %}
 {# A transcript's "original" is its video, never the .txt we derived it from.
    For all other docs, source_url is the real origin — shown only when non-empty. #}
@@ -44,6 +45,12 @@
           src="{{ _pdf_embed_url | safe_url }}"
           title="{{ document.meeting_title or 'Source PDF' }}"
           loading="lazy"></iframe>
+</section>
+{% elif _is_pdf_source %}
+<section class="original-block">
+  <div class="block-label">Original document</div>
+  <p class="embed-unavailable">This document is too large to preview here.{% if original_url %}
+    <a href="{{ original_url | safe_url }}" target="_blank" rel="noopener">Open the original ↗</a>.{% endif %}</p>
 </section>
 {% elif is_transcript %}
 <section class="original-block">

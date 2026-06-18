@@ -9,6 +9,8 @@ still comes from ``documents.source_url``.
 
 from __future__ import annotations
 
+import time
+import urllib.request
 from urllib.parse import quote
 
 from actalux.config import Config, load_config
@@ -68,3 +70,37 @@ def stored_file_url(source_file: str, cfg: Config | None = None) -> str:
         return ""
     cfg = cfg or load_config()
     return build_stored_file_url(cfg.supabase_url, source_file)
+
+
+# Cache object-presence so the reader doesn't HEAD the bucket on every render.
+# Presence changes rarely (a file is uploaded once), so a short TTL keeps it at
+# most one HEAD per file per window while still reflecting a later upload/removal.
+_EXISTS_TTL_SECONDS = 600.0
+_exists_cache: dict[str, tuple[float, bool]] = {}
+
+
+def stored_file_exists(source_file: str, cfg: Config | None = None) -> bool:
+    """True when the stored object for ``source_file`` is actually served (HEAD 200).
+
+    Lets the reader embed a PDF only when its object exists and degrade to an
+    "open at source" note otherwise (e.g. a file too large for the storage tier was
+    never uploaded), instead of rendering the bucket's 404 as a broken iframe.
+    Cached per key for a short TTL, so it costs at most one HEAD per file per window.
+    """
+    if not source_file:
+        return False
+    now = time.monotonic()
+    cached = _exists_cache.get(source_file)
+    if cached is not None and now - cached[0] < _EXISTS_TTL_SECONDS:
+        return cached[1]
+    url = stored_file_url(source_file, cfg)
+    ok = False
+    if url:
+        try:
+            req = urllib.request.Request(url, method="HEAD")
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                ok = resp.status == 200
+        except Exception:
+            ok = False
+    _exists_cache[source_file] = (now, ok)
+    return ok
