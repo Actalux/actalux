@@ -26,7 +26,7 @@ from typing import Any
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, FastAPI, Form, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup, escape
@@ -56,7 +56,13 @@ from actalux.ingest.embedder import load_model
 from actalux.models import Correction, chunk_hash_id
 from actalux.search.answer import assemble_evidence, enrich_results
 from actalux.search.hybrid import SearchFilters, hybrid_search
-from actalux.search.summarize import condense_question, extract_citation_ids, generate_summary
+from actalux.search.summarize import (
+    Summary,
+    condense_question,
+    extract_citation_ids,
+    generate_summary,
+    generate_summary_stream,
+)
 from actalux.web import facilities_plan_data as fpd
 from actalux.web.api import _enforce_rate, api_router
 from actalux.web.charts import (
@@ -1494,6 +1500,119 @@ def ask_post(
         cfg,
     )
     return render(turn, new_history)
+
+
+@jurisdiction.post("/ask/stream")
+def ask_stream(
+    request: Request,
+    view: EntityView = Depends(resolve_entity),
+    q: str = Form(""),
+    history: str = Form("[]"),
+) -> StreamingResponse:
+    """Streaming variant of /ask: emit verified sentences as they are generated.
+
+    Same pipeline and caps as ``ask_post``, but the answer is streamed sentence by
+    sentence (newline-delimited JSON events) so the reader sees it form in ~1s
+    instead of waiting for the whole completion. Each sentence is verified before
+    it is emitted (see ``generate_summary_stream``), so the citation guarantee
+    holds during streaming — a claim is never shown and then retracted. The
+    no-JS fallback is the plain ``/ask`` POST (full-page render).
+    """
+    cfg = _get_config()
+    question = q.strip()[: cfg.ask_question_max_chars]
+    prior = _parse_ask_history(history, cfg)
+
+    def event(obj: dict[str, Any]) -> str:
+        return json.dumps(obj) + "\n"
+
+    def events() -> Any:
+        if not question:
+            yield event({"type": "done", "history": json.dumps(prior)})
+            return
+
+        try:
+            _enforce_rate(request, "ask", cfg.rate_limit_ask_per_minute)
+        except HTTPException:
+            yield event(
+                {
+                    "type": "notice",
+                    "html": "You're asking quickly — please wait a moment and try again.",
+                }
+            )
+            yield event({"type": "done", "history": json.dumps(prior)})
+            return
+
+        if not _register_ask_within_daily_cap(cfg.ask_daily_message_cap):
+            yield event(
+                {
+                    "type": "notice",
+                    "html": "Actalux has reached today's question limit. Please try again "
+                    "tomorrow, or search the records directly in the meantime.",
+                }
+            )
+            yield event({"type": "done", "history": json.dumps(prior)})
+            return
+
+        if not cfg.openai_api_key:
+            yield event(
+                {
+                    "type": "notice",
+                    "html": "The assistant is temporarily unavailable. Please use search.",
+                }
+            )
+            yield event({"type": "done", "history": json.dumps(prior)})
+            return
+
+        client = _get_db()
+        try:
+            standalone = condense_question(prior, question, cfg.openai_api_key, cfg.condense_model)
+            if standalone.strip() != question:
+                yield event({"type": "meta", "standalone": standalone})
+            embedding = _embed_query(standalone)
+            filters = SearchFilters(entity_id=view.entity["id"])
+            enriched, route = assemble_evidence(
+                client, standalone, embedding, filters=filters, reranker=_reranker(), max_results=10
+            )
+            logger.info("ask-stream route=%s for: %s", route, standalone)
+            summary: Summary | None = None
+            for item in generate_summary_stream(
+                standalone, enriched, cfg.openai_api_key, cfg.summary_model
+            ):
+                if isinstance(item, Summary):
+                    summary = item
+                else:
+                    yield event(
+                        {"type": "sentence", "html": _render_citation_links(item, enriched) + " "}
+                    )
+        except (SearchError, SummaryError):
+            logger.exception("Ask stream failed for: %s", question)
+            yield event(
+                {
+                    "type": "error",
+                    "html": "Something went wrong answering that — please try rephrasing.",
+                }
+            )
+            yield event({"type": "done", "history": json.dumps(prior)})
+            return
+
+        answer_text = summary.text if summary else ""
+        sources = _cited_sources(answer_text, enriched) if summary else []
+        sources_html = templates.env.get_template("partials/ask_sources.html").render(
+            summary=summary, sources=sources
+        )
+        new_history = _bound_history(
+            prior
+            + [
+                {"role": "user", "content": question},
+                {"role": "assistant", "content": answer_text},
+            ],
+            cfg,
+        )
+        yield event(
+            {"type": "done", "sources_html": sources_html, "history": json.dumps(new_history)}
+        )
+
+    return StreamingResponse(events(), media_type="application/x-ndjson")
 
 
 # --- Helpers ---

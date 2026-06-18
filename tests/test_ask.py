@@ -7,6 +7,7 @@ patching the retrieval/LLM stack so no network call is made.
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -327,3 +328,83 @@ class TestAskRoute:
         assert r.status_code == 200
         assert "asking quickly" in r.text
         gen.assert_not_called()
+
+
+class TestAskStreamRoute:
+    """The streaming /ask/stream endpoint emits verified sentences + a done event."""
+
+    def setup_method(self) -> None:
+        _reset_rate_limits()
+        app_module._ask_daily_count.clear()
+
+    def _stream_patches(self, **overrides):
+        def fake_stream(query, results, *a, **k):
+            yield "The ending fund balance rose. [#q0001]"
+            yield Summary(
+                text="The ending fund balance rose. [#q0001]",
+                citations_found=1,
+                citations_verified=1,
+                citations_dropped=0,
+            )
+
+        p = _patch_route(**overrides)
+        p["stream"] = patch("actalux.web.app.generate_summary_stream", side_effect=fake_stream)
+        return p
+
+    @staticmethod
+    def _events(text: str) -> list[dict]:
+        return [json.loads(line) for line in text.splitlines() if line.strip()]
+
+    def test_streams_sentence_then_done_with_history(self) -> None:
+        p = self._stream_patches()
+        with (
+            p["get_entity_by_path"],
+            p["get_db"],
+            p["get_config"],
+            p["embed"],
+            p["reranker"],
+            p["condense"],
+            p["assemble"],
+            p["stream"],
+        ):
+            r = client.post(
+                "/mo/clayton/schools/ask/stream",
+                data={"q": "How has the fund balance changed?", "history": "[]"},
+            )
+        assert r.status_code == 200
+        events = self._events(r.text)
+        types = [e["type"] for e in events]
+        assert "sentence" in types
+        assert types[-1] == "done"
+        sentence = next(e for e in events if e["type"] == "sentence")
+        assert "fund balance rose" in sentence["html"]
+        assert "/chunk/" in sentence["html"]  # citation rendered as a source link
+        done = next(e for e in events if e["type"] == "done")
+        hist = json.loads(done["history"])
+        assert hist[-2] == {"role": "user", "content": "How has the fund balance changed?"}
+        assert hist[-1]["role"] == "assistant"
+        assert "Sources" in done["sources_html"]
+
+    def test_rate_limit_streams_notice_not_answer(self) -> None:
+        # Condense must never run when the per-IP limiter trips first.
+        p = self._stream_patches(
+            condense=patch(
+                "actalux.web.app.condense_question",
+                side_effect=AssertionError("condense should not run when rate-limited"),
+            ),
+        )
+        with (
+            patch("actalux.web.app._enforce_rate", side_effect=HTTPException(status_code=429)),
+            p["get_entity_by_path"],
+            p["get_db"],
+            p["get_config"],
+            p["embed"],
+            p["reranker"],
+            p["condense"],
+            p["assemble"],
+            p["stream"],
+        ):
+            r = client.post("/mo/clayton/schools/ask/stream", data={"q": "hi", "history": "[]"})
+        events = self._events(r.text)
+        assert any(e["type"] == "notice" for e in events)
+        assert all(e["type"] != "sentence" for e in events)

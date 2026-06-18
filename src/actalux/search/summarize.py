@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any
 
@@ -199,56 +200,153 @@ def _call_llm(
         raise SummaryError(f"LLM call failed: {exc}") from exc
 
 
+def _verify_sentence(sentence: str, valid_ids: set[str]) -> tuple[str | None, dict[str, int]]:
+    """Verify one sentence's citations; return (kept_sentence_or_None, stats).
+
+    The single source of truth for "does this sentence survive?", shared by the
+    batch verifier and the streaming generator so they can never diverge:
+      - A bare citation fragment (no prose) is dropped.
+      - A citation-free sentence is kept only if it's short/transitional (<=8
+        words), never if it makes an uncited factual claim.
+      - A cited sentence is kept only if EVERY hash ID it cites is valid.
+    """
+    citations = HASH_ID_RE.findall(sentence)
+    found = len(citations)
+
+    # Drop bare citation fragments (e.g., "[#q003f] [#q0042]" with no prose).
+    text_without_citations = HASH_ID_RE.sub("", sentence).strip()
+    text_without_citations = re.sub(r"[\[\]\s]+", " ", text_without_citations).strip()
+    if not text_without_citations:
+        return None, {"found": found, "verified": 0, "dropped": 0}
+
+    if not citations:
+        # No citations: keep only if transitional/structural (short, no claim).
+        if len(sentence.split()) <= 8:
+            return sentence, {"found": 0, "verified": 0, "dropped": 0}
+        return None, {"found": 0, "verified": 0, "dropped": 0}
+
+    if all(cid in valid_ids for cid in citations):
+        return sentence, {"found": found, "verified": found, "dropped": 0}
+
+    bad = [c for c in citations if c not in valid_ids]
+    logger.warning("Dropped sentence with invalid citations %s: %.80s", bad, sentence)
+    return None, {"found": found, "verified": 0, "dropped": found}
+
+
 def _verify_citations(text: str, valid_ids: set[str]) -> tuple[str, dict[str, int]]:
     """Verify every citation in the text against the valid set.
 
-    Splits text into sentences. Any sentence containing an invalid
-    citation is dropped entirely. Returns the cleaned text and stats.
+    Splits text into sentences and applies :func:`_verify_sentence` to each; any
+    sentence with an invalid citation is dropped entirely. Returns the cleaned
+    text and stats.
     """
-    sentences = _split_sentences(text)
     verified_sentences: list[str] = []
+    totals = {"found": 0, "verified": 0, "dropped": 0}
 
-    total_found = 0
-    total_verified = 0
-    total_dropped = 0
-
-    for sentence in sentences:
-        citations = HASH_ID_RE.findall(sentence)
-        total_found += len(citations)
-
-        # Drop bare citation fragments (e.g., "[#q003f] [#q0042]" with no prose)
-        text_without_citations = HASH_ID_RE.sub("", sentence).strip()
-        text_without_citations = re.sub(r"[\[\]\s]+", " ", text_without_citations).strip()
-        if not text_without_citations:
-            continue
-
-        if not citations:
-            # Sentence with no citations — keep it only if it's
-            # transitional/structural (short, no factual claims)
-            if len(sentence.split()) <= 8:
-                verified_sentences.append(sentence)
-            continue
-
-        # Check all citations in this sentence
-        all_valid = all(cid in valid_ids for cid in citations)
-        if all_valid:
-            total_verified += len(citations)
-            verified_sentences.append(sentence)
-        else:
-            total_dropped += len(citations)
-            bad = [c for c in citations if c not in valid_ids]
-            logger.warning("Dropped sentence with invalid citations %s: %.80s", bad, sentence)
+    for sentence in _split_sentences(text):
+        kept, stats = _verify_sentence(sentence, valid_ids)
+        for key in totals:
+            totals[key] += stats[key]
+        if kept is not None:
+            verified_sentences.append(kept)
 
     verified_text = " ".join(verified_sentences).strip()
-
     if not verified_text:
         verified_text = "Could not generate a verified summary for this query."
 
-    return verified_text, {
-        "found": total_found,
-        "verified": total_verified,
-        "dropped": total_dropped,
-    }
+    return verified_text, totals
+
+
+def _drain_complete_sentences(buffer: str) -> tuple[list[str], str]:
+    """Split a streaming buffer into (complete_sentences, trailing_partial).
+
+    Uses the same boundary as :func:`_split_sentences` (a sentence ends at "." or
+    "]" followed by whitespace and a capitalized next word). The final segment is
+    always returned as the still-incomplete partial, since more tokens may extend
+    it — the caller flushes it when the stream ends.
+    """
+    parts = re.split(r"(?<=[\].])\s+(?=[A-Z])", buffer)
+    if len(parts) <= 1:
+        return [], buffer
+    *complete, partial = parts
+    return [p.strip() for p in complete if p.strip()], partial
+
+
+def generate_summary_stream(
+    query: str,
+    results: list[dict[str, Any]],
+    api_key: str,
+    model: str = DEFAULT_MODEL,
+    *,
+    base_url: str | None = None,
+    reasoning_effort: str = "minimal",
+) -> Iterator[str | Summary]:
+    """Stream a citation-backed summary, one verified sentence at a time.
+
+    Yields each verified sentence (``str``) as it completes, then a final
+    :class:`Summary` (full verified text + stats) as the last item. A sentence is
+    revealed only once it is complete AND passes the same per-sentence citation
+    check as :func:`generate_summary` (:func:`_verify_sentence`), so a claim is
+    never shown and then retracted. The answer model is unchanged; only delivery
+    differs. Raises :class:`SummaryError` on stream failure.
+    """
+    if not results:
+        yield Summary(
+            text="No matching records found for this query.",
+            citations_found=0,
+            citations_verified=0,
+            citations_dropped=0,
+        )
+        return
+
+    valid_ids = {r["hash_id"] for r in results}
+    user_message = USER_PROMPT_TEMPLATE.format(
+        query=query, quotes_block=_build_quotes_block(results)
+    )
+
+    kept: list[str] = []
+    totals = {"found": 0, "verified": 0, "dropped": 0}
+
+    def _emit(sentence: str) -> Iterator[str]:
+        decided, stats = _verify_sentence(sentence, valid_ids)
+        for key in totals:
+            totals[key] += stats[key]
+        if decided is not None:
+            kept.append(decided)
+            yield decided
+
+    try:
+        client = OpenAI(api_key=api_key, base_url=base_url)
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_message},
+        ]
+        stream = client.chat.completions.create(
+            stream=True, **_completion_kwargs(model, messages, MAX_TOKENS, reasoning_effort)
+        )
+        buffer = ""
+        for chunk in stream:
+            choices = getattr(chunk, "choices", None)
+            delta = choices[0].delta.content if choices else None
+            if not delta:
+                continue
+            buffer += delta
+            complete, buffer = _drain_complete_sentences(buffer)
+            for sentence in complete:
+                yield from _emit(sentence)
+        tail = buffer.strip()
+        if tail:
+            yield from _emit(tail)
+    except Exception as exc:
+        raise SummaryError(f"LLM stream failed: {exc}") from exc
+
+    text = " ".join(kept).strip() or "Could not generate a verified summary for this query."
+    yield Summary(
+        text=text,
+        citations_found=totals["found"],
+        citations_verified=totals["verified"],
+        citations_dropped=totals["dropped"],
+    )
 
 
 def _split_sentences(text: str) -> list[str]:

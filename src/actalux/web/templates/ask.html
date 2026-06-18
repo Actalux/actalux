@@ -22,23 +22,120 @@
     {% endfor %}
   </div>
 
+  {# Plain POST to /ask is the no-JS fallback (full-page render). When JS is on,
+     the script below intercepts submit and streams from /ask/stream instead, so
+     the answer appears sentence by sentence. #}
   <form class="ask-form" id="ask-form"
-        hx-post="{{ base }}/ask"
-        hx-target="#ask-log"
-        hx-swap="beforeend"
-        hx-disabled-elt="#ask-send"
-        hx-on::after-request="if(event.detail.successful){var t=this.querySelector('textarea');t.value='';t.focus();var l=document.getElementById('ask-log').lastElementChild;if(l){l.scrollIntoView({behavior:'smooth',block:'start'});}}">
+        action="{{ base }}/ask" method="post"
+        data-stream-url="{{ base }}/ask/stream">
     <input type="hidden" name="history" id="ask-history" value="{{ history_json }}">
     <textarea class="textarea" name="q" id="ask-q" rows="3"
               placeholder="e.g. How has the district's fund balance changed over recent years?"
               aria-label="Your question"></textarea>
     <div class="ask-form-row">
       <span class="ask-hint">Answers cite their sources. You can also <a href="{{ base }}/search">search the records</a> directly.</span>
-      <button class="btn btn-primary" id="ask-send" type="submit">
-        Ask<span class="htmx-indicator"> …</span>
-      </button>
+      <button class="btn btn-primary" id="ask-send" type="submit">Ask</button>
     </div>
   </form>
 </div>
+
+<script>
+  // Progressive enhancement: stream the answer sentence-by-sentence when the
+  // browser supports it; otherwise the form's plain POST to /ask still works.
+  (function () {
+    var form = document.getElementById('ask-form');
+    if (!form || !window.fetch || !window.ReadableStream) return;
+    var streamUrl = form.getAttribute('data-stream-url');
+    var log = document.getElementById('ask-log');
+    var qEl = document.getElementById('ask-q');
+    var send = document.getElementById('ask-send');
+
+    function esc(s) {
+      var d = document.createElement('div');
+      d.textContent = s == null ? '' : s;
+      return d.innerHTML;
+    }
+
+    form.addEventListener('submit', function (e) {
+      var question = (qEl.value || '').trim();
+      if (!question) { e.preventDefault(); return; }
+      e.preventDefault();
+      var history = document.getElementById('ask-history').value || '[]';
+
+      var turn = document.createElement('div');
+      turn.className = 'ask-turn';
+      turn.innerHTML =
+        '<div class="ask-q"><span class="ask-role">You asked</span>' +
+        '<p class="ask-q-text">' + esc(question) + '</p>' +
+        '<p class="ask-standalone" hidden></p></div>' +
+        '<div class="summary-card ask-a"><div class="heading">Answer · every claim cites a source</div>' +
+        '<div class="body"><span class="ask-drafting">Drafting…</span></div>' +
+        '<div class="ask-done"></div></div>';
+      log.appendChild(turn);
+
+      var bodyEl = turn.querySelector('.body');
+      var standaloneEl = turn.querySelector('.ask-standalone');
+      var doneEl = turn.querySelector('.ask-done');
+      function clearDrafting() {
+        var d = bodyEl.querySelector('.ask-drafting');
+        if (d) d.remove();
+      }
+
+      turn.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      send.disabled = true;
+      qEl.value = '';
+
+      var payload = new URLSearchParams();
+      payload.set('q', question);
+      payload.set('history', history);
+
+      function handle(obj) {
+        if (obj.type === 'meta' && obj.standalone) {
+          standaloneEl.textContent = 'Understood as: ' + obj.standalone;
+          standaloneEl.hidden = false;
+        } else if (obj.type === 'sentence') {
+          clearDrafting();
+          bodyEl.insertAdjacentHTML('beforeend', obj.html);
+        } else if (obj.type === 'notice' || obj.type === 'error') {
+          clearDrafting();
+          bodyEl.insertAdjacentHTML('beforeend', '<span>' + esc(obj.html) + '</span>');
+        } else if (obj.type === 'done') {
+          clearDrafting();
+          if (obj.sources_html) doneEl.innerHTML = obj.sources_html;
+          if (obj.history) document.getElementById('ask-history').value = obj.history;
+        }
+      }
+
+      fetch(streamUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: payload.toString()
+      }).then(function (resp) {
+        if (!resp.ok || !resp.body) throw new Error('stream failed');
+        var reader = resp.body.getReader();
+        var dec = new TextDecoder();
+        var buf = '';
+        function pump() {
+          return reader.read().then(function (r) {
+            if (r.value) buf += dec.decode(r.value, { stream: true });
+            var nl;
+            while ((nl = buf.indexOf('\n')) >= 0) {
+              var line = buf.slice(0, nl);
+              buf = buf.slice(nl + 1);
+              if (line.trim()) { try { handle(JSON.parse(line)); } catch (_) {} }
+            }
+            if (r.done) { send.disabled = false; qEl.focus(); return; }
+            return pump();
+          });
+        }
+        return pump();
+      }).catch(function () {
+        clearDrafting();
+        bodyEl.insertAdjacentHTML('beforeend', '<span>Something went wrong. Please try again.</span>');
+        send.disabled = false;
+      });
+    });
+  })();
+</script>
 
 {% endblock %}

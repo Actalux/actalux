@@ -15,23 +15,9 @@
   <div class="summary-card ask-a">
     <div class="heading">Answer · every claim cites a source</div>
     <div class="body">{{ turn.answer_html | safe }}</div>
-    {% if turn.summary %}
-    <div class="footnote">
-      {{ turn.summary.citations_verified }} citation{{ 's' if turn.summary.citations_verified != 1 }} verified{% if turn.summary.citations_dropped > 0 %} · {{ turn.summary.citations_dropped }} unverified claim{{ 's' if turn.summary.citations_dropped != 1 }} removed{% endif %}
-    </div>
-    {% endif %}
-    {% if turn.sources %}
-    <details class="ask-sources">
-      <summary>Sources ({{ turn.sources|length }})</summary>
-      {% for s in turn.sources %}
-      <a class="ask-source" href="/chunk/{{ s.cite_ref }}/source">
-        <span class="hash">{{ s.hash_id }}</span>
-        <span class="src-title">{{ s | display_title }}</span>
-        {% if s.meeting_date %}<span class="src-date">{{ s.meeting_date }}</span>{% endif %}
-      </a>
-      {% endfor %}
-    </details>
-    {% endif %}
+    {% with summary = turn.summary, sources = turn.sources %}
+      {% include "partials/ask_sources.html" %}
+    {% endwith %}
   </div>
   {% endif %}
 </div>

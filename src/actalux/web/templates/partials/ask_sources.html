@@ -1,0 +1,21 @@
+{# Citation-count footnote + the cited-sources disclosure for one answer.
+   Shared by the batch turn (ask_turn.html) and the streaming done-event
+   (rendered server-side and injected by the Ask page JS) so both match exactly.
+   Expects `summary` (Summary|None) and `sources` (list of cited evidence rows). #}
+{% if summary %}
+<div class="footnote">
+  {{ summary.citations_verified }} citation{{ 's' if summary.citations_verified != 1 }} verified{% if summary.citations_dropped > 0 %} &middot; {{ summary.citations_dropped }} unverified claim{{ 's' if summary.citations_dropped != 1 }} removed{% endif %}
+</div>
+{% endif %}
+{% if sources %}
+<details class="ask-sources">
+  <summary>Sources ({{ sources|length }})</summary>
+  {% for s in sources %}
+  <a class="ask-source" href="/chunk/{{ s.cite_ref }}/source">
+    <span class="hash">{{ s.hash_id }}</span>
+    <span class="src-title">{{ s | display_title }}</span>
+    {% if s.meeting_date %}<span class="src-date">{{ s.meeting_date }}</span>{% endif %}
+  </a>
+  {% endfor %}
+</details>
+{% endif %}
