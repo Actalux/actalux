@@ -343,11 +343,16 @@ def extractive_snippet(content: str, query: str, max_chars: int = 220) -> str:
     return ("…" if prefix_cut else "") + mark_terms(core, terms) + ("…" if suffix_cut else "")
 
 
-# Leading layout glyphs left by PDF/markdown extraction (bullets, checkbox
-# artifacts, stray brackets, blockquote/heading markers) that read as noise at
-# the head of a displayed quote. Deliberately excludes letters, digits, quotes,
-# and currency so no semantic character is ever stripped.
-_LEAD_NOISE_RE = re.compile(r"^[\s\[\]•·▪◦‣*|>#…]+")
+# Leading noise left by PDF/markdown extraction at the head of a displayed quote:
+# layout glyphs (bullets, checkbox artifacts, stray brackets, blockquote/heading
+# markers), zero-width/format characters, and Private-Use-Area glyphs (U+E000–
+# U+F8FF — embedded-font bullets/symbols that extraction emits as PUA code points,
+# e.g. U+F0B7). Deliberately excludes letters, digits, quotes, and currency so no
+# semantic character is ever stripped.
+_LEAD_NOISE_RE = re.compile(
+    r"^[\s\u200b-\u200d\u2060\ufeff\ue000-\uf8ff"
+    r"\[\]\u2022\u00b7\u25aa\u25e6\u2023*|>#\u2026]+"
+)
 
 
 def lead_sentence(content: str, query: str = "", max_chars: int = 240) -> str:

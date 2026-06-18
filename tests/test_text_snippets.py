@@ -312,6 +312,17 @@ class TestLeadSentence:
         )
         assert lead_sentence("• A bulleted budget line.", "budget") == "A bulleted budget line."
 
+    def test_strips_leading_private_use_and_zero_width_glyphs(self) -> None:
+        # PDF extraction emits embedded-font bullets as Private-Use-Area code
+        # points (e.g. U+F0B7) and stray zero-width chars — invisible noise that
+        # is not whitespace, so .strip() leaves it. Observed live on the budget page.
+        assert lead_sentence("\uf0b7 Prior to July the officer submits.", "officer") == (
+            "Prior to July the officer submits."
+        )
+        assert lead_sentence("\u200bBudget approved.", "budget") == "Budget approved."
+        # Currency is never stripped (it is not noise).
+        assert lead_sentence("$58 million was approved.", "approved") == "$58 million was approved."
+
     def test_keeps_words_and_currency_verbatim(self) -> None:
         # Currency, digits, and words are never stripped — only layout glyphs.
         content = "The reserve fund holds $58.3 million as of FY2025."
