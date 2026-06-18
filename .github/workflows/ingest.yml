@@ -40,8 +40,25 @@ jobs:
       # Ingest writes through the service (secret) key, which bypasses RLS.
       ACTALUX_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
       ACTALUX_SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
+      # The change-digest drafter needs OpenAI for cited summaries; without it the
+      # draft still lists documents, just without per-topic cited paragraphs.
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      # SMTP delivery for the draft email. All optional: unset secrets render as
+      # empty strings, and the drafter then writes the file but skips the email.
+      ACTALUX_SMTP_HOST: ${{ secrets.ACTALUX_SMTP_HOST }}
+      ACTALUX_SMTP_PORT: ${{ secrets.ACTALUX_SMTP_PORT }}
+      ACTALUX_SMTP_USER: ${{ secrets.ACTALUX_SMTP_USER }}
+      ACTALUX_SMTP_PASSWORD: ${{ secrets.ACTALUX_SMTP_PASSWORD }}
+      ACTALUX_DRAFT_EMAIL_FROM: ${{ secrets.ACTALUX_DRAFT_EMAIL_FROM }}
+      ACTALUX_DRAFT_EMAIL_TO: ${{ secrets.ACTALUX_DRAFT_EMAIL_TO }}
     steps:
       - uses: actions/checkout@v4
+
+      # Stamp the digest window BEFORE crawling, so every document this run
+      # ingests carries created_at >= DIGEST_SINCE and the drafter sees exactly
+      # this run's additions (not last week's).
+      - name: Record digest window start
+        run: echo "DIGEST_SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
 
       - name: Set up uv + Python 3.11
         uses: astral-sh/setup-uv@v5
@@ -98,3 +115,23 @@ jobs:
             echo "::error::no manifests produced; nothing ingested"
             exit 1
           fi
+
+      # Draft a cited "what changed this run" post and (if SMTP is configured)
+      # email it for human review. Soft-fails: a drafting/email hiccup must not
+      # fail the run or undo the ingest above. Never publishes.
+      - name: Draft change digest
+        continue-on-error: true
+        run: |
+          uv run python scripts/draft_substack.py \
+            --since "$DIGEST_SINCE" --out draft.md --email
+
+      # Always keep the draft as a downloadable artifact, so a draft is never lost
+      # even before email is wired up. Absent file (no changes) is fine.
+      - name: Upload draft
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: change-digest-draft
+          path: draft.md
+          if-no-files-found: ignore
+          retention-days: 30

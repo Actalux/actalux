@@ -79,6 +79,29 @@ class Config:
     # Upper bound on a single question before any LLM work, so a crafted large
     # post cannot inflate condense/embed cost. Genuine questions are far shorter.
     ask_question_max_chars: int = 2000
+    # Public site origin, used to turn the digest drafter's [#qXXXX] citations
+    # into absolute links a Substack draft / email can resolve.
+    site_base_url: str = field(
+        default_factory=lambda: os.environ.get("ACTALUX_SITE_BASE_URL", "https://actalux.org")
+    )
+    # SMTP delivery for the change-digest drafter (the weekly "what's new" email).
+    # All optional and provider-agnostic (Gmail app-password, Resend SMTP, Fastmail,
+    # ...): when host/from/to are unset the drafter still writes the draft file, it
+    # just does not email. No secret is required for the pipeline to run.
+    smtp_host: str = field(default_factory=lambda: os.environ.get("ACTALUX_SMTP_HOST", ""))
+    # `or "587"` (not a default arg) so an env var present-but-empty -- which is how
+    # CI renders an unset secret -- still parses, instead of int("") raising.
+    smtp_port: int = field(
+        default_factory=lambda: int(os.environ.get("ACTALUX_SMTP_PORT") or "587")
+    )
+    smtp_user: str = field(default_factory=lambda: os.environ.get("ACTALUX_SMTP_USER", ""))
+    smtp_password: str = field(default_factory=lambda: os.environ.get("ACTALUX_SMTP_PASSWORD", ""))
+    draft_email_from: str = field(
+        default_factory=lambda: os.environ.get("ACTALUX_DRAFT_EMAIL_FROM", "")
+    )
+    draft_email_to: str = field(
+        default_factory=lambda: os.environ.get("ACTALUX_DRAFT_EMAIL_TO", "")
+    )
 
 
 def load_config() -> Config:

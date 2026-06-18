@@ -142,6 +142,34 @@ Fly machine (FastAPI/HTMX): serves site + the read-only JSON API (grounding)
 Small scheduled Fly worker (separate): YouTube/Canva crawlers (non-datacenter IP / browser)
 ```
 
+#### Implemented (2026-06-18)
+
+Phase 0 is built — no new framework, on the existing GitHub Actions cron. The
+``actalux.digest`` package and ``scripts/draft_substack.py`` add the downstream
+half:
+
+- **Change detection** — ``db.list_documents_changed_since`` reads current rows
+  (``replaces_id IS NULL``) by ``created_at`` (the run log stores only counts), so
+  ``build_change_digest`` collects this run's new (``version == 1``) and updated
+  (``version > 1``) documents and groups them into topics (``digest/themes.py``).
+- **Drafting** — ``draft_post`` writes a **themed roundup**: per topic, it builds
+  citeable evidence from that topic's documents' own passages and runs the *same*
+  citation-verified ``generate_summary`` as the site (a claim that cannot cite a
+  source is dropped; a paragraph appears only with verified citations), then links
+  every ``[#qXXXX]`` to ``/chunk/{ref}/source``. The header marks it a draft for
+  human review and restates the nonpartisan / board-and-administration-policy line.
+- **Trigger + delivery** — ``ingest.yml`` stamps ``DIGEST_SINCE`` before the crawl,
+  runs the drafter after ingest (``continue-on-error``: a drafting hiccup never
+  undoes the ingest), **always uploads the draft as a run artifact**, and emails it
+  when SMTP is configured. **Never auto-publishes** — a person reviews and posts.
+- **Review surface = email** (operator's choice): provider-agnostic SMTP
+  (``digest/delivery.py``); unset SMTP secrets degrade to "draft written, not
+  emailed". Requires GitHub Actions secrets ``OPENAI_API_KEY`` (cited summaries),
+  ``ACTALUX_SMTP_{HOST,PORT,USER,PASSWORD}``, ``ACTALUX_DRAFT_EMAIL_{FROM,TO}``.
+
+Run locally: ``doppler run --project mac --config dev -- uv run python
+scripts/draft_substack.py --days 7 --out draft.md`` (add ``--email`` to send).
+
 ### Phase 1 — only if/when we move off weekly-batch
 
 If we want near-real-time drafting, in-app triggering, or resumable

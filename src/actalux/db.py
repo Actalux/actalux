@@ -173,6 +173,64 @@ _API_DOC_COLUMNS = (
     "id, meeting_title, document_type, meeting_date, summary, source_url, source_portal, video_id"
 )
 
+# Columns the change-digest drafter reads per document: the API columns plus the
+# versioning fields it uses to label a row new (version 1) vs. updated (version >1).
+_DIGEST_DOC_COLUMNS = _API_DOC_COLUMNS + ", version, created_at, source_file"
+
+
+def list_documents_changed_since(
+    client: Client,
+    since: str,
+    *,
+    entity_id: int | None = None,
+    limit: int = 500,
+) -> list[dict[str, Any]]:
+    """Current documents inserted at or after ``since``, newest first.
+
+    Backs the change-digest. A current row (``replaces_id IS NULL``) created since
+    the last digest is either brand new (``version == 1``) or a new version of an
+    existing document (``version > 1`` — its prior row now carries ``replaces_id``).
+    The ``ingest_runs`` log stores only aggregate counts, so "what changed" is
+    derived from ``documents.created_at`` here rather than from the run log.
+    ``since`` is an inclusive lower bound on ``created_at`` (ISO 8601, e.g.
+    ``2026-06-18T09:00:00+00:00``).
+    """
+    query = (
+        client.table("documents")
+        .select(_DIGEST_DOC_COLUMNS)
+        .is_("replaces_id", "null")
+        .gte("created_at", since)
+    )
+    if entity_id is not None:
+        query = query.eq("entity_id", entity_id)
+    result = query.order("created_at", desc=True).limit(limit).execute()
+    return result.data or []
+
+
+def get_document_chunks(
+    client: Client,
+    doc_id: int,
+    *,
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
+    """A document's chunks in document order, for building citeable evidence rows.
+
+    Returns ``id, content, section, speaker, chunk_index, citation_id`` ordered by
+    ``chunk_index`` so the leading chunks (a document's opening/overview) come
+    first. ``limit`` caps how many are returned so a long document does not blow
+    the summary prompt. Lets the digest drafter summarize a specific document from
+    its own passages without a search round-trip.
+    """
+    query = (
+        client.table("chunks")
+        .select("id, content, section, speaker, chunk_index, citation_id")
+        .eq("document_id", doc_id)
+        .order("chunk_index")
+    )
+    if limit is not None:
+        query = query.limit(limit)
+    return query.execute().data or []
+
 
 def get_meeting_documents(
     client: Client,
