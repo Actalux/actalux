@@ -20,6 +20,26 @@ from actalux.errors import SummaryError
 logger = logging.getLogger(__name__)
 
 HASH_ID_RE = re.compile(r"#q[0-9a-f]{4,}")
+
+# Baseline-dependent district framing about *prospective* tax/levy/rate impact —
+# "no/zero tax rate increase", "without increasing the (debt) levy", "would not
+# raise the levy", "tax-rate-neutral". Whether such a change is an "increase"
+# depends on the chosen baseline (an expiring bond lowers the levy; a new bond
+# restores it), a political judgment Actalux does not make. The answer model
+# attributes rather than omits this even when instructed, so a sentence carrying
+# it is dropped post-generation (see _verify_sentence). Deliberately matches only
+# the NEGATION / "neutral" slogans, never a factual recorded change ("the levy
+# rose to $0.51"), which is an affirmative statement and must survive.
+_LEVY_FRAMING_RE = re.compile(
+    r"(?:no|zero)\s+(?:tax|levy|rate)\b[\w\s\-]{0,14}increase"
+    r"|no\s+increase\s+(?:in|to)\b[\w\s]{0,14}(?:tax|levy|rate|debt)"
+    r"|without\s+(?:any\s+|an\s+)?increas\w*[\w\s]{0,20}(?:tax|levy|rate|debt)"
+    r"|(?:will|would|does|did)\s+not\s+(?:increase|raise|change)\b[\w\s]{0,20}(?:tax|levy|rate|debt)"
+    r"|(?:won|wouldn|doesn|didn)['’]?t\s+(?:increase|raise|change)\b[\w\s]{0,20}(?:tax|levy|rate|debt)"
+    r"|(?:tax|levy|rate)[\s\-]*(?:rate[\s\-]*)?neutral",
+    re.I,
+)
+
 DEFAULT_MODEL = "gpt-5-mini"
 MAX_TOKENS = 1024  # results summary budget
 DOC_SUMMARY_MAX_TOKENS = 256  # short (2-4 sentence) per-document content summary
@@ -225,6 +245,14 @@ def _verify_sentence(sentence: str, valid_ids: set[str]) -> tuple[str | None, di
     citations = HASH_ID_RE.findall(sentence)
     found = len(citations)
 
+    # Drop any sentence carrying baseline-dependent tax/levy/rate framing. The
+    # model attributes ("the district says no increase") rather than omitting even
+    # when told to, so this is the hard guarantee: state the rate, never "increase
+    # / no increase". See _LEVY_FRAMING_RE.
+    if _LEVY_FRAMING_RE.search(sentence):
+        logger.info("Dropped sentence with baseline-dependent tax/levy framing: %.80s", sentence)
+        return None, {"found": found, "verified": 0, "dropped": found}
+
     # Drop bare citation fragments (e.g., "[#q003f] [#q0042]" with no prose).
     text_without_citations = HASH_ID_RE.sub("", sentence).strip()
     text_without_citations = re.sub(r"[\[\]\s]+", " ", text_without_citations).strip()
@@ -374,6 +402,18 @@ def _split_sentences(text: str) -> list[str]:
     return [p.strip() for p in parts if p.strip()]
 
 
+def strip_framing_sentences(text: str) -> str:
+    """Drop sentences carrying baseline-dependent tax/levy/rate framing.
+
+    The doc-summary path doesn't run citation verification, so it applies this
+    guard directly. Same rule as the answer path (:data:`_LEVY_FRAMING_RE`): state
+    the rate, never "increase / no increase". If every sentence is framing (rare —
+    a summary is multi-topic), the original is kept rather than returning empty.
+    """
+    kept = [s for s in _split_sentences(text) if not _LEVY_FRAMING_RE.search(s)]
+    return " ".join(kept).strip() or text
+
+
 def extract_citation_ids(text: str) -> list[str]:
     """Extract all hash IDs from text. Useful for testing."""
     return HASH_ID_RE.findall(text)
@@ -499,7 +539,9 @@ def generate_doc_summary(
         text = (response.choices[0].message.content or "").strip()
         if not text:
             raise SummaryError("doc summary returned empty")
-        return text
+        # Same neutrality guard as the answer path: never carry baseline-dependent
+        # tax/levy framing into a stored summary.
+        return strip_framing_sentences(text)
     except SummaryError:
         raise
     except Exception as exc:

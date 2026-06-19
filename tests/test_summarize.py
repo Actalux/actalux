@@ -16,7 +16,42 @@ from actalux.search.summarize import (
     extract_citation_ids,
     generate_summary,
     generate_summary_stream,
+    strip_framing_sentences,
 )
+
+
+class TestLevyFramingGuard:
+    """Sentences carrying baseline-dependent tax/levy framing are dropped; the
+    figures (and factual recorded changes) survive."""
+
+    def test_drops_zero_tax_rate_increase(self) -> None:
+        kept, _ = _verify_sentence("Prop O is a zero tax rate increase bond. [#q1234]", {"#q1234"})
+        assert kept is None
+
+    def test_drops_without_increasing_the_levy(self) -> None:
+        kept, _ = _verify_sentence(
+            "The district says the bond would be issued without increasing the debt levy. [#q1234]",
+            {"#q1234"},
+        )
+        assert kept is None
+
+    def test_keeps_plain_rate_figure(self) -> None:
+        s = "The debt service levy is $0.5110 per $100 of assessed valuation. [#q1234]"
+        kept, _ = _verify_sentence(s, {"#q1234"})
+        assert kept == s
+
+    def test_keeps_factual_recorded_increase(self) -> None:
+        # An affirmative recorded change is a fact, not the contested framing.
+        s = "The board approved an increase in the levy to $0.55 per $100. [#q1234]"
+        kept, _ = _verify_sentence(s, {"#q1234"})
+        assert kept == s
+
+    def test_strip_framing_drops_only_the_framing_sentence(self) -> None:
+        text = (
+            "The bond would be issued without increasing the debt levy. [#q1111] "
+            "The debt service levy is $0.51 per $100. [#q2222]"
+        )
+        assert strip_framing_sentences(text) == "The debt service levy is $0.51 per $100. [#q2222]"
 
 
 class TestExtractCitationIds:
