@@ -22,7 +22,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ingest import ingest_single_file, resolve_entity_id  # noqa: E402  (sibling script)
 
-from actalux.db import find_document_by_source, insert_budget_line_items  # noqa: E402
+from actalux.db import (  # noqa: E402
+    find_document_by_source,
+    get_chunk_citation_ids,
+    insert_budget_line_items,
+)
 from actalux.models import BudgetLineItem  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -150,6 +154,10 @@ def load_year(
     # leaves the prior year's data fully intact.
     try:
         quote_to_chunk = _map_quotes_to_chunks(client, doc_id, {f.quote for f in figures})
+        # Carry each figure's stable citation_id (content-addressed on the chunk) so
+        # the row matches the rest of budget_line_items and survives a re-chunk even
+        # if chunk_id is later nulled; chunk_id alone would dangle on ON DELETE SET NULL.
+        chunk_citation = get_chunk_citation_ids(client, list(quote_to_chunk.values()))
         items: list[BudgetLineItem] = []
         for f in figures:
             chunk_id = quote_to_chunk.get(f.quote)
@@ -169,6 +177,7 @@ def load_year(
                     subcategory=f.subcategory,
                     basis=BASIS,
                     chunk_id=chunk_id,
+                    citation_id=chunk_citation.get(chunk_id, ""),
                     source_quote=f.quote,
                     note=f.note,
                 )
