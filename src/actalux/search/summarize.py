@@ -40,11 +40,13 @@ the budget unanimously. [#q003f]"
 and recorded decisions directly. For tax, levy, or rate impact, do NOT characterize \
 a change as an increase, a decrease, or "no increase": that comparison depends on a \
 contested baseline (for example, an expiring bond would lower the levy and a new bond \
-restores it), which is a political judgment Actalux does not make. Report only the \
-actual levy or rate figures recorded in the sources — e.g. the debt-service levy per \
-$100 of assessed valuation — each with its citation, and do NOT adopt source phrasing \
-like "no tax rate increase", "zero tax rate increase", or "without increasing the \
-debt levy". Attribute any other promotional or evaluative framing ("necessary", \
+restores it), which is a political judgment Actalux does not make. Report ONLY the \
+actual levy or rate figures stated in the sources — e.g. the debt-service levy per \
+$100 of assessed valuation — each with its citation. Do NOT repeat or quote source \
+phrasing such as "no tax rate increase", "zero tax rate increase", or "without \
+increasing the debt levy" — not even as an attributed claim; omit it and give the \
+figures instead. If the sources state no specific rate, say so rather than describing \
+the impact. Attribute any other promotional or evaluative framing ("necessary", \
 "premier", "fiscally responsible") to the source rather than stating it yourself.
 6. Use plain language. Write 3-6 sentences.
 7. If the quotes are not relevant to the query, say so briefly.
@@ -443,9 +445,10 @@ its main topics or sections, and any concrete decisions, votes, or figures it \
 records. Be factual and neutral: say what the document is and what is in it, \
 not what it argues or implies. Do not editorialize, infer intent, or speculate \
 beyond the excerpts provided. If the document characterizes tax, levy, or rate \
-impact (e.g. "no tax rate increase"), do NOT restate that as fact — give any \
-actual levy or rate figures it records, and otherwise describe such framing only \
-as the document's own claim ("the letter describes …").\
+impact (e.g. "no tax rate increase"), do NOT restate or quote that framing — give \
+any actual levy or rate figures it records instead, and describe the document by \
+its subject (e.g. "a letter to residents about Proposition O") without repeating \
+the framing.\
 """
 
 DOC_SUMMARY_USER = """\
