@@ -18,6 +18,7 @@ dependencies = [
     "pymupdf4llm>=1.27.2.2",
     "anthropic==0.93.0",
     "openai>=1.50",
+    "yt-dlp>=2025.1",
 ]
 
 [project.optional-dependencies]
