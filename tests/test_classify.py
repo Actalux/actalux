@@ -88,6 +88,15 @@ class TestClassifyDocumentType:
             == "transcript"
         )
 
+    def test_communication_prefix(self) -> None:
+        assert classify_document_type("comms_summer-kindergarten.html") == "communication"
+
+    def test_communication_prefix_wins_over_topic_word(self) -> None:
+        # A news post about the budget is still a communication, not a 'budget'.
+        assert (
+            classify_document_type("comms_board-approves-balanced-budget.html") == "communication"
+        )
+
     def test_unmatched_is_other(self) -> None:
         assert classify_document_type("Some Random Attachment.pdf") == "other"
 

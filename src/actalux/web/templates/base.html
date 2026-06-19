@@ -54,7 +54,7 @@
       </div>
 
       {% set meetings_active = active in ['browse-minutes', 'browse-transcripts', 'browse-resolutions'] %}
-      {% set docs_active = active in ['browse-budgets', 'browse-curriculum-maps', 'browse-facilities-plan'] %}
+      {% set docs_active = active in ['browse-budgets', 'browse-curriculum-maps', 'browse-facilities-plan', 'browse-communications'] %}
 
       <button class="nav-toggle" aria-expanded="{{ 'true' if meetings_active else 'false' }}" data-target="sub-meetings">
         <span class="left">
@@ -78,6 +78,7 @@
         <a class="nav-item{% if active == 'browse-budgets' %} active{% endif %}" href="{{ base }}/browse/budgets"><span>Budgets</span></a>
         <a class="nav-item{% if active == 'browse-curriculum-maps' %} active{% endif %}" href="{{ base }}/browse/curriculum-maps"><span>Curriculum maps</span></a>
         <a class="nav-item{% if active == 'browse-facilities-plan' %} active{% endif %}" href="{{ base }}/browse/facilities-plan"><span>Facilities plan</span></a>
+        <a class="nav-item{% if active == 'browse-communications' %} active{% endif %}" href="{{ base }}/browse/communications"><span>Communications</span></a>
       </div>
     </div>
 

@@ -54,6 +54,7 @@ _TYPE_LABELS = {
     "facilities_plan": "Facilities Plan",
     "assessment": "Assessment",
     "ballot": "Ballot",
+    "communication": "District Communication",
     "other": "Record",
 }
 

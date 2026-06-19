@@ -460,6 +460,7 @@ BROWSE_KINDS: dict[str, BrowseKind] = {
     "facilities-plan": BrowseKind(
         "facilities-plan", "Facilities plan", document_type="facilities_plan"
     ),
+    "communications": BrowseKind("communications", "Communications", document_type="communication"),
 }
 
 

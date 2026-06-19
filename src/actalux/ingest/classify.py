@@ -140,6 +140,11 @@ def parse_meeting_date(name: str, today: date | None = None) -> date | None:
 # an existing type is that minutes now also covers the "BOE MM signed" naming
 # scheme that previously fell through to 'other'.
 _TYPE_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+    # District communications (news posts, newsletters, press releases) carry the
+    # crawler's "comms_" filename prefix. Checked first so a post about the budget
+    # or a board action classifies as a communication, not 'budget'/'minutes'; the
+    # prefix is crawler-controlled, so no existing record collides with it.
+    ("communication", re.compile(r"^comms[_-]|newsletter|press[ _-]?release", re.I)),
     ("agenda", re.compile(r"agenda", re.I)),
     (
         "minutes",
