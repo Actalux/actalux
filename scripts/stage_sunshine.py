@@ -284,12 +284,14 @@ INCLUDE: list[tuple[str, str, str, str, str, str]] = [
         "Paragon Architecture check #239093",
     ),
     # --- Architecture contract ---
+    # Date is the AIA B133 "made as of" execution date (page 1), confirmed by the
+    # signature page and the 10/28-10/30/2025 production/insurance dates.
     (
         _P2,
         "BLDDcontract-signed.pdf",
         "contract",
-        "2025-09-01",
-        "manual",
+        "2025-10-29",
+        "content",
         "BLDD Architects facilities-planning contract",
     ),
     # --- Communications-vendor spending ---
