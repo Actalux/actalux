@@ -43,6 +43,7 @@ _SR1 = "2- sunshine request 1"
 _P1 = "3- sunshine request 2/fwschooldistrictofclaytonrecordsrequestpart1"
 _P2 = "3- sunshine request 2/fwschooldistrictofclaytonrecordsrequestpart2"
 _P4 = "3- sunshine request 2/fwschooldistrictofclaytonrecordsrequestpart4"
+_BM = "4- board meetings"
 
 # Each row: (subdir, filename, document_type, meeting_date, date_source, title).
 # date_source: 'filename' (date in the name) | 'content' (only date in the body) |
@@ -399,6 +400,18 @@ INCLUDE: list[tuple[str, str, str, str, str, str]] = [
         "2026-02-01",
         "content",
         "February 2026 letter to the Clayton community",
+    ),
+    # --- Board agenda (folder 4). The Sept 3, 2025 meeting has no minutes in the
+    # corpus (only video transcripts); this agenda is its only document-form record.
+    # The June 4, 2025 agenda from the same folder is omitted as redundant — that
+    # meeting's signed minutes are already ingested. ---
+    (
+        _BM,
+        "Board of Education Meeting - Sep 03 2025 - Agenda.pdf",
+        "agenda",
+        "2025-09-03",
+        "filename",
+        "September 3, 2025 Board of Education Meeting agenda",
     ),
 ]
 
