@@ -57,13 +57,13 @@
 <details class="cited-disclosure"{% if not _has_embed %} open{% endif %}>
   <summary class="block-label">Cited passage{% if is_video %} · transcript{% endif %}</summary>
   {% if ctx_chunk.section %}<div class="cite-section">{{ ctx_chunk.section | clean_text }}</div>{% endif %}
-  <p class="cited-para">{{ ctx_chunk.content | cited_html(query) }}</p>
+  <div class="cited-passage">{{ ctx_chunk.content | cited_html(query) }}</div>
 
   {# Without an in-window original, the neighbour chunks supply the context. #}
   {% if not _has_embed %}
     {% for c in context %}
       {% if c.id != ctx_chunk.id %}
-        <p class="ctx-para">{{ c.content | clean_text }}</p>
+        <div class="ctx-passage">{{ c.content | marked_html(query) }}</div>
       {% endif %}
     {% endfor %}
   {% endif %}

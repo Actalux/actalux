@@ -773,6 +773,44 @@ img { max-width: 100%; display: block; }
   margin-bottom: var(--s-4);
   max-width: var(--col-reading);
 }
+
+/* Search reader pane: the cited passage reads as clean paragraphs with only the
+   query's words marked (soft accent), set off by a vermillion rule — not a solid
+   highlight over the whole block (which reads the same as no highlight). The
+   archival-yellow .cited motif is kept for the full document view; here, where a
+   query is present, marking the matched words is what tells the reader why it
+   matched. */
+.cited-passage {
+  border-left: 3px solid var(--accent);
+  padding-left: var(--s-4);
+  margin-bottom: var(--s-5);
+  max-width: var(--col-reading);
+}
+.cited-passage p {
+  font-family: var(--serif-body);
+  font-size: 18px;
+  line-height: 1.65;
+  color: var(--ink);
+  margin-bottom: var(--s-3);
+}
+.cited-passage p:last-child { margin-bottom: 0; }
+.ctx-passage {
+  max-width: var(--col-reading);
+  margin-bottom: var(--s-4);
+}
+.ctx-passage p {
+  font-family: var(--serif-body);
+  font-size: 16px;
+  line-height: 1.65;
+  color: var(--muted);
+  margin-bottom: var(--s-3);
+}
+.cited-passage mark,
+.ctx-passage mark {
+  background: var(--accent-soft);
+  color: var(--ink);
+  padding: 0 2px;
+}
 /* Cited-passage disclosure: closed by default when an original (PDF/video) is
    embedded, so the original leads and the passage is one click away. display:
    list-item restores the summary's ▸ marker (.block-label sets display:block). */

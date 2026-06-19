@@ -93,9 +93,9 @@ from actalux.web.text_snippets import (
     content_paragraphs,
     extractive_snippet,
     lead_sentence,
+    marked_paragraphs,
     normalize_whitespace,
     reflow_transcript,
-    split_for_highlight,
 )
 
 logger = logging.getLogger(__name__)
@@ -223,20 +223,18 @@ def _match_snippet(content: str, query: str, width: int = 220) -> Markup:
     return Markup(extractive_snippet(content, query, max_chars=width))
 
 
-def _cited_html(content: str, query: str) -> Markup:
-    """Render a cited chunk with only its most query-relevant sentence highlighted.
+def _marked_html(content: str, query: str) -> Markup:
+    """Render a chunk as readable paragraphs with only the query's terms marked.
 
-    Keeps the archival-yellow ``.cited`` motif on the relevant clause instead of
-    a 200-word solid-yellow block; the rest of the chunk reads as context.
+    Reflows the stored extraction into paragraphs (verbatim words, whitespace
+    only) and wraps just the matching words in ``<mark>`` — so the reader sees
+    *why* a passage matched, instead of a solid highlight over the whole block
+    (which reads the same as no highlight). With no query (a citation opened
+    without a search) nothing is marked; the passage's left rule and the "Cited
+    passage" label identify it.
     """
-    before, key, after = split_for_highlight(content, query)
-    parts = []
-    if before:
-        parts.append(str(escape(before)) + " ")
-    parts.append('<span class="cited">' + str(escape(key)) + "</span>")
-    if after:
-        parts.append(" " + str(escape(after)))
-    return Markup("".join(parts))
+    blocks = ["<p>" + p + "</p>" for p in marked_paragraphs(content, query)]
+    return Markup("".join(blocks))
 
 
 def _safe_url(value: str) -> str:
@@ -257,7 +255,8 @@ templates.env.filters["match_snippet"] = _match_snippet
 # the document, no raw windowed snippet. See DESIGN.md "Citations resolve to the
 # original".
 templates.env.filters["lead_sentence"] = lead_sentence
-templates.env.filters["cited_html"] = _cited_html
+templates.env.filters["cited_html"] = _marked_html
+templates.env.filters["marked_html"] = _marked_html
 templates.env.filters["clean_text"] = normalize_whitespace
 templates.env.filters["content_paragraphs"] = content_paragraphs
 templates.env.filters["display_title"] = display_title

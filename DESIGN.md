@@ -276,6 +276,17 @@ box-decoration-break: clone;
 This is the single most important visual motif of the site — it is the
 product's promise made visible.
 
+**Search reader pane refinement (2026-06-19).** In the search reader pane,
+where a query is present, the cited passage is *not* given the solid-yellow
+fill — a whole-passage highlight reads the same as no highlight and obscures
+why the result matched. Instead the passage is reflowed into clean paragraphs
+(verbatim words, whitespace only), set off by the vermillion left rule
+(`border-left: 3px var(--accent)`), and only the **query's words** are marked
+with `<mark>` (`--accent-soft`, the same soft treatment as inline
+search-match). The full-yellow `.cited` motif above is retained for the
+document view and for citations opened without a query (where there are no
+query words to mark).
+
 ### Inline highlight-on-search-match
 When search results contain the user's query term, wrap matches in
 `<mark>` with `background: var(--accent-soft)`. Subtler than the passage
@@ -342,6 +353,14 @@ These are not stylistic — they are content-policy requirements.
   unconstrained summaries.
 - **Nonpartisan language only.** No mention of PropO or MEC complaint.
   No editorializing.
+- **Never adjudicate baseline-dependent framing.** For tax, levy, or rate
+  impact, do not state whether a change is an increase, a decrease, or "no
+  increase" — that comparison depends on a chosen baseline (an expiring bond
+  lowers the levy; a new bond restores it), which is a political call. State
+  the actual levy/rate figures with citations; do not repeat or quote source
+  phrasing like "no tax rate increase" or "without increasing the debt levy,"
+  even as an attributed claim. Enforced in `summarize.py` (answer + doc
+  summaries).
 - **Board and administration policy only.** No individual personnel,
   teachers, or students.
 - **Closed-session content is never published.**
@@ -454,3 +473,5 @@ into an archive, so they deserve serif). Focus: border color → `--ink`.
 | 2026-04-12 | Tagline "Clayton school board meetings and public documents, made searchable — with every quote traceable to its source." | User flagged that v1's "every word / every document they signed" overclaimed. Revised to accurately describe what we have (public records + Sunshine requests) and the core moat (traceability). |
 | 2026-04-12 | Sunshine requests as first-class source portal | Some records will come from Missouri Sunshine Law requests. `source_portal = "sunshine"` added; citation rail shows request metadata. |
 | 2026-04-12 | No border-radius, no icon library, no gradients, no modals for primary actions | Anti-slop. Every one of these is a SaaS tell. Archive should feel like an archive. |
+| 2026-06-19 | Search reader pane: mark only the query's words (soft accent) over a reflowed passage with a vermillion rule, not a solid-yellow block | A whole-passage highlight reads the same as no highlight and hides why the result matched; word-level marks show the match in context. Full-yellow `.cited` retained for the document view / no-query citations. |
+| 2026-06-19 | Never adjudicate tax/levy "increase vs no increase"; state the levy rate | Whether a levy change is an increase depends on a chosen baseline (expiring bond lowers it, new bond restores it) — a political call the archive does not make. Report the figures; do not repeat district framing even attributed. |

@@ -288,6 +288,24 @@ def mark_terms(text: str, terms: list[str]) -> str:
     return "".join(out)
 
 
+def marked_paragraphs(content: str, query: str) -> list[str]:
+    """Reflow a chunk into paragraphs with only the query's terms wrapped in <mark>.
+
+    For the reader pane: the cited passage reads as clean paragraphs (verbatim
+    words, whitespace reflowed) with the matching words highlighted, rather than a
+    solid highlight over the whole block — "highlight everything" reads the same
+    as "highlight nothing." Each returned string is escaped HTML; the caller wraps
+    it in ``<p>``. With no query terms (a citation opened without a search),
+    paragraphs are simply escaped and nothing is marked.
+    """
+    paras = content_paragraphs(content)
+    if not paras:
+        normalized = normalize_whitespace(content)
+        paras = [normalized] if normalized else []
+    terms = extract_query_terms(query)
+    return [mark_terms(p, terms) for p in paras]
+
+
 def extractive_snippet(content: str, query: str, max_chars: int = 220) -> str:
     """Best-sentence snippet with query terms marked. Returns escaped HTML.
 
@@ -303,7 +321,9 @@ def extractive_snippet(content: str, query: str, max_chars: int = 220) -> str:
 
     best = best_sentence_index(sentences, terms)
     if best == -1:
-        joined = " ".join(sentences)
+        # No query term occurs in this (semantic) match: lead with clean prose
+        # rather than whatever bullet/table glyph the extraction left at the head.
+        joined = _LEAD_NOISE_RE.sub("", " ".join(sentences)).lstrip()
         core = joined[:max_chars]
         return mark_terms(core, terms) + ("…" if len(joined) > max_chars else "")
 

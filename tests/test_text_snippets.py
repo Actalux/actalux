@@ -10,11 +10,35 @@ from actalux.web.text_snippets import (
     extractive_snippet,
     lead_sentence,
     mark_terms,
+    marked_paragraphs,
     reflow_transcript,
     split_for_highlight,
     split_sentences,
     strip_transcript_timestamps,
 )
+
+
+class TestMarkedParagraphs:
+    """The reader pane marks only the query's words, reflowed into paragraphs."""
+
+    def test_marks_only_query_terms(self) -> None:
+        paras = marked_paragraphs(
+            "The multilingual learner program expanded.", "multilingual program"
+        )
+        assert paras == ["The <mark>multilingual</mark> learner <mark>program</mark> expanded."]
+
+    def test_splits_on_blank_lines(self) -> None:
+        assert marked_paragraphs("First para.\n\nSecond para.", "") == [
+            "First para.",
+            "Second para.",
+        ]
+
+    def test_no_query_marks_nothing_and_escapes(self) -> None:
+        # No terms -> verbatim (escaped) text, no <mark>.
+        assert marked_paragraphs("Budget & plan <x>", "") == ["Budget &amp; plan &lt;x&gt;"]
+
+    def test_empty_content(self) -> None:
+        assert marked_paragraphs("", "anything") == []
 
 
 class TestContentParagraphs:
