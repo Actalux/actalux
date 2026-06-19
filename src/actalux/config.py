@@ -61,6 +61,14 @@ class Config:
     rerank_pool_size: int = 50
     embedding_model: str = "BAAI/bge-small-en-v1.5"
     embedding_dim: int = 384
+    # Board-meeting transcription (Whisper). Audio is transcribed via Groq's
+    # OpenAI-compatible API (free tier, whisper-large-v3 — better than whisper-1
+    # and faster), keyed by GROQ_ACTALUX_API_KEY (namespaced separately from any
+    # other Groq usage). transcribe.py also accepts these as plain args, so the
+    # provider can be swapped (e.g. back to OpenAI) without code change.
+    groq_api_key: str = field(default_factory=lambda: os.environ.get("GROQ_ACTALUX_API_KEY", ""))
+    transcribe_model: str = "whisper-large-v3"
+    transcribe_base_url: str = "https://api.groq.com/openai/v1"
     chunk_target_words: int = 200
     chunk_overlap_sentences: int = 2
     # Ingest-time PII guard: "block" (skip flagged docs, default), "warn", "off".

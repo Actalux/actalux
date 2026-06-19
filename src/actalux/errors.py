@@ -39,3 +39,7 @@ class SummaryError(ActaluxError):
 
 class IngestError(ActaluxError):
     """Document ingestion pipeline failed at any stage."""
+
+
+class TranscriptionError(ActaluxError):
+    """Audio transcription failed (ffmpeg/ffprobe error, Whisper API failure)."""
