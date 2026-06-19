@@ -363,6 +363,7 @@ def _ingest_with_dedup(
     config: Any,
     source_url: str = "",
     source_portal: str = "",
+    document_type: str = "",
     entity_id: int | None = None,
     date_source: str = "unknown",
 ) -> dict[str, Any]:
@@ -428,6 +429,7 @@ def _ingest_with_dedup(
             source_portal=portal,
             source_ref=source_ref,
             version=old_version + 1,
+            document_type=document_type,
             entity_id=entity_id,
             date_source=date_source,
         )
@@ -450,6 +452,7 @@ def _ingest_with_dedup(
         source_url=source_url,
         source_portal=portal,
         source_ref=source_ref,
+        document_type=document_type,
         entity_id=entity_id,
         date_source=date_source,
     )
@@ -468,6 +471,7 @@ def ingest_single_file(
     source_url: str = "",
     source_portal: str = "",
     source_ref: str = "",
+    document_type: str = "",
     version: int = 1,
     entity_id: int | None = None,
     date_source: str = "unknown",
@@ -477,6 +481,9 @@ def ingest_single_file(
     ``source_ref`` is the stable external id (see ``Document.source_ref``); when
     not supplied it is derived from ``source_url`` so direct callers still
     persist it.
+
+    ``document_type`` overrides the filename classifier when supplied; otherwise
+    the type is inferred from the filename (the default path for every crawler).
 
     ``date_source`` records how ``meeting_date`` was derived: ``'filename'`` when
     ``parse_meeting_date`` succeeded on the title/filename, ``'default'`` when
@@ -492,7 +499,7 @@ def ingest_single_file(
     doc = Document(
         meeting_date=meeting_date,
         meeting_title=meeting_title,
-        document_type=infer_document_type(path.name),
+        document_type=document_type or infer_document_type(path.name),
         source_url=source_url,
         source_file=path.name,
         content=text,
@@ -588,9 +595,11 @@ def _infer_portal(filename: str) -> str:
 def ingest_from_manifest(manifest_path: Path, entity_path: str = DEFAULT_ENTITY_PATH) -> None:
     """Ingest documents listed in a crawler manifest JSON file.
 
-    Each entry has: source_file, source_url, source_portal,
-    and optionally meeting_date and meeting_title.
-    The file is expected to exist in data/documents/.
+    Each entry has: source_file, source_url, source_portal, and optionally
+    meeting_date, meeting_title, and document_type. ``document_type`` overrides
+    the filename classifier -- needed for sources whose type cannot be read from
+    the filename (a sunshine-obtained invoice/check/contract has no type keyword
+    in its name). The file is expected to exist in data/documents/.
     """
     import json
 
@@ -637,6 +646,7 @@ def ingest_from_manifest(manifest_path: Path, entity_path: str = DEFAULT_ENTITY_
                 config=config,
                 source_url=entry.get("source_url", ""),
                 source_portal=entry.get("source_portal", ""),
+                document_type=entry.get("document_type", ""),
                 entity_id=entity_id,
                 date_source=manifest_date_source,
             )

@@ -334,3 +334,42 @@ class TestDateSourcePropagation:
 
         assert captured, "insert_document was never called"
         assert captured[0].date_source == "default"
+
+
+class TestDocumentTypeOverride(TestDateSourcePropagation):
+    """A manifest-supplied document_type must win over the filename classifier.
+
+    Sunshine-obtained invoices/checks/contracts carry no type keyword in their
+    filename (they would all classify as 'other'), so the loader passes the type
+    explicitly; without the override the type would be wrong on every such row.
+    """
+
+    def test_override_wins_over_filename_classifier(self, monkeypatch) -> None:
+        captured = self._setup_new_doc(monkeypatch)
+
+        _ingest_with_dedup(
+            client=object(),
+            path=Path("25-965-01 Invoice 2025-08-22.pdf"),
+            meeting_date=date(2025, 8, 22),
+            meeting_title="25-965-01 Invoice 2025-08-22",
+            config=self._fake_config(),
+            document_type="invoice",
+        )
+
+        assert captured, "insert_document was never called"
+        assert captured[0].document_type == "invoice"
+
+    def test_no_override_falls_back_to_classifier(self, monkeypatch) -> None:
+        # Empty override -> the filename classifier still runs (every crawler's path).
+        captured = self._setup_new_doc(monkeypatch)
+
+        _ingest_with_dedup(
+            client=object(),
+            path=Path("April 10, 2024 Meeting Minutes.pdf"),
+            meeting_date=date(2024, 4, 10),
+            meeting_title="April 10, 2024 Meeting Minutes",
+            config=self._fake_config(),
+        )
+
+        assert captured, "insert_document was never called"
+        assert captured[0].document_type == "minutes"

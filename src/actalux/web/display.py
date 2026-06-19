@@ -55,6 +55,10 @@ _TYPE_LABELS = {
     "assessment": "Assessment",
     "ballot": "Ballot",
     "communication": "District Communication",
+    "invoice": "Invoice",
+    "check": "Check",
+    "contract": "Contract",
+    "proposal": "Proposal",
     "other": "Record",
 }
 
