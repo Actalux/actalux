@@ -44,24 +44,33 @@ class TestManifestEntry:
 
 class TestSelectMeetings:
     def test_explicit_video_id(self) -> None:
-        out = select_meetings(_args(video_id="vid9", date="2026-06-03", title="June Meeting"), None)
+        out = select_meetings(
+            _args(video_id="vid9", date="2026-06-03", title="June Meeting"), None, set()
+        )
         assert len(out) == 1
         assert out[0].video_id == "vid9"
         assert out[0].meeting_date == "2026-06-03"
 
-    def test_discover_skips_already_staged(self, tmp_path) -> None:
+    def test_discover_skips_dates_already_in_db(self, tmp_path) -> None:
+        staged = _meeting("a", "2026-06-03")
+        fresh = _meeting("b", "2026-05-13")
+        with patch("scripts.transcribe_meetings.list_board_meetings", return_value=[staged, fresh]):
+            out = select_meetings(_args(), tmp_path, {"2026-06-03"})
+        assert [m.video_id for m in out] == ["b"]  # already-ingested date 'a' skipped
+
+    def test_discover_skips_already_staged_file(self, tmp_path) -> None:
         staged = _meeting("a", "2026-06-03")
         fresh = _meeting("b", "2026-05-13")
         (tmp_path / f"{safe_stem(staged.title)}.txt").write_text("done")
         with patch("scripts.transcribe_meetings.list_board_meetings", return_value=[staged, fresh]):
-            out = select_meetings(_args(), tmp_path)
-        assert [m.video_id for m in out] == ["b"]  # already-staged 'a' skipped
+            out = select_meetings(_args(), tmp_path, set())
+        assert [m.video_id for m in out] == ["b"]  # local file 'a' skipped
 
     def test_discover_force_keeps_all(self, tmp_path) -> None:
         m = _meeting("a", "2026-06-03")
         (tmp_path / f"{safe_stem(m.title)}.txt").write_text("done")
         with patch("scripts.transcribe_meetings.list_board_meetings", return_value=[m]):
-            out = select_meetings(_args(force=True), tmp_path)
+            out = select_meetings(_args(force=True), tmp_path, {"2026-06-03"})
         assert [x.video_id for x in out] == ["a"]
 
     def test_discover_since_and_limit(self, tmp_path) -> None:
@@ -71,5 +80,5 @@ class TestSelectMeetings:
             _meeting("c", "2026-01-01"),
         ]
         with patch("scripts.transcribe_meetings.list_board_meetings", return_value=meetings):
-            out = select_meetings(_args(since="2026-05-01", limit=1), tmp_path)
+            out = select_meetings(_args(since="2026-05-01", limit=1), tmp_path, set())
         assert [m.video_id for m in out] == ["a"]  # 'c' filtered by since, limit caps to 1

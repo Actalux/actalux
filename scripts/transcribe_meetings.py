@@ -30,6 +30,7 @@ import re
 from pathlib import Path
 
 from actalux.config import load_config
+from actalux.db import get_client
 from actalux.errors import ActaluxError
 from actalux.ingest.transcribe import Transcript, transcribe_audio
 from actalux.ingest.youtube import BoardMeeting, download_audio, list_board_meetings
@@ -101,8 +102,16 @@ def process_meeting(
     return manifest_entry(meeting, source_file)
 
 
-def select_meetings(args: argparse.Namespace, out_dir: Path) -> list[BoardMeeting]:
-    """Resolve the meetings to process from --discover or explicit --video-id."""
+def select_meetings(
+    args: argparse.Namespace, out_dir: Path, existing_dates: set[str]
+) -> list[BoardMeeting]:
+    """Resolve the meetings to process from --discover or explicit --video-id.
+
+    ``existing_dates`` are meeting dates already ingested as transcripts (from the
+    DB — the source of truth, since ``data/`` is ephemeral in CI). A discovered
+    meeting is skipped when its date is already ingested or a local transcript
+    file already exists, unless ``--force``.
+    """
     if args.video_id:
         return [
             BoardMeeting(
@@ -116,10 +125,30 @@ def select_meetings(args: argparse.Namespace, out_dir: Path) -> list[BoardMeetin
     if args.since:
         meetings = [m for m in meetings if m.meeting_date >= args.since]
     if not args.force:
-        meetings = [m for m in meetings if not (out_dir / f"{safe_stem(m.title)}.txt").exists()]
+        meetings = [
+            m
+            for m in meetings
+            if m.meeting_date not in existing_dates
+            and not (out_dir / f"{safe_stem(m.title)}.txt").exists()
+        ]
     if args.limit:
         meetings = meetings[: args.limit]
     return meetings
+
+
+def existing_transcript_dates() -> set[str]:
+    """Meeting dates already ingested as YouTube transcripts (DB is source of truth)."""
+    cfg = load_config()
+    client = get_client(cfg.supabase_url, cfg.supabase_key)
+    rows = (
+        client.table("documents")
+        .select("meeting_date")
+        .eq("source_portal", "youtube")
+        .eq("document_type", "transcript")
+        .execute()
+        .data
+    )
+    return {r["meeting_date"] for r in rows if r.get("meeting_date")}
 
 
 def main() -> None:
@@ -138,7 +167,9 @@ def main() -> None:
         parser.error("pass --discover or --video-id")
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    meetings = select_meetings(args, OUTPUT_DIR)
+    # Skip already-ingested meetings by querying the DB (data/ is ephemeral in CI).
+    existing = existing_transcript_dates() if args.discover and not args.force else set()
+    meetings = select_meetings(args, OUTPUT_DIR, existing)
     logger.info("meetings to transcribe: %d", len(meetings))
 
     entries: list[dict[str, str]] = []

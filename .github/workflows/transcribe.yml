@@ -1,0 +1,124 @@
+name: transcribe
+
+# Transcribe new Clayton board-meeting videos with Whisper and ingest them — all
+# in the cloud (not tied to any laptop). Cloudflare WARP (free) clears YouTube's
+# datacenter-IP bot-check so yt-dlp can download audio from a runner; Groq
+# (whisper-large-v3, free tier) transcribes; ingest makes the transcript
+# searchable. The orchestrator skips meetings already ingested (DB is the source
+# of truth), so a nightly run only processes new meetings.
+#
+# Required repository secrets:
+#   SUPABASE_URL / SUPABASE_KEY / SUPABASE_SERVICE_KEY / SUPABASE_PAT  (ingest)
+#   GROQ_ACTALUX_API_KEY                                               (Whisper)
+
+on:
+  workflow_dispatch:
+    inputs:
+      since:
+        description: "Only meetings on/after YYYY-MM-DD"
+        required: false
+        default: ""
+      limit:
+        description: "Max meetings to process"
+        required: false
+        default: "5"
+      force:
+        description: "Re-transcribe even if already ingested"
+        type: boolean
+        default: false
+      ingest:
+        description: "Ingest into the DB (uncheck for a transcribe-only dry run)"
+        type: boolean
+        default: true
+  schedule:
+    # 03:30 UTC daily (~21:30/22:30 US Central) — after typical meeting nights,
+    # catching the same-evening VOD. Capped at 5 new meetings/run.
+    - cron: "30 3 * * *"
+
+permissions:
+  contents: read
+
+# One transcription run at a time; never race the weekly document ingest either.
+concurrency:
+  group: transcribe
+  cancel-in-progress: false
+
+jobs:
+  transcribe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      ACTALUX_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      ACTALUX_SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      ACTALUX_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      ACTALUX_SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
+      GROQ_ACTALUX_API_KEY: ${{ secrets.GROQ_ACTALUX_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv + Python 3.11
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --no-dev
+
+      - name: Install yt-dlp, ffmpeg, Cloudflare WARP
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg curl gpg lsb-release
+          curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg \
+            | sudo gpg --yes --dearmor -o /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" \
+            | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
+          sudo apt-get update -qq && sudo apt-get install -y -qq cloudflare-warp
+
+      - name: Connect Cloudflare WARP (proxy mode)
+        run: |
+          sudo systemctl enable --now warp-svc
+          sleep 6
+          warp-cli --accept-tos registration new
+          warp-cli --accept-tos mode proxy
+          warp-cli --accept-tos connect
+          sleep 8
+          warp-cli --accept-tos status
+          curl -s --socks5-hostname 127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/trace \
+            | grep -q "warp=on" || { echo "WARP not active"; exit 1; }
+
+      - name: Verify schema is up to date
+        if: ${{ github.event_name == 'schedule' || inputs.ingest == 'true' }}
+        run: uv run python scripts/apply_migrations.py --check
+
+      - name: Transcribe new meetings
+        env:
+          SINCE: ${{ inputs.since }}
+          LIMIT: ${{ inputs.limit }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          ARGS="--discover --proxy socks5h://127.0.0.1:40000 --limit ${LIMIT:-5}"
+          [ -n "$SINCE" ] && ARGS="$ARGS --since $SINCE"
+          [ "$FORCE" = "true" ] && ARGS="$ARGS --force"
+          uv run python scripts/transcribe_meetings.py $ARGS
+
+      - name: Ingest transcripts
+        if: ${{ github.event_name == 'schedule' || inputs.ingest == 'true' }}
+        run: |
+          if [ -f data/documents/youtube_manifest.json ]; then
+            uv run python scripts/ingest.py --manifest data/documents/youtube_manifest.json
+          else
+            echo "::warning::no transcripts produced; nothing to ingest"
+          fi
+
+      - name: Upload transcripts (artifact)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: whisper-transcripts
+          path: |
+            data/documents/*.txt
+            data/documents/*.segments.json
+            data/documents/youtube_manifest.json
+          if-no-files-found: ignore
+          retention-days: 30
