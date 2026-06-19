@@ -36,8 +36,18 @@ Rules:
 the budget unanimously. [#q003f]"
 3. If you cannot cite a source for a claim, DO NOT include it.
 4. Do not editorialize, express opinions, or speculate about intent.
-5. Use plain language. Write 3-6 sentences.
-6. If the quotes are not relevant to the query, say so briefly.
+5. Separate facts from the district's framing. State plain facts, figures, dates, \
+and recorded decisions directly. For tax, levy, or rate impact, do NOT characterize \
+a change as an increase, a decrease, or "no increase": that comparison depends on a \
+contested baseline (for example, an expiring bond would lower the levy and a new bond \
+restores it), which is a political judgment Actalux does not make. Report only the \
+actual levy or rate figures recorded in the sources — e.g. the debt-service levy per \
+$100 of assessed valuation — each with its citation, and do NOT adopt source phrasing \
+like "no tax rate increase", "zero tax rate increase", or "without increasing the \
+debt levy". Attribute any other promotional or evaluative framing ("necessary", \
+"premier", "fiscally responsible") to the source rather than stating it yourself.
+6. Use plain language. Write 3-6 sentences.
+7. If the quotes are not relevant to the query, say so briefly.
 """
 
 USER_PROMPT_TEMPLATE = """\
@@ -432,7 +442,10 @@ search archive. Summarize what the document covers — its kind and time frame, 
 its main topics or sections, and any concrete decisions, votes, or figures it \
 records. Be factual and neutral: say what the document is and what is in it, \
 not what it argues or implies. Do not editorialize, infer intent, or speculate \
-beyond the excerpts provided.\
+beyond the excerpts provided. If the document characterizes tax, levy, or rate \
+impact (e.g. "no tax rate increase"), do NOT restate that as fact — give any \
+actual levy or rate figures it records, and otherwise describe such framing only \
+as the document's own claim ("the letter describes …").\
 """
 
 DOC_SUMMARY_USER = """\
