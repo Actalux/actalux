@@ -38,17 +38,29 @@ CREATE INDEX IF NOT EXISTS chunks_embedding_hnsw
     WITH (m = 16, ef_construction = 64);
 
 -- Vote records (structured, from official minutes)
+-- chunk_id / citation_id link a vote to the verbatim minutes passage it was
+-- parsed from; source_quote carries that text. Tally columns are nullable: NULL
+-- means the minutes recorded a result with no per-member count (distinct from 0).
 CREATE TABLE IF NOT EXISTS votes (
     id SERIAL PRIMARY KEY,
     document_id INT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
     meeting_date DATE,
     motion TEXT NOT NULL,
     result TEXT NOT NULL,
-    vote_count_yes INT DEFAULT 0,
-    vote_count_no INT DEFAULT 0,
-    vote_count_abstain INT DEFAULT 0,
-    details JSONB
+    vote_count_yes INT,
+    vote_count_no INT,
+    vote_count_abstain INT,
+    details JSONB,
+    chunk_id INT REFERENCES chunks(id) ON DELETE SET NULL,
+    citation_id TEXT,
+    source_quote TEXT DEFAULT '',
+    -- 'stated' if the minutes printed a result word; 'derived' if passed/failed
+    -- was computed from the verbatim roll call (no result line was printed).
+    result_basis TEXT DEFAULT 'stated',
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+CREATE INDEX IF NOT EXISTS idx_votes_document ON votes(document_id);
 
 -- Speaker profiles
 CREATE TABLE IF NOT EXISTS speakers (

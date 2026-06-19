@@ -81,16 +81,30 @@ class Chunk:
 
 @dataclass(frozen=True)
 class Vote:
-    """A structured vote record extracted from official minutes."""
+    """A structured vote record extracted from official minutes.
+
+    Every record cites the verbatim minutes passage it was parsed from: ``chunk_id``
+    is the best-effort numeric link (nulled when the source doc is re-ingested) and
+    ``citation_id`` the stable, content-addressed reference that survives re-ingest;
+    ``source_quote`` is the motion/tally/result text itself. Tallies are
+    ``int | None`` — ``None`` means the minutes recorded a result with no
+    per-member count, which is distinct from a recorded 0.
+    """
 
     document_id: int
     meeting_date: date
     motion: str
-    result: str  # "passed", "failed", "tabled"
-    vote_count_yes: int = 0
-    vote_count_no: int = 0
-    vote_count_abstain: int = 0
-    details: dict | None = None  # per-member votes if available
+    result: str  # normalized: "passed", "failed", "tabled", "withdrawn"
+    # "stated" when the minutes printed a result word; "derived" when passed/failed
+    # was computed from the verbatim roll call because no result line was printed.
+    result_basis: str = "stated"
+    vote_count_yes: int | None = None
+    vote_count_no: int | None = None
+    vote_count_abstain: int | None = None
+    details: dict | None = None  # mover/seconder + per-member votes when recorded
+    chunk_id: int | None = None
+    citation_id: str = ""
+    source_quote: str = ""
     id: int | None = None
 
 

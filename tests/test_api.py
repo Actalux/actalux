@@ -276,3 +276,76 @@ class TestRecentFeed:
         assert r.status_code == 200
         assert r.json()["since"] is None
         assert m_list.call_args.kwargs["since"] is None
+
+
+_VOTE_ROWS = [
+    {
+        "id": 7,
+        "document_id": 195,
+        "meeting_date": "2023-02-01",
+        "motion": "Approve the agenda as posted.",
+        "result": "passed",
+        "result_basis": "stated",
+        "vote_count_yes": 7,
+        "vote_count_no": 0,
+        "vote_count_abstain": 0,
+        "details": {"moved_by": "Ms. Chris Win"},
+        "chunk_id": 1919,
+        "citation_id": "abc12345",
+        "source_quote": "Approve the agenda as posted. ... Motion Carries 7-0",
+    },
+    {
+        "id": 8,
+        "document_id": 195,
+        "meeting_date": "2023-02-01",
+        "motion": "Adjourn the meeting.",
+        "result": "passed",
+        "result_basis": "derived",
+        "vote_count_yes": 7,
+        "vote_count_no": 0,
+        "vote_count_abstain": 0,
+        "details": None,
+        "chunk_id": 1920,
+        "citation_id": "",  # no stable id -> falls back to chunk_id for routing
+        "source_quote": "Adjourn the meeting. ... Aye ...",
+    },
+]
+
+
+class TestVotes:
+    @patch("actalux.web.api.get_config", return_value=_OPEN_CFG)
+    @patch("actalux.web.api.get_db")
+    @patch("actalux.web.api.get_entity_by_path", return_value=_FAKE_ENTITY)
+    @patch("actalux.web.api.get_entity_votes", return_value=_VOTE_ROWS)
+    @patch("actalux.web.api.get_documents", return_value={195: _MEETING_ROW})
+    def test_votes_returns_cited_records(self, m_docs, m_votes, m_ent, m_db, m_cfg) -> None:
+        r = client.get(f"{BASE}/votes", params={"since": "2023-01-01", "limit": 10})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["entity"] == "mo/clayton/schools"
+        assert body["since"] == "2023-01-01"
+        assert body["count"] == 2
+
+        stated = body["votes"][0]
+        assert stated["motion"] == "Approve the agenda as posted."
+        assert stated["result"] == "passed"
+        assert stated["result_basis"] == "stated"
+        assert stated["vote_count_yes"] == 7
+        # stable citation_id drives the citation hash and deep link
+        assert stated["citation"] == "February 1, 2023 — Meeting Minutes [#qabc12345]"
+        assert stated["html_url"] == "/chunk/abc12345/source"
+        assert stated["source_url"] == "https://example.test/minutes.pdf"
+
+        derived = body["votes"][1]
+        assert derived["result_basis"] == "derived"
+        # no citation_id -> routes on the numeric chunk_id
+        assert derived["html_url"] == "/chunk/1920/source"
+        assert m_votes.call_args.kwargs["since"] == "2023-01-01"
+        assert m_votes.call_args.kwargs["limit"] == 10
+
+    @patch("actalux.web.api.get_config", return_value=_OPEN_CFG)
+    @patch("actalux.web.api.get_db")
+    @patch("actalux.web.api.get_entity_by_path", return_value=_FAKE_ENTITY)
+    def test_votes_rejects_bad_since(self, m_ent, m_db, m_cfg) -> None:
+        r = client.get(f"{BASE}/votes", params={"since": "nope"})
+        assert r.status_code == 400

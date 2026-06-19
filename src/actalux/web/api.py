@@ -27,10 +27,12 @@ from pydantic import BaseModel
 from actalux.db import (
     get_documents,
     get_entity_by_path,
+    get_entity_votes,
     get_meeting_documents,
     list_recent_meeting_documents,
 )
 from actalux.errors import SearchError
+from actalux.models import chunk_hash_id
 from actalux.search.answer import enrich_results
 from actalux.search.hybrid import SearchFilters, hybrid_search
 from actalux.web.display import display_title
@@ -98,6 +100,32 @@ class RecentResponse(BaseModel):
     since: str | None
     count: int
     items: list[DocumentRef]
+
+
+class VoteRecord(BaseModel):
+    vote_id: int
+    document_id: int
+    title: str
+    meeting_date: str | None
+    motion: str
+    result: str  # normalized: passed / failed / tabled / withdrawn
+    # "stated" if the minutes printed a result word; "derived" if passed/failed was
+    # computed from the verbatim roll call (no result line was printed).
+    result_basis: str
+    vote_count_yes: int | None  # null = no per-member tally was recorded (not a 0)
+    vote_count_no: int | None
+    vote_count_abstain: int | None
+    source_quote: str  # the verbatim motion / tally / result text
+    citation: str
+    source_url: str | None  # original artifact (PDF or YouTube video); may be null
+    html_url: str  # site-relative deep link to the cited passage in context
+
+
+class VotesResponse(BaseModel):
+    entity: str
+    since: str | None
+    count: int
+    votes: list[VoteRecord]
 
 
 # --- Auth --------------------------------------------------------------------
@@ -252,6 +280,33 @@ def _build_hit(row: dict, doc: dict) -> SearchHit:
     )
 
 
+def _build_vote_record(vote: dict, doc: dict) -> VoteRecord:
+    """Assemble a cited vote record from a votes row and its document.
+
+    The citation routes on the stable ``citation_id`` when present, falling back to
+    the numeric ``chunk_id``; both resolve to the verbatim minutes passage.
+    """
+    title = display_title(doc) if doc else ""
+    cite_ref = vote.get("citation_id") or vote.get("chunk_id")
+    hash_id = chunk_hash_id(cite_ref)
+    return VoteRecord(
+        vote_id=vote["id"],
+        document_id=vote["document_id"],
+        title=title,
+        meeting_date=vote.get("meeting_date") or None,
+        motion=vote.get("motion") or "",
+        result=vote.get("result") or "",
+        result_basis=vote.get("result_basis") or "stated",
+        vote_count_yes=vote.get("vote_count_yes"),
+        vote_count_no=vote.get("vote_count_no"),
+        vote_count_abstain=vote.get("vote_count_abstain"),
+        source_quote=vote.get("source_quote") or "",
+        citation=f"{title} [{hash_id}]",
+        source_url=_source_url(doc) if doc else None,
+        html_url=f"/chunk/{cite_ref}/source" if cite_ref else "",
+    )
+
+
 def _build_docref(row: dict) -> DocumentRef:
     title = display_title(row)
     return DocumentRef(
@@ -342,4 +397,31 @@ def api_recent(
     items = [_build_docref(r) for r in rows]
     return RecentResponse(
         entity=_entity_path(entity), since=iso_since, count=len(items), items=items
+    )
+
+
+@api_router.get(
+    "/{state}/{place}/{body}/votes",
+    response_model=VotesResponse,
+    dependencies=[Depends(rate_limit_general)],
+)
+def api_votes(
+    since: str | None = Query(None, description="Inclusive meeting_date lower bound, YYYY-MM-DD"),
+    limit: int = Query(50, ge=1, le=_RECENT_LIMIT_MAX),
+    entity: dict = Depends(resolve_api_entity),
+) -> VotesResponse:
+    """Structured board-vote records for one body, newest meeting first.
+
+    Each record carries the motion, normalized result, per-member tally (null when
+    the minutes recorded no count), and a citation to the verbatim minutes passage.
+    ``result_basis`` flags whether the result was stated in the minutes or derived
+    from the roll call.
+    """
+    client = get_db()
+    iso_since = _parse_date(since) if since else None
+    rows = get_entity_votes(client, entity["id"], since=iso_since, limit=limit)
+    docs = get_documents(client, [r["document_id"] for r in rows])
+    records = [_build_vote_record(r, docs.get(r["document_id"], {})) for r in rows]
+    return VotesResponse(
+        entity=_entity_path(entity), since=iso_since, count=len(records), votes=records
     )

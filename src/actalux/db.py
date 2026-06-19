@@ -988,22 +988,101 @@ def get_dese_line_items(client: Client, dimension: str) -> list[dict[str, Any]]:
 
 # --- Votes ---
 
+# Columns the JSON API exposes per vote (everything to render a cited record;
+# deliberately not "*").
+_VOTE_COLUMNS = (
+    "id, document_id, meeting_date, motion, result, result_basis, "
+    "vote_count_yes, vote_count_no, vote_count_abstain, "
+    "details, chunk_id, citation_id, source_quote"
+)
 
-def insert_vote(client: Client, vote: Vote) -> int:
-    """Insert a vote record and return its ID."""
-    data = {
+
+def _vote_row(vote: Vote) -> dict[str, Any]:
+    """The DB row for a vote. Tallies are sent verbatim — a None stays NULL (no
+    per-member count recorded), never silently coerced to 0."""
+    row: dict[str, Any] = {
         "document_id": vote.document_id,
         "meeting_date": vote.meeting_date.isoformat(),
         "motion": vote.motion,
         "result": vote.result,
+        "result_basis": vote.result_basis,
         "vote_count_yes": vote.vote_count_yes,
         "vote_count_no": vote.vote_count_no,
         "vote_count_abstain": vote.vote_count_abstain,
+        "source_quote": vote.source_quote,
     }
     if vote.details:
-        data["details"] = vote.details
-    result = client.table("votes").insert(data).execute()
+        row["details"] = vote.details
+    if vote.chunk_id is not None:
+        row["chunk_id"] = vote.chunk_id
+    if vote.citation_id:
+        row["citation_id"] = vote.citation_id
+    return row
+
+
+def insert_vote(client: Client, vote: Vote) -> int:
+    """Insert a single vote record and return its ID."""
+    result = client.table("votes").insert(_vote_row(vote)).execute()
     return result.data[0]["id"]
+
+
+def insert_votes(client: Client, votes: list[Vote]) -> list[int]:
+    """Bulk insert vote records and return their IDs."""
+    if not votes:
+        return []
+    result = client.table("votes").insert([_vote_row(v) for v in votes]).execute()
+    ids = [r["id"] for r in result.data]
+    logger.info("Inserted %d vote records", len(ids))
+    return ids
+
+
+def get_document_vote_ids(client: Client, document_id: int) -> list[int]:
+    """Existing vote ids for one document. Used to re-derive votes idempotently
+    (insert the freshly parsed votes, then delete these prior rows)."""
+    result = client.table("votes").select("id").eq("document_id", document_id).execute()
+    return [r["id"] for r in (result.data or [])]
+
+
+def delete_votes(client: Client, vote_ids: list[int]) -> None:
+    """Delete vote rows by id (no-op on an empty list)."""
+    if not vote_ids:
+        return
+    client.table("votes").delete().in_("id", vote_ids).execute()
+
+
+def get_entity_votes(
+    client: Client,
+    entity_id: int,
+    *,
+    since: str | None = None,
+    date_to: str | None = None,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """Vote records for one public body, newest meeting first.
+
+    Backs the JSON API's votes feed. Votes hang off documents, so this resolves
+    the body's current documents first and fetches votes for them; votes on a
+    superseded document (re-ingested minutes) are excluded with it. ``since`` is
+    an inclusive lower bound and ``date_to`` an inclusive upper bound on
+    ``meeting_date`` (YYYY-MM-DD).
+    """
+    docs = (
+        client.table("documents")
+        .select("id")
+        .eq("entity_id", entity_id)
+        .is_("replaces_id", "null")
+        .execute()
+    ).data or []
+    doc_ids = [d["id"] for d in docs]
+    if not doc_ids:
+        return []
+    query = client.table("votes").select(_VOTE_COLUMNS).in_("document_id", doc_ids)
+    if since:
+        query = query.gte("meeting_date", since)
+    if date_to:
+        query = query.lte("meeting_date", date_to)
+    result = query.order("meeting_date", desc=True).order("id").limit(limit).execute()
+    return result.data or []
 
 
 # --- Speakers ---
