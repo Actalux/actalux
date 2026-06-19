@@ -19,6 +19,7 @@
     {"id": "gov06", "domain": "governance", "query": "bond ballot measure board action"},
     {"id": "gov07", "domain": "governance", "query": "board retreat goals and priorities"},
     {"id": "gov08", "domain": "governance", "query": "board policy on public comment"},
+    {"id": "gov09", "domain": "governance", "query": "did the bond measure pass"},
 
     {"id": "cur01", "domain": "curriculum", "query": "high school math curriculum map grades 9-12"},
     {"id": "cur02", "domain": "curriculum", "query": "Spanish curriculum elementary grades"},

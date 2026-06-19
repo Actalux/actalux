@@ -5,16 +5,31 @@ RRF is a pure function — no database or embedding model needed.
 
 from datetime import date
 
+import pytest
+
+from actalux.errors import SearchError
 from actalux.search.hybrid import (
     SearchFilters,
     SearchResult,
+    _fuse_ranked_lists,
     _keyword_search,
     _normalize_fts_query,
     _reciprocal_rank_fusion,
     _semantic_search,
+    hybrid_search,
 )
 
 RRF_K = 60
+
+
+def _row(chunk_id: int, doc_id: int = 1) -> dict:
+    return {
+        "chunk_id": chunk_id,
+        "document_id": doc_id,
+        "content": f"chunk {chunk_id} content",
+        "section": "",
+        "speaker": "",
+    }
 
 
 class TestReciprocalRankFusion:
@@ -203,3 +218,103 @@ class TestNormalizeFtsQuery:
 
     def test_unaffected_query_unchanged(self) -> None:
         assert _normalize_fts_query("annual budget resolution") == "annual budget resolution"
+
+
+class TestFuseRankedLists:
+    """The N-list RRF fuser underpins query expansion: a chunk found only by a
+    variant's list still enters the pool, and a chunk found by several lists
+    accumulates score."""
+
+    def test_union_across_variant_lists(self) -> None:
+        # chunk 2 appears only in the second semantic list — it must still surface.
+        results = _fuse_ranked_lists([[_row(1)], [_row(2)]], [], max_results=10)
+        assert {r.chunk_id for r in results} == {1, 2}
+
+    def test_overlap_across_lists_outranks_and_keeps_best_rank(self) -> None:
+        # chunk 9: rank 2 in list A, rank 1 in list B -> accumulates, ranks first.
+        results = _fuse_ranked_lists([[_row(1), _row(9)], [_row(9)]], [], max_results=10)
+        assert results[0].chunk_id == 9
+        assert results[0].semantic_rank == 1  # best (min) rank across the lists
+
+
+class _RaiseRpc:
+    """An RPC whose execute() raises — _semantic/_keyword_search wrap it as SearchError."""
+
+    def execute(self) -> None:
+        raise RuntimeError("rpc down")
+
+
+class _RowFakeClient:
+    """Fake Supabase client returning preset rows keyed by embedding / query."""
+
+    def __init__(
+        self,
+        semantic: dict | None = None,
+        keyword: dict | None = None,
+        errors: set | None = None,
+    ) -> None:
+        self.semantic = semantic or {}  # tuple(embedding) -> rows
+        self.keyword = keyword or {}  # normalized search_query -> rows
+        self.errors = errors or set()  # {"semantic:<key>", "keyword:<key>"}
+        self.calls: list[tuple[str, dict]] = []
+
+    def rpc(self, name: str, params: dict):
+        self.calls.append((name, params))
+        if name == "semantic_search":
+            key = tuple(params["query_embedding"])
+            if f"semantic:{key}" in self.errors:
+                return _RaiseRpc()
+            return _FakeRpc(self.semantic.get(key, []))
+        key = params["search_query"]
+        if f"keyword:{key}" in self.errors:
+            return _RaiseRpc()
+        return _FakeRpc(self.keyword.get(key, []))
+
+
+class TestHybridSearchExpansion:
+    """hybrid_search fuses query-expansion variants alongside the primary query."""
+
+    def test_expansion_surfaces_chunk_missed_by_primary(self) -> None:
+        target = _row(608, 60)
+        client = _RowFakeClient(
+            semantic={(0.0,): [], (1.0,): [target]},
+            keyword={"bond measure": [], "Proposition O": []},
+        )
+        results = hybrid_search(
+            client,
+            "bond measure",
+            [0.0],
+            SearchFilters(),
+            expansions=[("Proposition O", [1.0])],
+        )
+        assert [r.chunk_id for r in results] == [608]
+
+    def test_no_expansion_issues_two_rpcs(self) -> None:
+        client = _RowFakeClient(semantic={(0.0,): []}, keyword={"q": []})
+        hybrid_search(client, "q", [0.0], SearchFilters())
+        assert len(client.calls) == 2  # one semantic + one keyword
+
+    def test_expansion_fans_out_per_variant(self) -> None:
+        client = _RowFakeClient(
+            semantic={(0.0,): [], (1.0,): [], (2.0,): []},
+            keyword={"q": [], "a": [], "b": []},
+        )
+        hybrid_search(client, "q", [0.0], SearchFilters(), expansions=[("a", [1.0]), ("b", [2.0])])
+        assert len(client.calls) == 6  # 3 variants x (semantic + keyword)
+
+    def test_expansion_variant_error_is_dropped(self) -> None:
+        # The expansion's semantic RPC fails; the primary hit must still return.
+        client = _RowFakeClient(
+            semantic={(0.0,): [_row(1)], (1.0,): []},
+            keyword={"q": [], "variant": []},
+            errors={"semantic:(1.0,)"},
+        )
+        results = hybrid_search(
+            client, "q", [0.0], SearchFilters(), expansions=[("variant", [1.0])]
+        )
+        assert [r.chunk_id for r in results] == [1]
+
+    def test_primary_error_propagates(self) -> None:
+        client = _RowFakeClient(errors={"semantic:(0.0,)"})
+        with pytest.raises(SearchError):
+            hybrid_search(client, "q", [0.0], SearchFilters(), expansions=[("v", [1.0])])

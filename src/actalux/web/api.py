@@ -36,7 +36,13 @@ from actalux.models import chunk_hash_id
 from actalux.search.answer import enrich_results
 from actalux.search.hybrid import SearchFilters, hybrid_search
 from actalux.web.display import display_title
-from actalux.web.retrieval import build_reranker, embed_query, get_config, get_db
+from actalux.web.retrieval import (
+    build_reranker,
+    embed_query,
+    expand_and_embed,
+    get_config,
+    get_db,
+)
 from actalux.web.text_snippets import normalize_whitespace
 
 # The document types that are "meetings" — they carry real meeting dates, so a
@@ -351,7 +357,13 @@ def api_search(
     try:
         embedding = embed_query(q)
         results = hybrid_search(
-            client, q, embedding, filters, max_results=limit, reranker=build_reranker()
+            client,
+            q,
+            embedding,
+            filters,
+            max_results=limit,
+            reranker=build_reranker(),
+            expansions=expand_and_embed(q),
         )
     except SearchError:
         results = []

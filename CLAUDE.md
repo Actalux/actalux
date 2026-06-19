@@ -83,7 +83,9 @@ All commands require `doppler run` for env vars.
 
 ## Search
 
-Hybrid retrieval: pgvector cosine similarity + PostgreSQL FTS, combined with reciprocal rank fusion (k=60). Top 50 candidates from each path, final 20 results. Minimum similarity threshold: 0.35.
+Hybrid retrieval: pgvector cosine similarity + PostgreSQL FTS, combined with reciprocal rank fusion (k=60). Top 50 candidates from each path, final 20 results. Minimum similarity threshold: 0.35. A ZeroEntropy cross-encoder reranks the fused pool when `ACTALUX_RERANK=api`.
+
+Optional query expansion (`ACTALUX_QUERY_EXPANSION=on`, off by default) widens recall when the query's wording differs from the records': a cheap LLM rewrites the query into a few alternate phrasings ("did the bond measure pass" → "Proposition O", "bond referendum"), each is embedded and searched alongside the original, and all candidate pools are fused before RRF + rerank. The variant searches run concurrently and are best-effort — a failure degrades to plain single-query retrieval. Reranking always uses the user's original query.
 
 ## Database
 

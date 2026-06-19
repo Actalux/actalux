@@ -78,12 +78,15 @@ def assemble_evidence(
     reranker: Reranker | None = None,
     max_results: int = 10,
     finance_routing: bool = True,
+    expansions: list[tuple[str, list[float]]] | None = None,
 ) -> tuple[list[dict[str, Any]], str]:
     """Build the citeable evidence for an answer, and report which path served it.
 
     Tries structured finance first (when ``finance_routing`` is on and the query
     is a figure-shaped finance ask with matching rows); otherwise runs hybrid
-    retrieval over the text chunks. Returns ``(evidence, route_label)``.
+    retrieval over the text chunks. ``expansions`` are optional query-expansion
+    variants passed through to ``hybrid_search`` to widen recall on the text path.
+    Returns ``(evidence, route_label)``.
     """
     if finance_routing:
         intent = finance_intent(query)
@@ -100,5 +103,6 @@ def assemble_evidence(
         filters or SearchFilters(),
         max_results=max_results,
         reranker=reranker,
+        expansions=expansions,
     )
     return enrich_results(client, results), ROUTE_TEXT

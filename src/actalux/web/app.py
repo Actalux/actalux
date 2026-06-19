@@ -85,7 +85,13 @@ from actalux.web.charts import (
     usd_m,
 )
 from actalux.web.display import display_title, first_sentence, source_label
-from actalux.web.retrieval import build_reranker, embed_query, get_config, get_db
+from actalux.web.retrieval import (
+    build_reranker,
+    embed_query,
+    expand_and_embed,
+    get_config,
+    get_db,
+)
 from actalux.web.storage import stored_file_exists, stored_file_url
 from actalux.web.text_snippets import (
     TRANSCRIPT_CAPTION_LABEL,
@@ -292,6 +298,7 @@ TOPIC_CACHE_TTL = 3600  # seconds
 _get_config = get_config
 _get_db = get_db
 _embed_query = embed_query
+_expand_and_embed = expand_and_embed
 _reranker = build_reranker
 
 
@@ -387,7 +394,14 @@ def _run_search(
     client = _get_db()
     try:
         query_embedding = _embed_query(q)
-        results = hybrid_search(client, q, query_embedding, filters, reranker=_reranker())
+        results = hybrid_search(
+            client,
+            q,
+            query_embedding,
+            filters,
+            reranker=_reranker(),
+            expansions=_expand_and_embed(q),
+        )
     except SearchError:
         logger.exception("Search failed for query: %s", q)
         results = []
@@ -1218,7 +1232,13 @@ async def summarize(
         # table (each figure citeable to its source chunk); everything else falls
         # back to text retrieval. See actalux.search.answer.assemble_evidence.
         enriched, route = assemble_evidence(
-            client, q, query_embedding, filters=filters, reranker=_reranker(), max_results=10
+            client,
+            q,
+            query_embedding,
+            filters=filters,
+            reranker=_reranker(),
+            max_results=10,
+            expansions=_expand_and_embed(q),
         )
         logger.info("summarize route=%s for query: %s", route, q)
         summary = generate_summary(q, enriched, cfg.openai_api_key, cfg.summary_model)
@@ -1470,7 +1490,13 @@ def ask_post(
         embedding = _embed_query(standalone)
         filters = SearchFilters(entity_id=view.entity["id"])
         enriched, route = assemble_evidence(
-            client, standalone, embedding, filters=filters, reranker=_reranker(), max_results=10
+            client,
+            standalone,
+            embedding,
+            filters=filters,
+            reranker=_reranker(),
+            max_results=10,
+            expansions=_expand_and_embed(standalone),
         )
         logger.info("ask route=%s for: %s", route, standalone)
         summary = generate_summary(standalone, enriched, cfg.openai_api_key, cfg.summary_model)
@@ -1571,7 +1597,13 @@ def ask_stream(
             embedding = _embed_query(standalone)
             filters = SearchFilters(entity_id=view.entity["id"])
             enriched, route = assemble_evidence(
-                client, standalone, embedding, filters=filters, reranker=_reranker(), max_results=10
+                client,
+                standalone,
+                embedding,
+                filters=filters,
+                reranker=_reranker(),
+                max_results=10,
+                expansions=_expand_and_embed(standalone),
             )
             logger.info("ask-stream route=%s for: %s", route, standalone)
             summary: Summary | None = None

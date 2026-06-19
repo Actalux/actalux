@@ -33,6 +33,19 @@ class Config:
     # extra LLM hop off the answer's critical path (the reasoning summary model
     # added ~1.4s per follow-up; see task #19 latency measurement).
     condense_model: str = "gpt-4o-mini"
+    # Query expansion: also retrieve LLM-generated alternate phrasings of the
+    # query and fuse the candidate pools, so a question whose wording differs
+    # from the records ("did the bond measure pass" vs "Proposition O") still
+    # surfaces the right document. Off by default — a deliberate deploy-time
+    # opt-in like the reranker (set ACTALUX_QUERY_EXPANSION=on), since it adds
+    # one cheap LLM hop plus parallel extra retrieval round-trips per search.
+    query_expansion_mode: str = field(
+        default_factory=lambda: os.environ.get("ACTALUX_QUERY_EXPANSION", "off")
+    )
+    # Cheap non-reasoning model for the expansion hop (same class as condense).
+    expansion_model: str = "gpt-4o-mini"
+    # Number of alternate phrasings retrieved alongside the original query.
+    expansion_count: int = 3
     # ZeroEntropy hosted reranker. Key gates the API call; zerank-1-small is the
     # Apache-2.0 model that won the retrieval eval (+24% nDCG@10; see eval/README.md).
     zeroentropy_api_key: str = field(

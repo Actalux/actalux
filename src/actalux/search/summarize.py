@@ -476,6 +476,80 @@ def condense_question(
         return question
 
 
+# --- Query expansion (widen recall) -----------------------------------
+
+EXPANSION_MAX_TOKENS = 128
+
+# Stray list markers ("1.", "- ", "* ") a model may prepend despite the prompt.
+# Requires a separator so a legitimate phrasing like "2024 budget" is untouched.
+_LIST_MARKER_RE = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s+")
+
+EXPANSION_SYSTEM = """\
+You widen search recall for a civic-records archive of the Clayton, MO school \
+district. Given one search query, output alternate phrasings for the SAME \
+information need — wording a record might use when the user's terms differ from \
+the document's. Swap colloquial and official terms both ways (e.g. "bond measure" \
+↔ "Proposition O" / "bond referendum" / "bond issue"; "school board" ↔ "Board of \
+Education"; "superintendent contract" ↔ "employment agreement") and vary close \
+synonyms. Do NOT change or narrow the information need, add facts or constraints, \
+or answer the question. Output one phrasing per line — just the phrasings, no \
+numbering, quotes, or commentary. Output nothing if you cannot improve recall.\
+"""
+
+
+def generate_query_variants(
+    query: str,
+    api_key: str,
+    model: str = "gpt-4o-mini",
+    *,
+    n: int = 3,
+    base_url: str | None = None,
+    reasoning_effort: str = "minimal",
+) -> list[str]:
+    """Generate up to ``n`` alternate phrasings of ``query`` to widen recall.
+
+    Each variant is embedded and searched alongside the original, then the
+    candidate pools are fused (see ``hybrid_search``). Returns phrasings that
+    DIFFER from the original (case-insensitively), deduplicated and capped at
+    ``n``. On any LLM failure — or when nothing useful comes back — it returns
+    ``[]`` so expansion degrades to plain single-query retrieval rather than
+    failing the search.
+    """
+    if not query.strip():
+        return []
+    user_message = f"Search query: {query}\n\nAlternate phrasings:"
+    try:
+        client = OpenAI(api_key=api_key, base_url=base_url)
+        messages = [
+            {"role": "system", "content": EXPANSION_SYSTEM},
+            {"role": "user", "content": user_message},
+        ]
+        response = client.chat.completions.create(
+            **_completion_kwargs(model, messages, EXPANSION_MAX_TOKENS, reasoning_effort)
+        )
+        text = response.choices[0].message.content or ""
+    except Exception:
+        logger.warning("generate_query_variants failed; skipping expansion", exc_info=True)
+        return []
+    return _dedupe_variants(query, text, n)
+
+
+def _dedupe_variants(query: str, text: str, n: int) -> list[str]:
+    """Parse newline-listed phrasings: drop blanks, list markers, the original, dups."""
+    seen = {query.strip().lower()}
+    variants: list[str] = []
+    for line in text.splitlines():
+        cand = _LIST_MARKER_RE.sub("", line).strip().strip('"').strip()
+        key = cand.lower()
+        if not cand or key in seen:
+            continue
+        seen.add(key)
+        variants.append(cand)
+        if len(variants) >= n:
+            break
+    return variants
+
+
 # --- Card-sized summaries (per-document and per-match) ----------------
 
 DOC_SUMMARY_SYSTEM = """\

@@ -9,15 +9,59 @@ from unittest.mock import patch
 
 from actalux.search.summarize import (
     Summary,
+    _dedupe_variants,
     _drain_complete_sentences,
     _split_sentences,
     _verify_citations,
     _verify_sentence,
     extract_citation_ids,
+    generate_query_variants,
     generate_summary,
     generate_summary_stream,
     strip_framing_sentences,
 )
+
+
+class TestQueryVariants:
+    """Query expansion: alternate phrasings are parsed cleanly and the LLM hop
+    degrades to no variants on failure (so search falls back to single-query)."""
+
+    def test_dedupe_strips_markers_and_drops_original(self) -> None:
+        text = "1. bond referendum\n- Proposition O\nbond measure\n* bond issue"
+        assert _dedupe_variants("bond measure", text, n=5) == [
+            "bond referendum",
+            "Proposition O",
+            "bond issue",
+        ]
+
+    def test_dedupe_caps_at_n(self) -> None:
+        assert _dedupe_variants("q", "a\nb\nc\nd", n=2) == ["a", "b"]
+
+    def test_dedupe_case_insensitive_and_skips_blanks(self) -> None:
+        text = "Proposition O\n\nproposition o\n   \nballot"
+        assert _dedupe_variants("q", text, n=5) == ["Proposition O", "ballot"]
+
+    def test_dedupe_preserves_leading_year(self) -> None:
+        # Only enumerator markers ("1.") are stripped, never a real leading number.
+        assert _dedupe_variants("q", "2024 budget", n=3) == ["2024 budget"]
+
+    def test_generate_variants_parses_completion(self) -> None:
+        with patch("actalux.search.summarize.OpenAI") as mock_openai:
+            msg = SimpleNamespace(content="Proposition O\nbond referendum")
+            resp = SimpleNamespace(choices=[SimpleNamespace(message=msg)])
+            mock_openai.return_value.chat.completions.create.return_value = resp
+            out = generate_query_variants("bond measure", "sk-test", n=3)
+        assert out == ["Proposition O", "bond referendum"]
+
+    def test_generate_variants_degrades_on_error(self) -> None:
+        with patch("actalux.search.summarize.OpenAI") as mock_openai:
+            mock_openai.return_value.chat.completions.create.side_effect = RuntimeError("boom")
+            assert generate_query_variants("q", "sk-test") == []
+
+    def test_generate_variants_empty_query_skips_llm(self) -> None:
+        with patch("actalux.search.summarize.OpenAI") as mock_openai:
+            assert generate_query_variants("   ", "sk-test") == []
+        mock_openai.assert_not_called()
 
 
 class TestLevyFramingGuard:

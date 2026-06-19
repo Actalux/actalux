@@ -18,9 +18,19 @@ silently.
    private record — both look topically relevant — so a search-time "should
    return nothing" probe false-fails on legitimate public records.
 
-2. **Retrieval** — the production path, unchanged: bge-small query embedding →
+   `gov09` ("did the bond measure pass") is a **vocabulary-mismatch recall
+   probe**: the answering record is titled "Voters Approve Proposition O" and
+   never says "bond measure", so single-query retrieval buries it. It is the
+   committed regression check for query expansion (see below).
+
+2. **Retrieval** — the production path: bge-small query embedding →
    `hybrid_search` (pgvector + Postgres FTS, fused with RRF) → a candidate
-   pool. The pool is retrieved 100 deep to leave room for a reranker arm.
+   pool. The pool is retrieved 100 deep to leave room for a reranker arm. The
+   harness measures the **single-query** pool; production query expansion
+   (`ACTALUX_QUERY_EXPANSION=on`, see the root `CLAUDE.md`) fuses extra
+   alternate-phrasing pools *before* this step and is not yet a harness arm, so
+   `gov09`'s with-expansion recall is verified by unit test
+   (`tests/test_search.py::TestHybridSearchExpansion`) rather than scored here.
 
 3. **Relevance judging** (`judge.py`) — an LLM judge (Claude) grades each
    `(query, passage)` pair **0–3**, independently of which arm surfaced it:
