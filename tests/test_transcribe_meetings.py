@@ -88,6 +88,15 @@ class TestSelectMeetings:
             out = select_meetings(_args(force=True), tmp_path, {"2026-06-03"})
         assert [x.video_id for x in out] == ["a"]
 
+    def test_discover_skips_undated_meetings(self, tmp_path) -> None:
+        dated = _meeting("a", "2026-06-03")
+        undated = BoardMeeting("b", "Board of Education Special", "", "https://x/b")
+        with patch(
+            "scripts.transcribe_meetings.list_board_meetings", return_value=[dated, undated]
+        ):
+            out = select_meetings(_args(), tmp_path, set())
+        assert [m.video_id for m in out] == ["a"]  # undated 'b' dropped (can't dedup)
+
     def test_discover_since_and_limit(self, tmp_path) -> None:
         meetings = [
             _meeting("a", "2026-06-03"),

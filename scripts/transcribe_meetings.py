@@ -153,6 +153,17 @@ def select_meetings(
             )
         ]
     meetings = list_board_meetings(proxy=args.proxy)
+    # Undated meetings can't be DB-deduped by date, so discovery would re-transcribe
+    # them every run (and Whisper's slight nondeterminism would spawn duplicate
+    # docs). Skip them here; transcribe one explicitly with --video-id --date.
+    undated = [m for m in meetings if not m.meeting_date]
+    if undated:
+        logger.info(
+            "skipping %d undated meeting(s) (use --video-id --date): %s",
+            len(undated),
+            ", ".join(m.video_id for m in undated),
+        )
+        meetings = [m for m in meetings if m.meeting_date]
     if args.since:
         meetings = [m for m in meetings if m.meeting_date >= args.since]
     if not args.force:
