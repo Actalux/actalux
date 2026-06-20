@@ -30,6 +30,18 @@ on:
         description: "Ingest into the DB (uncheck for a transcribe-only dry run)"
         type: boolean
         default: true
+      video_id:
+        description: "Re-transcribe a single video id (overrides discover; always forced)"
+        required: false
+        default: ""
+      date:
+        description: "Meeting date for video_id (YYYY-MM-DD)"
+        required: false
+        default: ""
+      title:
+        description: "Meeting title for video_id"
+        required: false
+        default: ""
   schedule:
     # 03:30 UTC daily (~21:30/22:30 US Central) — after typical meeting nights,
     # catching the same-evening VOD. Capped at 5 new meetings/run.
@@ -97,11 +109,22 @@ jobs:
           SINCE: ${{ inputs.since }}
           LIMIT: ${{ inputs.limit }}
           FORCE: ${{ inputs.force }}
+          VIDEO_ID: ${{ inputs.video_id }}
+          MEETING_DATE: ${{ inputs.date }}
+          MEETING_TITLE: ${{ inputs.title }}
         run: |
-          ARGS="--discover --proxy socks5h://127.0.0.1:40000 --limit ${LIMIT:-5}"
-          [ -n "$SINCE" ] && ARGS="$ARGS --since $SINCE"
-          [ "$FORCE" = "true" ] && ARGS="$ARGS --force"
-          uv run python scripts/transcribe_meetings.py $ARGS
+          PROXY="socks5h://127.0.0.1:40000"
+          if [ -n "$VIDEO_ID" ]; then
+            # Targeted re-transcribe of one meeting (re-ingest supersedes the old doc).
+            uv run python scripts/transcribe_meetings.py \
+              --video-id "$VIDEO_ID" --date "$MEETING_DATE" --title "$MEETING_TITLE" \
+              --force --proxy "$PROXY"
+          else
+            ARGS="--discover --proxy $PROXY --limit ${LIMIT:-5}"
+            [ -n "$SINCE" ] && ARGS="$ARGS --since $SINCE"
+            [ "$FORCE" = "true" ] && ARGS="$ARGS --force"
+            uv run python scripts/transcribe_meetings.py $ARGS
+          fi
 
       - name: Ingest transcripts
         if: ${{ github.event_name == 'schedule' || inputs.ingest }}
