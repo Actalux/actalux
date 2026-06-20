@@ -824,6 +824,46 @@ img { max-width: 100%; display: block; }
 }
 .original-block .pdf-frame { margin-top: 0; }
 .original-block .video-embed { margin-top: 0; }
+
+/* Prominent section header on the meeting page (Video & transcript / Minutes):
+   accent-colored and larger than the muted .block-label used for sub-labels. */
+.section-head {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  margin-bottom: var(--s-3);
+}
+
+/* Transcript topic chapters — a clickable index that cues the video. */
+.chapters { margin-top: var(--s-4); }
+.chapter-list { list-style: none; margin: var(--s-2) 0 0; padding: 0; }
+.chapter-list li { border-top: 1px solid var(--rule); }
+.chapter {
+  display: flex;
+  gap: var(--s-3);
+  align-items: baseline;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: var(--s-2) 0;
+  cursor: pointer;
+  color: var(--ink);
+  font-family: var(--serif-body);
+  font-size: 15px;
+}
+.chapter:hover { color: var(--accent); }
+.chapter:hover .chapter-time { color: var(--accent); }
+.chapter-time {
+  flex: 0 0 auto;
+  min-width: 52px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+}
 .reader-actions {
   margin-top: var(--s-6);
   padding-top: var(--s-4);

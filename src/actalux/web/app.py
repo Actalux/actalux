@@ -87,6 +87,7 @@ from actalux.web.charts import (
     usd_m,
 )
 from actalux.web.display import (
+    clock,
     display_title,
     first_sentence,
     meeting_date_long,
@@ -292,6 +293,7 @@ templates.env.filters["content_paragraphs"] = content_paragraphs
 templates.env.filters["paragraphize_prose"] = paragraphize_prose
 templates.env.filters["display_title"] = display_title
 templates.env.filters["meeting_date_long"] = meeting_date_long
+templates.env.filters["clock"] = clock
 templates.env.filters["source_label"] = source_label
 templates.env.filters["first_sentence"] = first_sentence
 templates.env.filters["usd"] = usd

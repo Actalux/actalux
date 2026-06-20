@@ -88,6 +88,9 @@
     <section class="original-block" style="margin-bottom: var(--s-5);">
       <div class="block-label">Board meeting video</div>
       {% include "partials/_video_embed.html" %}
+      {% set chapters = document.chapters %}
+      {% set video_id = document.video_id %}
+      {% include "partials/_chapters.html" %}
     </section>
     {# The video is the original; the full transcript sits below it behind a
        disclosure (DESIGN.md: lead with the original, tuck the text away). Whisper

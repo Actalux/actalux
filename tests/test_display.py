@@ -2,7 +2,41 @@
 
 from datetime import date
 
-from actalux.web.display import display_title, first_sentence, source_label
+from actalux.web.display import (
+    clock,
+    display_title,
+    first_sentence,
+    meeting_date_long,
+    source_label,
+)
+
+
+class TestClock:
+    """Second offsets render as a video clock for chapter links."""
+
+    def test_minutes_seconds(self) -> None:
+        assert clock(50) == "0:50"
+        assert clock(600) == "10:00"
+
+    def test_hours(self) -> None:
+        assert clock(3725) == "1:02:05"
+
+    def test_invalid_and_negative_return_empty(self) -> None:
+        assert clock(None) == ""
+        assert clock(-5) == ""
+        assert clock("x") == ""
+
+
+class TestMeetingDateLong:
+    def test_iso_string(self) -> None:
+        assert meeting_date_long("2026-06-03") == "June 3, 2026"
+
+    def test_date_object(self) -> None:
+        assert meeting_date_long(date(2026, 1, 21)) == "January 21, 2026"
+
+    def test_unparseable_returns_empty(self) -> None:
+        assert meeting_date_long("") == ""
+        assert meeting_date_long("nope") == ""
 
 
 class TestFirstSentence:

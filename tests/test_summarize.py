@@ -7,10 +7,14 @@ No LLM calls — the _call_llm function is not tested here.
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
+from actalux.errors import SummaryError
 from actalux.search.summarize import (
     Summary,
     _dedupe_variants,
     _drain_complete_sentences,
+    _parse_chapters,
     _split_sentences,
     _verify_citations,
     _verify_sentence,
@@ -20,6 +24,37 @@ from actalux.search.summarize import (
     generate_summary_stream,
     strip_framing_sentences,
 )
+
+
+class TestParseChapters:
+    """Transcript chapter JSON is parsed, validated, sorted, and de-duplicated."""
+
+    def test_valid(self) -> None:
+        out = _parse_chapters(
+            '[{"t": 50, "title": "Call to order"}, {"t": 600, "title": "Budget"}]', 1000
+        )
+        assert out == [
+            {"t": 50, "title": "Call to order"},
+            {"t": 600, "title": "Budget"},
+        ]
+
+    def test_fenced_sorted_deduped_and_bounded(self) -> None:
+        raw = (
+            "```json\n"
+            '[{"t": 600, "title": "B"}, {"t": 50, "title": "A"}, '
+            '{"t": 50, "title": "dup"}, {"t": 99999, "title": "out of range"}, "junk"]\n'
+            "```"
+        )
+        out = _parse_chapters(raw, 1000)
+        assert out == [{"t": 50, "title": "A"}, {"t": 600, "title": "B"}]
+
+    def test_empty_or_unparseable_raises(self) -> None:
+        with pytest.raises(SummaryError):
+            _parse_chapters("", 100)
+        with pytest.raises(SummaryError):
+            _parse_chapters("not json", 100)
+        with pytest.raises(SummaryError):
+            _parse_chapters('[{"t": -1, "title": ""}]', 100)  # nothing valid
 
 
 class TestQueryVariants:

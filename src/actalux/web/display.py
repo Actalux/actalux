@@ -179,3 +179,16 @@ def meeting_date_long(value: Any) -> str:
     if d and 1 <= d.month <= 12:
         return f"{_MONTHS[d.month]} {d.day}, {d.year}"
     return ""
+
+
+def clock(seconds: Any) -> str:
+    """Format a second offset as a video clock: 'm:ss', or 'h:mm:ss' past an hour."""
+    try:
+        s = int(seconds)
+    except (TypeError, ValueError):
+        return ""
+    if s < 0:
+        return ""
+    h, rem = divmod(s, 3600)
+    m, sec = divmod(rem, 60)
+    return f"{h}:{m:02d}:{sec:02d}" if h else f"{m}:{sec:02d}"

@@ -7,6 +7,7 @@ Sentences with invalid citations are dropped entirely.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from collections.abc import Iterator
@@ -620,3 +621,105 @@ def generate_doc_summary(
         raise
     except Exception as exc:
         raise SummaryError(f"doc summary call failed: {exc}") from exc
+
+
+CHAPTERS_MAX_TOKENS = 700
+
+CHAPTERS_SYSTEM = """\
+You divide a school board meeting transcript into its agenda/topic sections so a \
+reader can jump the video to a topic. Each transcript line is prefixed with its \
+start time in whole seconds, like "[123] ...". Identify the natural topic sections \
+in order. Return ONLY a JSON array (no prose, no code fence) of objects:
+  {"t": <int seconds, the start of the section, copied from a [seconds] marker>,
+   "title": "<short neutral topic label, 2 to 6 words>"}
+Rules:
+- 4 to 12 chapters, in chronological order, with strictly increasing "t".
+- Titles name the agenda topic factually: e.g. "Call to order", "Superintendent \
+report", "Budget discussion", "Public comment", "Vote on the resolution".
+- Neutral and descriptive only. Do NOT editorialize, characterize, summarize \
+opinions, predict, or infer intent or outcome. Do not include tax/levy framing.
+- "t" must be a value that appears as a [seconds] marker in the transcript.\
+"""
+
+CHAPTERS_USER = """\
+Meeting: {title} ({date})
+
+Timestamped transcript:
+
+{transcript}
+
+Return the JSON array of chapters.\
+"""
+
+
+def _parse_chapters(text: str, max_seconds: int | None) -> list[dict[str, Any]]:
+    """Parse + validate the model's chapter JSON into a clean, ordered list.
+
+    Drops malformed items, out-of-range or duplicate start times, and empty
+    titles; sorts by start time. Raises ``SummaryError`` if nothing parses.
+    """
+    if not text:
+        raise SummaryError("chapters returned empty")
+    cleaned = re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.MULTILINE).strip()
+    try:
+        raw = json.loads(cleaned)
+    except json.JSONDecodeError as exc:
+        raise SummaryError(f"chapters not valid JSON: {exc}") from exc
+    if not isinstance(raw, list):
+        raise SummaryError("chapters JSON is not a list")
+    seen: set[int] = set()
+    chapters: list[dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        raw_t = item.get("t")
+        if raw_t is None:
+            continue
+        try:
+            t = int(raw_t)
+        except (TypeError, ValueError):
+            continue
+        title = strip_framing_sentences(str(item.get("title") or "").strip())
+        if not title or t < 0 or t in seen or (max_seconds is not None and t > max_seconds):
+            continue
+        seen.add(t)
+        chapters.append({"t": t, "title": title})
+    chapters.sort(key=lambda c: c["t"])
+    if not chapters:
+        raise SummaryError("no valid chapters parsed")
+    return chapters
+
+
+def generate_chapters(
+    title: str,
+    date: str,
+    timestamped_transcript: str,
+    api_key: str,
+    model: str = DEFAULT_MODEL,
+    *,
+    max_seconds: int | None = None,
+) -> list[dict[str, Any]]:
+    """Topic chapters for a transcript: ``[{"t": seconds, "title": str}, ...]``.
+
+    ``timestamped_transcript`` must carry ``[seconds]`` markers; the model copies a
+    marker into each chapter's ``t``. ``max_seconds`` (the video length) bounds the
+    accepted offsets. Raises ``SummaryError`` on an empty or unparseable response.
+    """
+    user_message = CHAPTERS_USER.format(
+        title=title or "(untitled)",
+        date=date or "(undated)",
+        transcript=timestamped_transcript[:24000],
+    )
+    try:
+        client = OpenAI(api_key=api_key)
+        messages = [
+            {"role": "system", "content": CHAPTERS_SYSTEM},
+            {"role": "user", "content": user_message},
+        ]
+        response = client.chat.completions.create(
+            **_completion_kwargs(model, messages, CHAPTERS_MAX_TOKENS)
+        )
+        text = (response.choices[0].message.content or "").strip()
+    except Exception as exc:
+        raise SummaryError(f"chapter generation call failed: {exc}") from exc
+    return _parse_chapters(text, max_seconds)

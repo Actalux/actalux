@@ -278,10 +278,14 @@ _FAKE_MEETING_ROWS = [
 
 _FAKE_MEETING_RECORDS = [
     {"id": 665, "document_type": "transcript", "meeting_date": "2026-06-03",
-     "meeting_title": "6/3/26 Board of Education Meeting", "summary": "", "video_id": "O1EMWuCLTrc",
+     "meeting_title": "6/3/26 Board of Education Meeting",
+     "summary": "A transcript of the June 3 board meeting covering the budget.",
+     "video_id": "O1EMWuCLTrc",
+     "chapters": [{"t": 50, "title": "Call to order"}, {"t": 600, "title": "Budget discussion"}],
      "content": "Good evening. The meeting is called to order. A motion carried. We adjourn."},
     {"id": 195, "document_type": "minutes", "meeting_date": "2026-06-03",
      "meeting_title": "6/3/26 minutes", "summary": "The board approved the budget.", "video_id": "",
+     "chapters": None,
      "content": "The Board of Education met. The budget was approved. The meeting adjourned."},
 ]  # fmt: skip
 
@@ -318,6 +322,10 @@ class TestMeetingsTopic:
         assert "Machine-generated transcript" in r.text  # transcript accuracy label
         assert "Full minutes" in r.text
         assert "The board approved the budget." in r.text  # minutes summary shown
+        # transcript summary (item 3) and topic chapters (item 5) are shown
+        assert "covering the budget" in r.text
+        assert "Budget discussion" in r.text  # chapter title
+        assert ">0:50<" in r.text and ">10:00<" in r.text  # chapter clock times
         assert "/document/665" in r.text and "/document/195" in r.text
 
     @patch("actalux.web.app._get_db")

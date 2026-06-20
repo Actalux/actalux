@@ -18,11 +18,15 @@
        transcript (a date can carry two sessions). cue=0: no cited moment here. #}
     {% for t in transcripts %}
     <section class="original-block" style="margin-bottom: var(--s-6);">
-      <div class="block-label">Video &amp; transcript</div>
+      <div class="section-head">Video &amp; transcript</div>
+      {% if t.summary %}<div class="reader-summary">{{ t.summary }}</div>{% endif %}
       {% if t.video_id %}
         {% set document = t %}
         {% set cue = 0 %}
         {% include "partials/_video_embed.html" %}
+        {% set chapters = t.chapters %}
+        {% set video_id = t.video_id %}
+        {% include "partials/_chapters.html" %}
       {% endif %}
       {% set _transcript_paras = t.content | paragraphize_prose %}
       {% if _transcript_paras %}
@@ -44,7 +48,7 @@
     {# Minutes — the official written record. #}
     {% for mn in minutes %}
     <section class="original-block" style="margin-bottom: var(--s-6);">
-      <div class="block-label">Minutes</div>
+      <div class="section-head">Minutes</div>
       {% if mn.summary %}<div class="reader-summary">{{ mn.summary }}</div>{% endif %}
       {% set _minutes_paras = mn.content | content_paragraphs %}
       {% if _minutes_paras %}

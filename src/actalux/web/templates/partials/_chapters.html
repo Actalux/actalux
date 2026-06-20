@@ -1,0 +1,45 @@
+{# Topic chapters for a transcript. Expects `chapters` (ordered [{t, title}]) and
+   `video_id`. Each row jumps the embedded player to that moment. Scoped to its own
+   section so a page with two meetings wires each chapter list to its own video. #}
+{% if chapters and video_id %}
+<div class="chapters" data-video="{{ video_id | urlencode }}">
+  <div class="block-label">Chapters</div>
+  <ol class="chapter-list">
+    {% for ch in chapters %}
+    <li>
+      <button type="button" class="chapter" data-start="{{ ch.t }}">
+        <span class="chapter-time">{{ ch.t | clock }}</span>
+        <span class="chapter-title">{{ ch.title }}</span>
+      </button>
+    </li>
+    {% endfor %}
+  </ol>
+</div>
+<script>
+  (function () {
+    var scr = document.currentScript;
+    var box = scr ? scr.previousElementSibling : null;   // this .chapters block
+    if (!box) return;
+    var vid = box.getAttribute('data-video');
+    var section = box.closest('.original-block') || box.parentElement;
+    box.querySelectorAll('.chapter').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var holder = section.querySelector('.video-embed');
+        if (!holder) return;
+        var start = parseInt(btn.getAttribute('data-start') || '0', 10);
+        var src = 'https://www.youtube-nocookie.com/embed/' + vid + '?autoplay=1'
+          + (start > 0 ? '&start=' + start : '');
+        var frame = document.createElement('iframe');
+        frame.src = src;
+        frame.title = 'Board meeting video';
+        frame.setAttribute('style', 'width:100%;aspect-ratio:16/9;border:0;');
+        frame.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen');
+        frame.setAttribute('allowfullscreen', '');
+        holder.innerHTML = '';
+        holder.appendChild(frame);
+        holder.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+    });
+  })();
+</script>
+{% endif %}
