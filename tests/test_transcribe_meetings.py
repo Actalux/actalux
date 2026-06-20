@@ -6,7 +6,12 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from actalux.ingest.youtube import BoardMeeting
-from scripts.transcribe_meetings import manifest_entry, safe_stem, select_meetings
+from scripts.transcribe_meetings import (
+    manifest_entry,
+    reconnect_warp,
+    safe_stem,
+    select_meetings,
+)
 
 
 def _meeting(vid: str, date: str, title: str | None = None) -> BoardMeeting:
@@ -20,6 +25,16 @@ def _args(**kw) -> SimpleNamespace:
     )
     base.update(kw)
     return SimpleNamespace(**base)
+
+
+class TestReconnectWarp:
+    def test_noop_when_warp_cli_absent(self) -> None:
+        with (
+            patch("scripts.transcribe_meetings.shutil.which", return_value=None),
+            patch("scripts.transcribe_meetings.subprocess.run") as run,
+        ):
+            reconnect_warp()
+        run.assert_not_called()  # local runs (no warp-cli) just re-attempt the same path
 
 
 class TestSafeStem:

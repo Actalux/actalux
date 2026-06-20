@@ -23,6 +23,7 @@ import json
 import logging
 import re
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -122,30 +123,42 @@ def list_board_meetings(
     return meetings
 
 
-def download_audio(video_id: str, dest_dir: Path, *, proxy: str | None = None) -> Path:
+def download_audio(
+    video_id: str,
+    dest_dir: Path,
+    *,
+    proxy: str | None = None,
+    retries: int = 1,
+    on_retry: Callable[[], None] | None = None,
+) -> Path:
     """Download a video's audio to ``dest_dir`` as MP3; return the file path.
 
     Uses yt-dlp's native downloader (honors ``--proxy``) + local ffmpeg audio
-    extraction. Raises ``IngestError`` on failure or if no MP3 is produced.
+    extraction. A single Cloudflare WARP session is one egress IP, and YouTube
+    flags some WARP IPs (bot-check) while others are clean — so on failure we
+    call ``on_retry`` (which rotates the WARP egress) and try again, up to
+    ``retries`` attempts. Raises ``IngestError`` after the last attempt.
     """
     dest_dir.mkdir(parents=True, exist_ok=True)
     out_template = str(dest_dir / f"{video_id}.%(ext)s")
     url = f"https://www.youtube.com/watch?v={video_id}"
-    try:
-        subprocess.run(
-            ["yt-dlp", *_proxy_args(proxy), "-f", AUDIO_FORMAT,
-             "-x", "--audio-format", "mp3", "--no-warnings",
-             "-o", out_template, url],
-            capture_output=True, text=True, timeout=1800, check=True,
-        )  # fmt: skip
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-        stderr = getattr(exc, "stderr", "") or ""
-        raise IngestError(f"yt-dlp audio download failed for {video_id}: {stderr[-500:]}") from exc
+    cmd = ["yt-dlp", *_proxy_args(proxy), "-f", AUDIO_FORMAT,
+           "-x", "--audio-format", "mp3", "--no-warnings", "-o", out_template, url]  # fmt: skip
 
-    mp3 = dest_dir / f"{video_id}.mp3"
-    if not mp3.exists():
-        raise IngestError(f"audio download produced no MP3 for {video_id}")
-    return mp3
+    last_error = ""
+    for attempt in range(1, max(1, retries) + 1):
+        try:
+            subprocess.run(cmd, capture_output=True, text=True, timeout=1800, check=True)
+            mp3 = dest_dir / f"{video_id}.mp3"
+            if mp3.exists():
+                return mp3
+            last_error = "no MP3 produced"
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+            last_error = (getattr(exc, "stderr", "") or str(exc))[-300:]
+        logger.warning("download attempt %d/%d failed for %s", attempt, retries, video_id)
+        if attempt < retries and on_retry is not None:
+            on_retry()  # rotate the WARP egress IP before retrying
+    raise IngestError(f"yt-dlp audio download failed for {video_id}: {last_error}")
 
 
 def load_discovery(path: Path) -> list[dict]:

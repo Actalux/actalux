@@ -2,10 +2,19 @@
 
 from __future__ import annotations
 
+import subprocess
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from actalux.ingest.youtube import BoardMeeting, list_board_meetings, parse_date_from_title
+import pytest
+
+from actalux.errors import IngestError
+from actalux.ingest.youtube import (
+    BoardMeeting,
+    download_audio,
+    list_board_meetings,
+    parse_date_from_title,
+)
 
 
 class TestParseDateFromTitle:
@@ -51,3 +60,46 @@ class TestListBoardMeetings:
 
     def test_blank_lines_ignored(self) -> None:
         assert self._run("\n\n") == []
+
+
+class TestDownloadAudioRetry:
+    def test_retries_then_succeeds_rotating_egress(self, tmp_path) -> None:
+        calls = {"n": 0}
+
+        def fake_run(cmd, **kw):
+            calls["n"] += 1
+            if calls["n"] == 1:  # first WARP IP is flagged
+                raise subprocess.CalledProcessError(
+                    1, cmd, stderr="Sign in to confirm you're not a bot"
+                )
+            (tmp_path / "vid.mp3").write_text("audio")  # second IP is clean
+            return SimpleNamespace(returncode=0)
+
+        rotated = {"n": 0}
+        with patch("actalux.ingest.youtube.subprocess.run", side_effect=fake_run):
+            out = download_audio(
+                "vid",
+                tmp_path,
+                proxy="socks5h://x",
+                retries=4,
+                on_retry=lambda: rotated.__setitem__("n", rotated["n"] + 1),
+            )
+        assert out == tmp_path / "vid.mp3"
+        assert calls["n"] == 2  # failed once, succeeded on the rotated IP
+        assert rotated["n"] == 1  # rotated the egress once between attempts
+
+    def test_raises_after_exhausting_retries(self, tmp_path) -> None:
+        def always_blocked(cmd, **kw):
+            raise subprocess.CalledProcessError(1, cmd, stderr="not a bot")
+
+        rotated = {"n": 0}
+        with patch("actalux.ingest.youtube.subprocess.run", side_effect=always_blocked):
+            with pytest.raises(IngestError):
+                download_audio(
+                    "vid",
+                    tmp_path,
+                    proxy="socks5h://x",
+                    retries=3,
+                    on_retry=lambda: rotated.__setitem__("n", rotated["n"] + 1),
+                )
+        assert rotated["n"] == 2  # rotated between each of the 3 attempts (not after the last)

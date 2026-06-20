@@ -27,6 +27,9 @@ import argparse
 import json
 import logging
 import re
+import shutil
+import subprocess
+import time
 from pathlib import Path
 
 from actalux.config import load_config
@@ -34,6 +37,11 @@ from actalux.db import get_client
 from actalux.errors import ActaluxError
 from actalux.ingest.transcribe import Transcript, transcribe_audio
 from actalux.ingest.youtube import BoardMeeting, download_audio, list_board_meetings
+
+# A WARP session is one egress IP; YouTube flags some. Rotating the session
+# (disconnect/reconnect) draws a fresh IP, so retried downloads can land a clean
+# one. Tune how many IPs we'll try per meeting before giving up.
+WARP_DOWNLOAD_RETRIES = 6
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -77,6 +85,21 @@ def write_outputs(transcript: Transcript, stem: str, out_dir: Path) -> str:
     return txt_name
 
 
+def reconnect_warp() -> None:
+    """Rotate the Cloudflare WARP egress IP (disconnect/reconnect). Best-effort.
+
+    No-op when warp-cli isn't installed (e.g. local runs on a residential IP),
+    so the retry loop simply re-attempts the same path.
+    """
+    if not shutil.which("warp-cli"):
+        return
+    for action in ("disconnect", "connect"):
+        subprocess.run(
+            ["warp-cli", "--accept-tos", action], capture_output=True, text=True, check=False
+        )
+    time.sleep(6)  # let the new tunnel settle before retrying
+
+
 def process_meeting(
     meeting: BoardMeeting, out_dir: Path, audio_dir: Path, *, proxy: str | None
 ) -> dict[str, str]:
@@ -85,7 +108,15 @@ def process_meeting(
     if not cfg.groq_api_key:
         raise ActaluxError("GROQ_ACTALUX_API_KEY is not set; cannot transcribe")
     logger.info("processing %s (%s)", meeting.title, meeting.video_id)
-    audio = download_audio(meeting.video_id, audio_dir, proxy=proxy)
+    # Through WARP, retry across rotated egress IPs to dodge flagged ones.
+    retries = WARP_DOWNLOAD_RETRIES if proxy else 1
+    audio = download_audio(
+        meeting.video_id,
+        audio_dir,
+        proxy=proxy,
+        retries=retries,
+        on_retry=reconnect_warp if proxy else None,
+    )
     try:
         transcript = transcribe_audio(
             audio,
