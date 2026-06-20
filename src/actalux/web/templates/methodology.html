@@ -11,10 +11,13 @@
   <h1>How Actalux works</h1>
 
   <h2>What we publish</h2>
-  <p>Actalux indexes public records of the Clayton, Missouri school district: board meeting agendas, minutes, board packets, resolutions, curriculum documents, budgets, strategic plans, and transcripts of public board meetings. We also publish records obtained through Missouri Sunshine Law requests. We do not claim completeness of the record. We publish what we have gathered and can verify against a source.</p>
+  <p>Actalux indexes public records of the Clayton, Missouri school district: board meeting agendas, minutes, board packets, resolutions, curriculum documents, budgets, strategic plans, district communications (such as newsletters and press releases), and transcripts of public board meetings. We also publish records obtained through Missouri Sunshine Law requests. We do not claim completeness of the record. We publish what we have gathered and can verify against a source.</p>
 
   <h2>Document processing</h2>
   <p>Documents are converted from their original format (PDF, HTML, or transcript) to plain text. Text is split into verbatim passages of approximately 200 words, preserving section boundaries and sentence integrity. No text is paraphrased or rewritten.</p>
+
+  <h2>Meeting transcripts</h2>
+  <p>Transcripts of public board meetings are produced by automatic speech recognition — the open-source Whisper model — not by a human transcriber. They are accurate enough to search and read, but they can contain errors: misheard words, missing punctuation, and unlabeled or misattributed speakers. We publish the machine output as produced; we do not hand-correct it. Every transcript is shown next to the meeting's video and can be cued to the moment a passage was spoken, so any text can be checked against the recording. Longer meetings are divided into topic sections to aid navigation; those section labels are generated automatically and are a finding aid, not part of the record.</p>
 
   <h2>How search works</h2>
   <p>Search uses two methods in parallel:</p>
@@ -22,19 +25,24 @@
     <li><strong>Keyword matching</strong> finds passages containing your exact search terms, using PostgreSQL full-text search.</li>
     <li><strong>Semantic search</strong> finds passages with similar meaning, even when the exact words differ, using a 384-dimensional embedding (bge-small-en-v1.5) and pgvector cosine similarity.</li>
   </ul>
-  <p>Results from both methods are combined using reciprocal rank fusion (k=60). Passages that appear in both result sets rank higher than those appearing in only one.</p>
+  <p>Results from both methods are combined using reciprocal rank fusion (k=60); passages that appear in both result sets rank higher than those appearing in only one. The combined results are then re-ordered by a cross-encoder model that scores how directly each passage answers the query. To widen recall, your query may also be expanded into a few alternate phrasings (for example, "bond measure" alongside "Proposition O" and "bond referendum"), each searched in parallel; the re-ordering always scores against your original wording.</p>
 
-  <h2>Citation integrity</h2>
-  <p>At ingestion time, every passage is verified to be an exact substring of its source document. Passages that fail this check are rejected. Each displayed passage includes a short hash ID (e.g., <code style="font-family: var(--mono); font-size: 0.9em;">#q003f</code>) that is a stable, shareable reference.</p>
-  <p>When the system generates a summary of search results, every claim in the summary must cite at least one passage by its hash ID. Unverified claims are removed after generation before the summary is displayed.</p>
+  <h2>Citations and generated text</h2>
+  <p>At ingestion time, every passage is verified to be an exact substring of its source document. Passages that fail this check are rejected. Each displayed passage has a stable hash ID (for example, <code style="font-family: var(--mono); font-size: 0.9em;">#q3f9a1c20</code>) that you can cite and share; the ID stays the same when a document is re-processed.</p>
+  <p>Actalux generates two kinds of plain-language text on top of the records:</p>
+  <ul>
+    <li><strong>Cited summaries and answers.</strong> The summary shown above search results and the answers from "Ask the archive" are written so that every factual sentence cites a passage by its hash ID. After generation, each citation is checked against the passages actually retrieved, and any sentence whose citation does not check out is removed before display.</li>
+    <li><strong>Document descriptions and section labels.</strong> Each document carries a short description of what it contains, and longer transcripts carry automatic topic-section labels. These are generated from the document's own text to help you find and orient to a record. They are held to the same neutrality rules below, but they describe the document rather than citing individual passages &mdash; treat them as a finding aid. The record itself is the source documents and their verbatim passages.</li>
+  </ul>
 
   <h2>What we do not do</h2>
   <ul>
-    <li>We do not editorialize, summarize without citation, or express opinions.</li>
+    <li>We do not editorialize or express opinions.</li>
     <li>We do not publish closed session content.</li>
     <li>We do not publish content about individual personnel, teachers, or students.</li>
     <li>We do not infer intent or make causal claims unless explicitly stated in a source document.</li>
     <li>We do not advocate for or against any candidate, ballot measure, or policy position.</li>
+    <li>We do not characterize a tax, levy, or rate change as an increase, a decrease, or "no increase." Whether a change counts as an increase depends on a chosen baseline, which is a political judgment; we report the actual levy or rate figures from the source instead.</li>
   </ul>
 
   <h2>Corrections</h2>

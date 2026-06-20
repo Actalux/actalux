@@ -349,8 +349,16 @@ These are not stylistic — they are content-policy requirements.
   public, plus what we have obtained through Missouri Sunshine Law
   requests. Correct phrasing: "public records," "documents we have
   gathered," "every quote traceable to its source."
-- **Every AI-generated statement cites a verbatim source quote.** No
-  unconstrained summaries.
+- **Cited summaries and answers cite their sources.** The search-results
+  summary and "Ask the archive" answers are citation-verified: every factual
+  sentence cites a passage by its hash ID, and any sentence whose citation does
+  not check out is dropped before display (`summarize.py`). No unconstrained
+  summaries. A second, narrower class of generated text — short per-document
+  descriptions (`generate_doc_summary`) and transcript topic-section labels
+  (`generate_chapters`) — is a constrained finding aid: generated from the
+  document's own text, held to these neutrality rules, but describing the
+  document rather than citing individual passages. The methodology page
+  discloses this two-tier distinction.
 - **Nonpartisan language only.** No mention of PropO or MEC complaint.
   No editorializing.
 - **Never adjudicate baseline-dependent framing.** For tax, levy, or rate
