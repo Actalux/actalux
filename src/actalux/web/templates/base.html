@@ -7,13 +7,19 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Newsreader:ital,opsz,wght@0,6..72,300..700;1,6..72,300..700&family=Geist:wght@300..700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/actalux.css?v=14">
+  <link rel="stylesheet" href="/static/css/actalux.css?v=15">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
 </head>
 <body>
 
 <header class="topbar" role="banner">
+  <button class="nav-burger" id="nav-burger" type="button"
+          aria-label="Open menu" aria-expanded="false" aria-controls="sidebar">
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+      <path d="M3 6h14M3 10h14M3 14h14"/>
+    </svg>
+  </button>
   <a href="{{ base }}" class="brand">
     Actalux<span class="dot">.</span><span class="tag">{{ entity_tag }}</span>
   </a>
@@ -35,9 +41,11 @@
   </nav>
 </header>
 
+<div class="nav-scrim" id="nav-scrim" aria-hidden="true"></div>
+
 <div class="shell">
 
-  <aside class="sidebar" aria-label="Browse the archive">
+  <aside class="sidebar" id="sidebar" aria-label="Browse the archive">
     <div class="nav-section">
       <span class="nav-label">Browse</span>
 
@@ -125,6 +133,28 @@
         stored[id] = next;
         try { localStorage.setItem(STORAGE_KEY, JSON.stringify(stored)); } catch (e) {}
       });
+    });
+  })();
+
+  // Mobile off-canvas nav: the burger toggles the drawer; the scrim, a nav
+  // link tap, or Escape closes it. (Sub-section toggles keep the drawer open.)
+  (function () {
+    var burger = document.getElementById('nav-burger');
+    var scrim = document.getElementById('nav-scrim');
+    if (!burger) return;
+    function setOpen(open) {
+      document.body.classList.toggle('nav-open', open);
+      burger.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+    burger.addEventListener('click', function () {
+      setOpen(!document.body.classList.contains('nav-open'));
+    });
+    if (scrim) scrim.addEventListener('click', function () { setOpen(false); });
+    document.querySelectorAll('.sidebar .nav-item').forEach(function (a) {
+      a.addEventListener('click', function () { setOpen(false); });
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') setOpen(false);
     });
   })();
 

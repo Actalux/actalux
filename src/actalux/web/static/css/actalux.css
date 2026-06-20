@@ -157,6 +157,17 @@ img { max-width: 100%; display: block; }
 }
 .topbar-links a:hover { color: var(--ink); }
 
+/* Mobile menu button + drawer scrim — shown only at the responsive breakpoint. */
+.nav-burger {
+  display: none;
+  align-items: center; justify-content: center;
+  width: 34px; height: 34px;
+  background: transparent; border: 0; padding: 0;
+  color: var(--ink); cursor: pointer;
+}
+.nav-burger svg { width: 20px; height: 20px; }
+.nav-scrim { display: none; }
+
 /* ===== App shell ===== */
 .shell {
   display: grid;
@@ -1319,7 +1330,29 @@ img { max-width: 100%; display: block; }
 /* ===== Responsive ===== */
 @media (max-width: 960px) {
   .shell { grid-template-columns: 1fr; }
-  .sidebar { display: none; }
+  .topbar { gap: var(--s-3); padding: 0 var(--s-3); }
+  .nav-burger { display: inline-flex; }
+  /* Off-canvas drawer: slid out by default, slides in when body.nav-open. */
+  .sidebar {
+    position: fixed;
+    top: var(--topbar-h); left: 0;
+    width: var(--sidebar-w); max-width: 84vw;
+    height: calc(100vh - var(--topbar-h));
+    z-index: 40;
+    transform: translateX(-100%);
+    transition: transform 200ms ease-out;
+  }
+  body.nav-open .sidebar { transform: translateX(0); }
+  .nav-scrim {
+    display: block;
+    position: fixed;
+    inset: var(--topbar-h) 0 0 0;
+    background: rgba(20, 19, 17, 0.35);
+    z-index: 35;
+    opacity: 0; pointer-events: none;
+    transition: opacity 200ms ease-out;
+  }
+  body.nav-open .nav-scrim { opacity: 1; pointer-events: auto; }
   .brand { flex: 0 0 auto; }
   .brand .tag { display: none; }
   .topbar-links { display: none; }
