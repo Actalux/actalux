@@ -81,6 +81,28 @@ class TestNormalizeSourceRef:
         url = "https://claytonschools.community.diligentoneplatform.com/document/f8c12dca"
         assert normalize_source_ref(url) == url
 
+    def test_youtube_watch_preserves_video_id(self) -> None:
+        # YouTube's id is in the query, not the path; it must survive normalization
+        # or every meeting collapses to one "youtube.com/watch" ref (twin-version bug).
+        assert (
+            normalize_source_ref("https://www.youtube.com/watch?v=I-N5ViDmskw")
+            == "https://www.youtube.com/watch?v=I-N5ViDmskw"
+        )
+
+    def test_youtube_distinct_videos_get_distinct_refs(self) -> None:
+        a = normalize_source_ref("https://www.youtube.com/watch?v=AAAAAAAAAAA&t=30s")
+        b = normalize_source_ref("https://www.youtube.com/watch?v=BBBBBBBBBBB")
+        assert a != b
+        assert a == "https://www.youtube.com/watch?v=AAAAAAAAAAA"
+
+    def test_youtube_alternate_forms_canonicalize(self) -> None:
+        for url in (
+            "https://youtu.be/I-N5ViDmskw",
+            "https://www.youtube.com/live/I-N5ViDmskw",
+            "https://m.youtube.com/watch?v=I-N5ViDmskw&feature=share",
+        ):
+            assert normalize_source_ref(url) == "https://www.youtube.com/watch?v=I-N5ViDmskw"
+
     def test_empty_url_returns_empty(self) -> None:
         assert normalize_source_ref("") == ""
 

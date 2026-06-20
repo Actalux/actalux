@@ -31,7 +31,7 @@ from dataclasses import replace
 from datetime import date
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import SplitResult, parse_qs, urlsplit, urlunsplit
 
 from actalux.config import load_config
 from actalux.db import (
@@ -553,6 +553,28 @@ def ingest_single_file(
     return {"doc_id": doc_id, "chunks": len(embedded_chunks)}
 
 
+# YouTube is the one portal that puts a video's stable id in the QUERY string
+# (``watch?v=ID``) or a short path (``youtu.be/ID``, ``/live/ID``, ``/embed/ID``,
+# ``/shorts/ID``) rather than a path GUID. normalize_source_ref must keep that id
+# or every meeting collapses to the same ``youtube.com/watch`` ref and dedup
+# treats unrelated meetings as versions of one document.
+_YOUTUBE_WATCH_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com"}
+_YOUTUBE_PATH_ID_RE = re.compile(r"^/(?:live|embed|shorts|v)/([^/?#]+)")
+
+
+def _youtube_video_id(parts: SplitResult) -> str | None:
+    """Extract a YouTube video id from a parsed URL, across the forms YouTube uses."""
+    host = parts.netloc.lower()
+    if host == "youtu.be":
+        return parts.path.lstrip("/").split("/", 1)[0] or None
+    if host in _YOUTUBE_WATCH_HOSTS:
+        if parts.path.rstrip("/") == "/watch":
+            return parse_qs(parts.query).get("v", [""])[0] or None
+        if m := _YOUTUBE_PATH_ID_RE.match(parts.path):
+            return m.group(1)
+    return None
+
+
 def normalize_source_ref(source_url: str) -> str:
     """Derive a stable external id from a crawler's canonical origin URL.
 
@@ -565,6 +587,10 @@ def normalize_source_ref(source_url: str) -> str:
     tracking params: lowercase scheme+host, drop the query string and fragment
     (``utm_*``, share modes), strip a trailing slash. Returns "" for an empty or
     unparseable URL, in which case the caller falls back to filename dedup.
+
+    YouTube is special-cased: its video id lives in the query string, so any
+    YouTube URL is canonicalized to ``https://www.youtube.com/watch?v=<id>`` to
+    keep each meeting a distinct document.
 
     Parameters
     ----------
@@ -581,6 +607,8 @@ def normalize_source_ref(source_url: str) -> str:
     parts = urlsplit(source_url.strip())
     if not parts.netloc:
         return ""
+    if video_id := _youtube_video_id(parts):
+        return f"https://www.youtube.com/watch?v={video_id}"
     return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), parts.path.rstrip("/"), "", ""))
 
 
