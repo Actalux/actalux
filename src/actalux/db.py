@@ -256,6 +256,31 @@ def get_meeting_documents(
     return result.data or []
 
 
+def get_meeting_records(
+    client: Client,
+    entity_id: int,
+    meeting_date: str,
+    document_types: list[str],
+) -> list[dict[str, Any]]:
+    """Full document rows (incl. ``content``) for one body on one meeting date.
+
+    Backs the web meeting page, which renders the transcript and minutes text
+    inline, so it needs ``content`` (unlike ``get_meeting_documents``, which serves
+    the lightweight JSON bundle). Current versions only; ordered by document_type.
+    """
+    result = (
+        client.table("documents")
+        .select("*")
+        .is_("replaces_id", "null")
+        .eq("entity_id", entity_id)
+        .eq("meeting_date", meeting_date)
+        .in_("document_type", document_types)
+        .order("document_type")
+        .execute()
+    )
+    return result.data or []
+
+
 def list_recent_meeting_documents(
     client: Client,
     entity_id: int,

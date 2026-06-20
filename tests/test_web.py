@@ -267,6 +267,83 @@ class TestBrowse:
         assert r.status_code == 404
 
 
+_FAKE_MEETING_ROWS = [
+    {"id": 195, "meeting_title": "6/3/26 minutes", "document_type": "minutes",
+     "meeting_date": "2026-06-03", "summary": "The board approved the budget.", "video_id": ""},
+    {"id": 665, "meeting_title": "6/3/26 transcript", "document_type": "transcript",
+     "meeting_date": "2026-06-03", "summary": "", "video_id": "O1EMWuCLTrc"},
+    {"id": 660, "meeting_title": "5/1/26 transcript", "document_type": "transcript",
+     "meeting_date": "2026-05-01", "summary": "Policy discussion.", "video_id": ""},
+]  # fmt: skip
+
+_FAKE_MEETING_RECORDS = [
+    {"id": 665, "document_type": "transcript", "meeting_date": "2026-06-03",
+     "meeting_title": "6/3/26 Board of Education Meeting", "summary": "", "video_id": "O1EMWuCLTrc",
+     "content": "Good evening. The meeting is called to order. A motion carried. We adjourn."},
+    {"id": 195, "document_type": "minutes", "meeting_date": "2026-06-03",
+     "meeting_title": "6/3/26 minutes", "summary": "The board approved the budget.", "video_id": "",
+     "content": "The Board of Education met. The budget was approved. The meeting adjourned."},
+]  # fmt: skip
+
+
+class TestMeetingsTopic:
+    """Board Meetings topic: a meetings list, each opening to its records."""
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
+    @patch("actalux.web.app.list_recent_meeting_documents", return_value=_FAKE_MEETING_ROWS)
+    def test_list_groups_by_date_with_badges(self, mock_list, mock_ent, mock_db) -> None:
+        r = client.get("/mo/clayton/schools/meetings")
+        assert r.status_code == 200
+        # one entry per date, newest first, with a human date
+        assert "June 3, 2026" in r.text
+        assert "May 1, 2026" in r.text
+        assert "/meeting/2026-06-03" in r.text
+        # 6/3 has minutes + a video transcript; 5/1 a transcript with no video
+        assert ">Minutes<" in r.text
+        assert "Video &amp; transcript" in r.text  # video badge (HTML-escaped &)
+        assert ">Transcript<" in r.text
+        # the listing is scoped to meeting record types, not every document
+        assert list(mock_list.call_args.args[2]) == ["minutes", "transcript"]
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
+    @patch("actalux.web.app.get_meeting_records", return_value=_FAKE_MEETING_RECORDS)
+    def test_detail_shows_transcript_and_minutes(self, mock_rec, mock_ent, mock_db) -> None:
+        r = client.get("/mo/clayton/schools/meeting/2026-06-03")
+        assert r.status_code == 200
+        assert "June 3, 2026" in r.text
+        assert "yt-facade" in r.text  # the video embed
+        assert "Full transcript" in r.text
+        assert "Machine-generated transcript" in r.text  # transcript accuracy label
+        assert "Full minutes" in r.text
+        assert "The board approved the budget." in r.text  # minutes summary shown
+        assert "/document/665" in r.text and "/document/195" in r.text
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
+    def test_detail_bad_date_404(self, mock_ent, mock_db) -> None:
+        assert client.get("/mo/clayton/schools/meeting/not-a-date").status_code == 404
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
+    @patch("actalux.web.app.get_meeting_records", return_value=[])
+    def test_detail_no_records_404(self, mock_rec, mock_ent, mock_db) -> None:
+        assert client.get("/mo/clayton/schools/meeting/1999-01-01").status_code == 404
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
+    @patch("actalux.web.app.list_recent_meeting_documents", return_value=[])
+    def test_nav_reorg(self, mock_list, mock_ent, mock_db) -> None:
+        r = client.get("/mo/clayton/schools/meetings")
+        assert r.status_code == 200
+        # Board Meetings now lives under Topics; Resolutions moved under Documents.
+        assert 'href="/mo/clayton/schools/meetings"' in r.text
+        assert 'href="/mo/clayton/schools/browse/resolutions"' in r.text
+        # the old standalone Meetings nav group is gone.
+        assert 'id="sub-meetings"' not in r.text
+
+
 _FAKE_VOLUME = {
     "id": 87,
     "meeting_title": "Volume1-ClaytonMasterPlan-Process-Priorities.pdf",

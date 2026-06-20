@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}{{ meeting_date | meeting_date_long }} — Board Meeting{% endblock %}
+{% block content %}
+
+<section class="pane-header">
+  <h2>Board Meeting</h2>
+  <span class="meta">{{ entity.display_name if entity else 'Board of Education' }}</span>
+</section>
+
+<div style="padding: var(--s-6) var(--s-6) var(--s-8);">
+  <article class="doc-page">
+    <h1>{{ meeting_date | meeting_date_long }}</h1>
+    <p style="font-family: var(--mono); font-size: 11px; color: var(--muted); margin-bottom: var(--s-5);">
+      Board of Education · <a href="{{ base }}/meetings" style="color: var(--accent);">All meetings</a>
+    </p>
+
+    {# Video & transcript — the meeting's highest-fidelity record. One section per
+       transcript (a date can carry two sessions). cue=0: no cited moment here. #}
+    {% for t in transcripts %}
+    <section class="original-block" style="margin-bottom: var(--s-6);">
+      <div class="block-label">Video &amp; transcript</div>
+      {% if t.video_id %}
+        {% set document = t %}
+        {% set cue = 0 %}
+        {% include "partials/_video_embed.html" %}
+      {% endif %}
+      {% set _transcript_paras = t.content | paragraphize_prose %}
+      {% if _transcript_paras %}
+      <details class="cited-disclosure" style="margin-top: var(--s-4);">
+        <summary class="block-label">Full transcript</summary>
+        <p class="caption-label" style="font-family: var(--font-ui, Geist, sans-serif); font-size: 12px; color: var(--muted); margin-bottom: var(--s-3);">{{ transcript_caption_label }}</p>
+        {% for para in _transcript_paras %}
+        <p class="doc-para">{{ para }}</p>
+        {% endfor %}
+      </details>
+      {% endif %}
+      <div style="margin-top: var(--s-3); font-family: var(--sans); font-size: 13px;">
+        {% if t.video_id %}<a href="https://www.youtube.com/watch?v={{ t.video_id | urlencode }}" target="_blank" rel="noopener" style="color: var(--accent);">Watch on YouTube</a> · {% endif %}
+        <a href="/document/{{ t.id }}" style="color: var(--accent);">Open full document →</a>
+      </div>
+    </section>
+    {% endfor %}
+
+    {# Minutes — the official written record. #}
+    {% for mn in minutes %}
+    <section class="original-block" style="margin-bottom: var(--s-6);">
+      <div class="block-label">Minutes</div>
+      {% if mn.summary %}<div class="reader-summary">{{ mn.summary }}</div>{% endif %}
+      {% set _minutes_paras = mn.content | content_paragraphs %}
+      {% if _minutes_paras %}
+      <details class="cited-disclosure" style="margin-top: var(--s-4);">
+        <summary class="block-label">Full minutes</summary>
+        {% for para in _minutes_paras %}
+        <p class="doc-para">{{ para }}</p>
+        {% endfor %}
+      </details>
+      {% endif %}
+      <div style="margin-top: var(--s-3); font-family: var(--sans); font-size: 13px;">
+        <a href="/document/{{ mn.id }}" style="color: var(--accent);">Open full document →</a>
+      </div>
+    </section>
+    {% endfor %}
+  </article>
+</div>
+
+{% endblock %}

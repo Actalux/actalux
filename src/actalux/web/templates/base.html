@@ -41,31 +41,19 @@
     <div class="nav-section">
       <span class="nav-label">Browse</span>
 
+      {% set docs_active = active in ['browse-budgets', 'browse-curriculum-maps', 'browse-facilities-plan', 'browse-communications', 'browse-resolutions'] %}
+
       <button class="nav-toggle" aria-expanded="true" data-target="sub-topics">
         <span class="left">
           <svg class="chev" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 4l3 3 3-3"/></svg>
           <span>Topics</span>
         </span>
-        <span class="count">2</span>
+        <span class="count">3</span>
       </button>
       <div class="nav-sub" id="sub-topics">
+        <a class="nav-item{% if active == 'topic-meetings' %} active{% endif %}" href="{{ base }}/meetings"><span>Board Meetings</span></a>
         <a class="nav-item{% if active == 'topic-budget' %} active{% endif %}" href="{{ base }}/budget"><span>Budget &amp; Spending</span></a>
         <a class="nav-item{% if active == 'topic-facilities' %} active{% endif %}" href="{{ base }}/facilities-plan"><span>Facilities Master Plan</span></a>
-      </div>
-
-      {% set meetings_active = active in ['browse-minutes', 'browse-transcripts', 'browse-resolutions'] %}
-      {% set docs_active = active in ['browse-budgets', 'browse-curriculum-maps', 'browse-facilities-plan', 'browse-communications'] %}
-
-      <button class="nav-toggle" aria-expanded="{{ 'true' if meetings_active else 'false' }}" data-target="sub-meetings">
-        <span class="left">
-          <svg class="chev" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 4l3 3 3-3"/></svg>
-          <span>Meetings</span>
-        </span>
-      </button>
-      <div class="nav-sub{% if not meetings_active %} collapsed{% endif %}" id="sub-meetings">
-        <a class="nav-item{% if active == 'browse-minutes' %} active{% endif %}" href="{{ base }}/browse/minutes"><span>Minutes</span></a>
-        <a class="nav-item{% if active == 'browse-transcripts' %} active{% endif %}" href="{{ base }}/browse/transcripts"><span>Transcripts</span></a>
-        <a class="nav-item{% if active == 'browse-resolutions' %} active{% endif %}" href="{{ base }}/browse/resolutions"><span>Resolutions</span></a>
       </div>
 
       <button class="nav-toggle" aria-expanded="{{ 'true' if docs_active else 'false' }}" data-target="sub-docs">
@@ -76,6 +64,7 @@
       </button>
       <div class="nav-sub{% if not docs_active %} collapsed{% endif %}" id="sub-docs">
         <a class="nav-item{% if active == 'browse-budgets' %} active{% endif %}" href="{{ base }}/browse/budgets"><span>Budgets</span></a>
+        <a class="nav-item{% if active == 'browse-resolutions' %} active{% endif %}" href="{{ base }}/browse/resolutions"><span>Resolutions</span></a>
         <a class="nav-item{% if active == 'browse-curriculum-maps' %} active{% endif %}" href="{{ base }}/browse/curriculum-maps"><span>Curriculum maps</span></a>
         <a class="nav-item{% if active == 'browse-facilities-plan' %} active{% endif %}" href="{{ base }}/browse/facilities-plan"><span>Facilities plan</span></a>
         <a class="nav-item{% if active == 'browse-communications' %} active{% endif %}" href="{{ base }}/browse/communications"><span>Communications</span></a>

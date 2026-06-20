@@ -15,7 +15,13 @@
 </div>
 <script>
   (function () {
-    var fac = document.querySelector('#source-col .yt-facade') || document.querySelector('.yt-facade');
+    // Scope to this embed's own facade so a page with several videos (a meeting
+    // date with two board sessions) wires each player independently. currentScript
+    // is this inline <script>; its previous sibling is this .video-embed wrapper.
+    var scr = document.currentScript;
+    var wrap = scr ? scr.previousElementSibling : null;
+    var fac = (wrap && wrap.querySelector) ? wrap.querySelector('.yt-facade') : null;
+    fac = fac || document.querySelector('#source-col .yt-facade') || document.querySelector('.yt-facade');
     if (!fac) return;
     fac.addEventListener('click', function () {
       var id = fac.getAttribute('data-video');

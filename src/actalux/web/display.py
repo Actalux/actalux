@@ -171,3 +171,11 @@ def display_title(doc: Mapping[str, Any]) -> str:
             return f"{base} ({', '.join(descriptors)})" if descriptors else base
 
     return _clean_filename(raw) or label
+
+
+def meeting_date_long(value: Any) -> str:
+    """Format a meeting date (ISO string or date) as 'June 3, 2026'; '' if unparseable."""
+    d = _coerce_date(value)
+    if d and 1 <= d.month <= 12:
+        return f"{_MONTHS[d.month]} {d.day}, {d.year}"
+    return ""

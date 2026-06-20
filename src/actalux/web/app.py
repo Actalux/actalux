@@ -42,10 +42,12 @@ from actalux.db import (
     get_documents,
     get_entity,
     get_entity_by_path,
+    get_meeting_records,
     get_proposed_budget_line_items,
     insert_correction,
     list_documents,
     list_entities,
+    list_recent_meeting_documents,
     resolve_canonical_chunk,
     resolve_canonical_document,
     resolve_chunk_ref,
@@ -84,7 +86,12 @@ from actalux.web.charts import (
     usd,
     usd_m,
 )
-from actalux.web.display import display_title, first_sentence, source_label
+from actalux.web.display import (
+    display_title,
+    first_sentence,
+    meeting_date_long,
+    source_label,
+)
 from actalux.web.retrieval import (
     build_reranker,
     embed_query,
@@ -268,6 +275,7 @@ templates.env.filters["clean_text"] = normalize_whitespace
 templates.env.filters["content_paragraphs"] = content_paragraphs
 templates.env.filters["paragraphize_prose"] = paragraphize_prose
 templates.env.filters["display_title"] = display_title
+templates.env.filters["meeting_date_long"] = meeting_date_long
 templates.env.filters["source_label"] = source_label
 templates.env.filters["first_sentence"] = first_sentence
 templates.env.filters["usd"] = usd
@@ -499,6 +507,82 @@ def browse(request: Request, kind: str, view: EntityView = Depends(resolve_entit
         request,
         "browse.html",
         _page(view, documents=docs, kind=spec, active=f"browse-{spec.slug}"),
+    )
+
+
+# A "meeting" groups the records produced by one board session. Resolutions are a
+# standalone document type (browsed under Documents), so a meeting page bundles the
+# minutes and the video transcript only.
+MEETING_PAGE_TYPES = ("minutes", "transcript")
+
+
+def _meetings_list(client: Client, entity_id: int) -> list[dict[str, Any]]:
+    """Group the minutes/transcript records into one entry per meeting date.
+
+    Newest first. Each entry reports which records exist (so the list can badge
+    "Minutes"/"Transcript"/video) and carries a one-line summary, preferring the
+    minutes summary (more substantive) over the transcript's. Same-date sessions
+    (e.g. a regular and a joint meeting) fold into one entry; the meeting page
+    shows every record for that date.
+    """
+    rows = list_recent_meeting_documents(client, entity_id, list(MEETING_PAGE_TYPES), limit=1000)
+    meetings: dict[str, dict[str, Any]] = {}
+    for row in rows:  # already ordered newest meeting_date first
+        iso = row.get("meeting_date")
+        if not iso:
+            continue
+        entry = meetings.setdefault(
+            iso,
+            {"date": iso, "has_minutes": False, "has_transcript": False,
+             "has_video": False, "minutes_summary": "", "transcript_summary": ""},
+        )  # fmt: skip
+        if row["document_type"] == "minutes":
+            entry["has_minutes"] = True
+            entry["minutes_summary"] = entry["minutes_summary"] or (row.get("summary") or "")
+        elif row["document_type"] == "transcript":
+            entry["has_transcript"] = True
+            entry["has_video"] = entry["has_video"] or bool(row.get("video_id"))
+            entry["transcript_summary"] = entry["transcript_summary"] or (row.get("summary") or "")
+    for entry in meetings.values():
+        entry["summary"] = entry["minutes_summary"] or entry["transcript_summary"]
+    return list(meetings.values())
+
+
+@jurisdiction.get("/meetings", response_class=HTMLResponse)
+def meetings_list(request: Request, view: EntityView = Depends(resolve_entity)) -> HTMLResponse:
+    """Board Meetings topic: one entry per meeting date, newest first."""
+    meetings = _meetings_list(_get_db(), view.entity["id"])
+    return templates.TemplateResponse(
+        request,
+        "meetings.html",
+        _page(view, meetings=meetings, active="topic-meetings"),
+    )
+
+
+@jurisdiction.get("/meeting/{meeting_date}", response_class=HTMLResponse)
+def meeting_detail(
+    request: Request, meeting_date: str, view: EntityView = Depends(resolve_entity)
+) -> HTMLResponse:
+    """One meeting: its video transcript(s) and minutes, presented together."""
+    try:
+        iso = date.fromisoformat(meeting_date).isoformat()
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Invalid meeting date") from exc
+    records = get_meeting_records(_get_db(), view.entity["id"], iso, list(MEETING_PAGE_TYPES))
+    if not records:
+        raise HTTPException(status_code=404, detail="No meeting on that date")
+    transcripts = [r for r in records if r.get("document_type") == "transcript"]
+    minutes = [r for r in records if r.get("document_type") == "minutes"]
+    return templates.TemplateResponse(
+        request,
+        "meeting.html",
+        _page(
+            view,
+            meeting_date=iso,
+            transcripts=transcripts,
+            minutes=minutes,
+            active="topic-meetings",
+        ),
     )
 
 
@@ -990,6 +1074,18 @@ async def facilities_plan_redirect(request: Request) -> RedirectResponse:
 async def topic_facilities_redirect(request: Request) -> RedirectResponse:
     """Legacy path -> canonical body's facilities-plan page."""
     return _redirect_to_default("/facilities-plan", request)
+
+
+@app.get("/meetings", response_class=HTMLResponse)
+async def meetings_redirect(request: Request) -> RedirectResponse:
+    """Flat /meetings -> canonical body's Board Meetings page."""
+    return _redirect_to_default("/meetings", request)
+
+
+@app.get("/topic/meetings")
+async def topic_meetings_redirect(request: Request) -> RedirectResponse:
+    """Legacy path -> canonical body's Board Meetings page."""
+    return _redirect_to_default("/meetings", request)
 
 
 # Document and chunk pages stay flat (IDs are globally unique, reached only via
