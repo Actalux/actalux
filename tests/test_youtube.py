@@ -24,14 +24,25 @@ class TestParseDateFromTitle:
     def test_slash_older_year(self) -> None:
         assert parse_date_from_title("10/8/25 Board of Education") == "2025-10-08"
 
+    def test_slash_four_digit_year(self) -> None:
+        assert parse_date_from_title("12/13/2023 Board of Education Meeting") == "2023-12-13"
+
     def test_month_name(self) -> None:
         assert parse_date_from_title("Nov. 13, 2019 BOE Meeting") == "2019-11-13"
+
+    def test_full_month_name(self) -> None:
+        assert parse_date_from_title("August 17, 2022 Board of Education Meeting") == "2022-08-17"
+        assert parse_date_from_title("June 1, 2022 Board of Education Meeting") == "2022-06-01"
 
     def test_eight_digit(self) -> None:
         assert parse_date_from_title("BOE Meeting 11132019") == "2019-11-13"
 
     def test_no_date(self) -> None:
         assert parse_date_from_title("Board of Education Meeting") is None
+
+    def test_implausible_year_rejected(self) -> None:
+        # A mis-parsed title must not yield a bogus far-future date.
+        assert parse_date_from_title("3/31/3021 Board of Education Meeting") is None
 
 
 class TestListBoardMeetings:

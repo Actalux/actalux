@@ -46,7 +46,7 @@ concurrency:
 jobs:
   transcribe:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120  # headroom for backfill batches (~10 meetings/run)
     env:
       ACTALUX_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       ACTALUX_SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}

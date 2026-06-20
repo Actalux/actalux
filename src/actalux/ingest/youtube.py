@@ -31,7 +31,10 @@ from actalux.errors import IngestError
 
 logger = logging.getLogger(__name__)
 
-CHANNEL_URL = "https://www.youtube.com/@SchoolDistrictofClayton/videos"
+CHANNEL = "https://www.youtube.com/@SchoolDistrictofClayton"
+# Board meetings are LIVESTREAMED, so most live under the channel's /streams tab;
+# /videos catches any non-livestream uploads. Enumerate both and dedup by id.
+CHANNEL_TABS = ("streams", "videos")
 # Player client that resolves a downloadable format through the WARP egress.
 PLAYER_CLIENT = "android"
 # bestaudio if the client exposes audio-only, else format 18 (progressive
@@ -41,11 +44,11 @@ AUDIO_FORMAT = "bestaudio/18/best"
 BOARD_MEETING_RE = re.compile(r"board of education|BOE meeting", re.IGNORECASE)
 
 DATE_PATTERNS = [
-    re.compile(r"(\d{1,2})/(\d{1,2})/(\d{2})\b"),  # 2/19/26
+    re.compile(r"(\d{1,2})/(\d{1,2})/(\d{2,4})\b"),  # 2/19/26 or 12/13/2023
     re.compile(
-        r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\.?\s+(\d{1,2}),?\s+(\d{4})",
+        r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})",
         re.IGNORECASE,
-    ),  # Nov. 13, 2019
+    ),  # Nov. 13, 2019 or August 17, 2022
     re.compile(r"(\d{2})(\d{2})(\d{4})\b"),  # 11132019
 ]
 
@@ -65,19 +68,34 @@ class BoardMeeting:
     url: str
 
 
+def _iso_if_plausible(year: int, month: int, day: int) -> str | None:
+    """Format a plausible board-meeting date, or None (rejects mis-parsed titles)."""
+    if 2000 <= year <= 2100 and 1 <= month <= 12 and 1 <= day <= 31:
+        return f"{year}-{month:02d}-{day:02d}"
+    return None
+
+
 def parse_date_from_title(title: str) -> str | None:
     """Extract a meeting date (YYYY-MM-DD) from a video title, or None."""
     m = DATE_PATTERNS[0].search(title)
     if m:
         month, day, year = int(m.group(1)), int(m.group(2)), int(m.group(3))
-        year = 2000 + year if year < 50 else 1900 + year
-        return f"{year}-{month:02d}-{day:02d}"
+        if year < 100:  # 2-digit year (e.g. 26 -> 2026); 4-digit years pass through
+            year = 2000 + year if year < 50 else 1900 + year
+        if iso := _iso_if_plausible(year, month, day):
+            return iso
     m = DATE_PATTERNS[1].search(title)
     if m:
-        return f"{int(m.group(3))}-{MONTH_NAMES[m.group(1).lower()[:3]]:02d}-{int(m.group(2)):02d}"
+        iso = _iso_if_plausible(
+            int(m.group(3)), MONTH_NAMES[m.group(1).lower()[:3]], int(m.group(2))
+        )
+        if iso:
+            return iso
     m = DATE_PATTERNS[2].search(title)
     if m:
-        return f"{int(m.group(3))}-{int(m.group(1)):02d}-{int(m.group(2)):02d}"
+        iso = _iso_if_plausible(int(m.group(3)), int(m.group(1)), int(m.group(2)))
+        if iso:
+            return iso
     return None
 
 
@@ -89,38 +107,36 @@ def _proxy_args(proxy: str | None) -> list[str]:
     return args
 
 
-def list_board_meetings(
-    channel_url: str = CHANNEL_URL, *, proxy: str | None = None
-) -> list[BoardMeeting]:
-    """List the channel's board-meeting videos (newest first), with parsed dates."""
-    cmd = [
-        "yt-dlp",
-        "--flat-playlist",
-        "--print",
-        "%(id)s|%(title)s",
-        *_proxy_args(proxy),
-        channel_url,
-    ]
+def _list_channel_tab(tab_url: str, proxy: str | None) -> list[str]:
+    """Return ``id|title`` lines for one channel tab via yt-dlp."""
+    cmd = ["yt-dlp", "--flat-playlist", "--print", "%(id)s|%(title)s", *_proxy_args(proxy), tab_url]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120, check=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=180, check=True)
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-        raise IngestError(f"yt-dlp channel listing failed: {exc}") from exc
+        raise IngestError(f"yt-dlp channel listing failed for {tab_url}: {exc}") from exc
+    return result.stdout.strip().splitlines()
 
-    meetings: list[BoardMeeting] = []
-    for line in result.stdout.strip().splitlines():
-        vid, _, title = line.partition("|")
-        if not vid or not BOARD_MEETING_RE.search(title):
-            continue
-        meetings.append(
-            BoardMeeting(
+
+def list_board_meetings(channel: str = CHANNEL, *, proxy: str | None = None) -> list[BoardMeeting]:
+    """List the channel's board-meeting videos (newest first), with parsed dates.
+
+    Enumerates both the /streams (livestreamed meetings) and /videos tabs and
+    dedups by video id — board meetings are livestreams, so /videos alone misses
+    most of them.
+    """
+    seen: dict[str, BoardMeeting] = {}
+    for tab in CHANNEL_TABS:
+        for line in _list_channel_tab(f"{channel}/{tab}", proxy):
+            vid, _, title = line.partition("|")
+            if not vid or vid in seen or not BOARD_MEETING_RE.search(title):
+                continue
+            seen[vid] = BoardMeeting(
                 video_id=vid,
                 title=title,
                 meeting_date=parse_date_from_title(title) or "",
                 url=f"https://www.youtube.com/watch?v={vid}",
             )
-        )
-    meetings.sort(key=lambda m: m.meeting_date, reverse=True)
-    return meetings
+    return sorted(seen.values(), key=lambda m: m.meeting_date, reverse=True)
 
 
 def download_audio(
