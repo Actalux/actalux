@@ -34,9 +34,9 @@
         {% endfor %}
       </details>
       {% endif %}
-      <div style="margin-top: var(--s-3); font-family: var(--sans); font-size: 13px;">
-        {% if t.video_id %}<a href="https://www.youtube.com/watch?v={{ t.video_id | urlencode }}" target="_blank" rel="noopener" style="color: var(--accent);">Watch on YouTube</a> · {% endif %}
-        <a href="/document/{{ t.id }}" style="color: var(--accent);">Open full document →</a>
+      <div class="reader-actions">
+        {% if t.video_id %}<a class="btn btn-primary" href="https://www.youtube.com/watch?v={{ t.video_id | urlencode }}" target="_blank" rel="noopener">Watch on YouTube ↗</a>{% endif %}
+        <a class="btn" href="/document/{{ t.id }}">Open full document</a>
       </div>
     </section>
     {% endfor %}
@@ -55,8 +55,8 @@
         {% endfor %}
       </details>
       {% endif %}
-      <div style="margin-top: var(--s-3); font-family: var(--sans); font-size: 13px;">
-        <a href="/document/{{ mn.id }}" style="color: var(--accent);">Open full document →</a>
+      <div class="reader-actions">
+        <a class="btn" href="/document/{{ mn.id }}">Open full document</a>
       </div>
     </section>
     {% endfor %}

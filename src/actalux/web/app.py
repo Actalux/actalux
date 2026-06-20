@@ -131,11 +131,27 @@ def _warm_embedder() -> None:
         logger.warning("embedder warm-up failed; will load lazily on first use", exc_info=True)
 
 
+def _warm_db() -> None:
+    """Warm the Supabase connection so the first user query isn't cold.
+
+    After a deploy/restart the connection pool and PostgREST cache are cold, so
+    the first request pays connection + cache setup (seconds, especially on the
+    free tier — the "first query is much slower than the rest" symptom). A trivial
+    query at startup moves that cost off the first visitor. Best-effort.
+    """
+    try:
+        _get_db().table("entities").select("id").limit(1).execute()
+    except Exception:
+        logger.warning("db warm-up failed; first query will be cold", exc_info=True)
+
+
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
-    # Warm the embedder off the request path (daemon thread so startup/health
-    # checks aren't blocked by the ~8s load).
+    # Warm the embedder and the DB connection off the request path (daemon threads
+    # so startup/health checks aren't blocked). The embedder load is ~8s; the DB
+    # warm-up absorbs the cold-connection cost so the first visitor isn't slow.
     threading.Thread(target=_warm_embedder, name="embedder-warmup", daemon=True).start()
+    threading.Thread(target=_warm_db, name="db-warmup", daemon=True).start()
     yield
 
 
