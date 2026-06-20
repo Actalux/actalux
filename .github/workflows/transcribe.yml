@@ -53,6 +53,7 @@ jobs:
       ACTALUX_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
       ACTALUX_SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
       GROQ_ACTALUX_API_KEY: ${{ secrets.GROQ_ACTALUX_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}  # summary + chapter generation
     steps:
       - uses: actions/checkout@v4
 
@@ -116,6 +117,15 @@ jobs:
       - name: Set chunk timestamps from Whisper sidecars
         if: ${{ github.event_name == 'schedule' || inputs.ingest }}
         run: uv run python scripts/backfill_chunk_timestamps.py --sidecar-only
+
+      # Give each newly ingested transcript a summary and topic chapters. Both are
+      # idempotent (only docs missing them are processed), so a nightly run touches
+      # just the new meeting. Chapters need the start_seconds set in the step above.
+      - name: Generate transcript summaries + chapters
+        if: ${{ github.event_name == 'schedule' || inputs.ingest }}
+        run: |
+          uv run python scripts/backfill_doc_summaries.py
+          uv run python scripts/backfill_transcript_chapters.py
 
       - name: Upload transcripts (artifact)
         if: always()
