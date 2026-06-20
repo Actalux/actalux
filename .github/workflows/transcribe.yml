@@ -116,7 +116,7 @@ jobs:
       # start_seconds from the Whisper sidecars so the reader can cue the video.
       - name: Set chunk timestamps from Whisper sidecars
         if: ${{ github.event_name == 'schedule' || inputs.ingest }}
-        run: uv run python scripts/backfill_chunk_timestamps.py --sidecar-only
+        run: uv run python scripts/backfill_chunk_timestamps.py
 
       # Give each newly ingested transcript a summary and topic chapters. Both are
       # idempotent (only docs missing them are processed), so a nightly run touches
