@@ -123,6 +123,24 @@ def content_paragraphs(text: str) -> list[str]:
     return [_WHITESPACE_RE.sub(" ", b).strip() for b in blocks if b.strip()]
 
 
+def paragraphize_prose(text: str, sentences_per_para: int = 4) -> list[str]:
+    """Group unbroken prose into readable paragraphs by sentence count.
+
+    Whisper stores a transcript as one continuous block (segments joined with
+    spaces, no newlines), so ``content_paragraphs``/``reflow_transcript`` — which
+    split on blank lines — would return a single wall of text. This groups the
+    sentences into paragraphs of roughly ``sentences_per_para`` so a full
+    transcript reads as prose. Mechanical and verbatim-safe: sentences are
+    re-joined with single spaces and only the paragraph grouping is added (no word
+    change, no dedup). Returns a list of paragraph strings; empty input yields [].
+    """
+    sentences = split_sentences(text)
+    if not sentences:
+        return []
+    step = max(1, sentences_per_para)
+    return [" ".join(sentences[i : i + step]) for i in range(0, len(sentences), step)]
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Transcript-specific presentation helpers (YouTube / auto-caption source only)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -130,8 +148,9 @@ def content_paragraphs(text: str) -> list[str]:
 # tokens, and timestamp-only lines.  Word content is NEVER changed so that
 # a displayed passage remains verbatim for citation purposes.
 
-#: Label shown above every reflowed auto-caption block.
-TRANSCRIPT_CAPTION_LABEL = "Auto-generated captions — may contain errors."
+#: Label shown above a displayed transcript block. Board-meeting transcripts are
+#: machine-generated (Whisper), so the text is accurate-but-imperfect — flag that.
+TRANSCRIPT_CAPTION_LABEL = "Machine-generated transcript — may contain errors."
 
 
 def strip_transcript_timestamps(text: str) -> str:

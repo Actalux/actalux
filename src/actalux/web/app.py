@@ -101,6 +101,7 @@ from actalux.web.text_snippets import (
     lead_sentence,
     marked_paragraphs,
     normalize_whitespace,
+    paragraphize_prose,
     reflow_transcript,
 )
 
@@ -265,6 +266,7 @@ templates.env.filters["cited_html"] = _marked_html
 templates.env.filters["marked_html"] = _marked_html
 templates.env.filters["clean_text"] = normalize_whitespace
 templates.env.filters["content_paragraphs"] = content_paragraphs
+templates.env.filters["paragraphize_prose"] = paragraphize_prose
 templates.env.filters["display_title"] = display_title
 templates.env.filters["source_label"] = source_label
 templates.env.filters["first_sentence"] = first_sentence

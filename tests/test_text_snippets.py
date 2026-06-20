@@ -11,6 +11,7 @@ from actalux.web.text_snippets import (
     lead_sentence,
     mark_terms,
     marked_paragraphs,
+    paragraphize_prose,
     reflow_transcript,
     split_for_highlight,
     split_sentences,
@@ -284,9 +285,29 @@ class TestReflowTranscript:
         assert "operating budget" in joined
 
     def test_caption_label_constant_is_non_empty(self) -> None:
-        # The label constant is used in the template; verify it's non-empty.
+        # The label constant is used in the template; verify it's non-empty and
+        # accurately describes a machine transcript (not auto-captions).
         assert TRANSCRIPT_CAPTION_LABEL
-        assert "captions" in TRANSCRIPT_CAPTION_LABEL.lower()
+        assert "transcript" in TRANSCRIPT_CAPTION_LABEL.lower()
+
+
+class TestParagraphizeProse:
+    """Group unbroken transcript prose (Whisper: one block) into readable paragraphs."""
+
+    def test_groups_sentences_into_paragraphs(self) -> None:
+        text = "One. Two. Three. Four. Five. Six. Seven. Eight. Nine."
+        paras = paragraphize_prose(text, sentences_per_para=4)
+        assert paras == ["One. Two. Three. Four.", "Five. Six. Seven. Eight.", "Nine."]
+
+    def test_words_are_verbatim_and_complete(self) -> None:
+        # Reassembling the paragraphs must recover every word, in order.
+        text = "The board met. A motion carried. Public comment followed. Adjourned."
+        paras = paragraphize_prose(text, sentences_per_para=2)
+        assert " ".join(paras).split() == text.split()
+
+    def test_empty_input_yields_empty_list(self) -> None:
+        assert paragraphize_prose("") == []
+        assert paragraphize_prose("   ") == []
 
 
 class TestCleanTextLight:

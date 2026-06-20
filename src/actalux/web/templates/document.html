@@ -89,6 +89,20 @@
       <div class="block-label">Board meeting video</div>
       {% include "partials/_video_embed.html" %}
     </section>
+    {# The video is the original; the full transcript sits below it behind a
+       disclosure (DESIGN.md: lead with the original, tuck the text away). Whisper
+       stores the transcript as one block, so paragraphize_prose groups it into
+       readable paragraphs — verbatim words, grouping only. #}
+    {% set _transcript_paras = document.content | paragraphize_prose %}
+    {% if _transcript_paras %}
+    <details class="cited-disclosure" style="margin-bottom: var(--s-5);">
+      <summary class="block-label">Full transcript</summary>
+      <p class="caption-label" style="font-family: var(--font-ui, Geist, sans-serif); font-size: 12px; color: var(--muted); margin-bottom: var(--s-3);">{{ transcript_caption_label }}</p>
+      {% for para in _transcript_paras %}
+      <p class="doc-para">{{ para }}</p>
+      {% endfor %}
+    </details>
+    {% endif %}
     {% elif is_pdf %}
     <section class="original-block" style="margin-bottom: var(--s-5);">
       <div class="block-label">Original document</div>

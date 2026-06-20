@@ -946,12 +946,12 @@ class TestReaderPanePortalAware:
     @patch("actalux.web.app.get_entity", return_value=_FAKE_ENTITY)
     @patch("actalux.web.app.get_document", return_value=_FAKE_VIDEO_DOC)
     def test_transcript_chunk_has_caption_label(self, mock_doc, mock_ent, mock_db) -> None:
-        """YouTube transcript reader pane shows the auto-caption disclaimer."""
+        """YouTube transcript reader pane shows the machine-transcript disclaimer."""
         mock_ctx = {"chunk": self._TRANSCRIPT_CHUNK, "context": [self._TRANSCRIPT_CHUNK]}
         with patch("actalux.web.app.get_chunk_with_context", return_value=mock_ctx):
             r = client.get("/chunk/7777/source?embed=1")
         assert r.status_code == 200
-        assert "Auto-generated captions" in r.text
+        assert "Machine-generated transcript" in r.text
 
     @patch("actalux.web.app._get_db")
     @patch("actalux.web.app.get_entity", return_value=_FAKE_ENTITY)
@@ -982,12 +982,12 @@ class TestReaderPanePortalAware:
     @patch("actalux.web.app.get_entity", return_value=_FAKE_ENTITY)
     @patch("actalux.web.app.get_document", return_value=_FAKE_DOC)
     def test_non_transcript_no_caption_label(self, mock_doc, mock_ent, mock_db) -> None:
-        """Non-transcript reader pane does not show the auto-caption label."""
+        """Non-transcript reader pane does not show the machine-transcript label."""
         mock_ctx = {"chunk": _FAKE_CHUNK, "context": [_FAKE_CHUNK]}
         with patch("actalux.web.app.get_chunk_with_context", return_value=mock_ctx):
             r = client.get("/chunk/9001/source?embed=1")
         assert r.status_code == 200
-        assert "Auto-generated captions" not in r.text
+        assert "Machine-generated transcript" not in r.text
 
     @patch("actalux.web.app._get_db")
     @patch("actalux.web.app.get_entity", return_value=_FAKE_ENTITY)
