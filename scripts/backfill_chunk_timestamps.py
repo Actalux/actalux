@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
-"""One-off: backfill chunks.start_seconds for YouTube board-meeting docs.
+"""Backfill chunks.start_seconds for YouTube board-meeting docs.
 
-For each doc that has a video_id, fetch the video's timed auto-captions (yt-dlp,
-already a dependency of crawl_youtube.py) and align each transcript chunk to a
-time offset, so the reader pane can cue the player to the cited moment.
+For each doc with a video_id, align each transcript chunk to a time offset so the
+reader pane can cue the player to the cited moment, from one of two sources:
 
-The stored transcript and YouTube's captions are the same meeting from slightly
-different ASR passes, so alignment is fuzzy: for each chunk we search the timed
-caption text for a short word-window probe taken from inside the chunk (several
-positions, first exact hit wins) and read off that segment's start time. Chunks
-that don't align keep start_seconds = NULL and play from 0:00. Measured ~91%
-coverage with correctly-ordered timestamps.
+* Whisper sidecar (preferred): a ``<stem>.segments.json`` written by
+  ``transcribe_meetings.py`` next to the transcript. The stored transcript IS this
+  Whisper text, so the alignment is exact (near-100% coverage).
+* YouTube auto-captions (fallback, legacy): for caption-era transcripts with no
+  sidecar. The transcript and captions are the same meeting from slightly
+  different ASR passes, so alignment is fuzzy (~91% coverage).
+
+Either way each chunk is matched by a short word-window probe (several positions,
+first exact hit wins) read off the timed text. Chunks that don't align keep
+start_seconds = NULL and play from 0:00.
 
 Usage:
     doppler run --project mac --config dev -- \
@@ -38,6 +41,7 @@ logger = logging.getLogger(__name__)
 PROBE_WORDS = 12  # length of the word-window matched against the captions
 PROBE_FRACTIONS = (0.4, 0.2, 0.6, 0.1, 0.8)  # where in the chunk to take a probe
 MIN_CHUNK_WORDS = 8  # chunks shorter than this have no reliable probe
+SEGMENTS_DIR = Path("data/documents")  # where transcribe_meetings writes the sidecars
 
 
 def _norm(text: str) -> str:
@@ -77,6 +81,28 @@ def build_timed_index(events: list[dict]) -> tuple[str, list[int]]:
     return "".join(parts), char_ms
 
 
+def load_segment_sidecar(source_file: str) -> list[dict] | None:
+    """Load a Whisper ``<stem>.segments.json`` sidecar for a transcript, if present."""
+    if not source_file:
+        return None
+    sidecar = SEGMENTS_DIR / f"{Path(source_file).stem}.segments.json"
+    return json.loads(sidecar.read_text()) if sidecar.exists() else None
+
+
+def build_timed_index_from_segments(segments: list[dict]) -> tuple[str, list[int]]:
+    """Timed index from Whisper segments (exact: the transcript IS this text)."""
+    parts: list[str] = []
+    char_ms: list[int] = []
+    for s in segments:
+        nt = _norm(s.get("text", ""))
+        if not nt:
+            continue
+        nt += " "
+        parts.append(nt)
+        char_ms.extend([int(float(s.get("start", 0)) * 1000)] * len(nt))
+    return "".join(parts), char_ms
+
+
 def align_chunk(content: str, timed_text: str, char_ms: list[int]) -> int | None:
     """Find the chunk in the caption text via a word-window probe; return start sec."""
     words = _norm(content).split()
@@ -92,26 +118,46 @@ def align_chunk(content: str, timed_text: str, char_ms: list[int]) -> int | None
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Backfill chunks.start_seconds from captions.")
+    parser = argparse.ArgumentParser(description="Backfill chunks.start_seconds for transcripts.")
     parser.add_argument("--dry-run", action="store_true", help="report coverage; write nothing")
+    parser.add_argument(
+        "--sidecar-only",
+        action="store_true",
+        help="only docs with a Whisper sidecar present (no caption fallback) -- for CI runs",
+    )
     args = parser.parse_args()
 
     config = load_config()
     client = get_client(config.supabase_url, config.supabase_service_key)  # writer
     docs = [
         d
-        for d in client.table("documents").select("id, source_portal, video_id").execute().data
-        if d.get("source_portal") == "youtube" and d.get("video_id")
+        for d in client.table("documents")
+        .select("id, source_portal, video_id, source_file")
+        .execute()
+        .data
+        if d.get("source_portal") == "youtube"
     ]
-    logger.info("video docs to process: %d", len(docs))
+    logger.info("youtube docs to process: %d", len(docs))
 
     total_aligned = total_chunks = 0
     for d in docs:
-        events = fetch_caption_events(d["video_id"])
-        if not events:
-            logger.warning("doc %s (%s): no captions available -- skipped", d["id"], d["video_id"])
+        # Prefer the exact Whisper sidecar; fall back to fuzzy captions (legacy).
+        segments = load_segment_sidecar(d.get("source_file", ""))
+        if segments is not None:
+            timed_text, char_ms = build_timed_index_from_segments(segments)
+            source = "sidecar"
+        elif args.sidecar_only:
+            continue  # CI: only align the freshly-transcribed docs (sidecar present)
+        elif d.get("video_id"):
+            events = fetch_caption_events(d["video_id"])
+            if not events:
+                logger.warning("doc %s: no sidecar, captions unavailable -- skipped", d["id"])
+                continue
+            timed_text, char_ms = build_timed_index(events)
+            source = "captions"
+        else:
+            logger.warning("doc %s: no sidecar and no video_id -- skipped", d["id"])
             continue
-        timed_text, char_ms = build_timed_index(events)
         chunks = (
             client.table("chunks")
             .select("id, content, start_seconds")
@@ -131,9 +177,7 @@ def main() -> None:
         total_aligned += aligned
         total_chunks += len(chunks)
         pct = (100 * aligned // len(chunks)) if chunks else 0
-        logger.info(
-            "doc %s (%s): aligned %d/%d (%d%%)", d["id"], d["video_id"], aligned, len(chunks), pct
-        )
+        logger.info("doc %s [%s]: aligned %d/%d (%d%%)", d["id"], source, aligned, len(chunks), pct)
 
     verb = "would set" if args.dry_run else "set"
     logger.info(

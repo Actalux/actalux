@@ -111,6 +111,12 @@ jobs:
             echo "::warning::no transcripts produced; nothing to ingest"
           fi
 
+      # video_id is set at ingest (from the manifest); this sets each chunk's
+      # start_seconds from the Whisper sidecars so the reader can cue the video.
+      - name: Set chunk timestamps from Whisper sidecars
+        if: ${{ github.event_name == 'schedule' || inputs.ingest == 'true' }}
+        run: uv run python scripts/backfill_chunk_timestamps.py --sidecar-only
+
       - name: Upload transcripts (artifact)
         if: always()
         uses: actions/upload-artifact@v4

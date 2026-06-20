@@ -366,6 +366,7 @@ def _ingest_with_dedup(
     document_type: str = "",
     entity_id: int | None = None,
     date_source: str = "unknown",
+    video_id: str = "",
 ) -> dict[str, Any]:
     """Parse a file, check for an existing document, then ingest.
 
@@ -432,6 +433,7 @@ def _ingest_with_dedup(
             document_type=document_type,
             entity_id=entity_id,
             date_source=date_source,
+            video_id=video_id,
         )
         # Mark old document as replaced by the new one
         new_id = result["doc_id"]
@@ -455,6 +457,7 @@ def _ingest_with_dedup(
         document_type=document_type,
         entity_id=entity_id,
         date_source=date_source,
+        video_id=video_id,
     )
     logger.info("  OK %s: %d chunks ingested", path.name, result["chunks"])
     return {"status": "new", "chunks": result["chunks"]}
@@ -475,6 +478,7 @@ def ingest_single_file(
     version: int = 1,
     entity_id: int | None = None,
     date_source: str = "unknown",
+    video_id: str = "",
 ) -> dict[str, int]:
     """Parse, chunk, embed, validate, and store a single document.
 
@@ -509,6 +513,7 @@ def ingest_single_file(
         entity_id=entity_id,
         version=version,
         date_source=date_source,
+        video_id=video_id,
     )
     doc_id = insert_document(client, doc)
 
@@ -596,10 +601,11 @@ def ingest_from_manifest(manifest_path: Path, entity_path: str = DEFAULT_ENTITY_
     """Ingest documents listed in a crawler manifest JSON file.
 
     Each entry has: source_file, source_url, source_portal, and optionally
-    meeting_date, meeting_title, and document_type. ``document_type`` overrides
-    the filename classifier -- needed for sources whose type cannot be read from
-    the filename (a sunshine-obtained invoice/check/contract has no type keyword
-    in its name). The file is expected to exist in data/documents/.
+    meeting_date, meeting_title, document_type, and video_id. ``document_type``
+    overrides the filename classifier -- needed for sources whose type cannot be
+    read from the filename (a sunshine-obtained invoice/check/contract has no type
+    keyword in its name). ``video_id`` sets the YouTube embed at ingest time (used
+    by the transcription manifest). The file is expected to exist in data/documents/.
     """
     import json
 
@@ -649,6 +655,7 @@ def ingest_from_manifest(manifest_path: Path, entity_path: str = DEFAULT_ENTITY_
                 document_type=entry.get("document_type", ""),
                 entity_id=entity_id,
                 date_source=manifest_date_source,
+                video_id=entry.get("video_id", ""),
             )
             if result["status"] == "new":
                 total_new += 1
