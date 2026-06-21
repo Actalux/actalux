@@ -2,9 +2,6 @@
 {% block title %}Meetings{% endblock %}
 {% block content %}
 
-{% set is_school = entity and entity.type == 'school_district' %}
-{% set meeting_kind = 'Board of Education' if is_school else 'City Council' %}
-
 <section class="pane-header">
   <h2>Topic</h2>
   <span class="meta">Meetings</span>

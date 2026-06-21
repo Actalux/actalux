@@ -54,7 +54,28 @@ COUNCIL = TranscriptionBody(
     ),
 )
 
-BODIES: dict[str, TranscriptionBody] = {"schools": SCHOOLS, "council": COUNCIL}
+PLAN_COMMISSION = TranscriptionBody(
+    entity_path="mo/clayton/plan-commission",
+    channel="https://www.youtube.com/@CityofClayton",
+    # Plan Commission + Architectural Review Board (one body). Titles vary a lot:
+    # "PC/ARB", "PC-ARB", "Plan Commission", older "Planning Commission", and a real
+    # misspelling "Plan Commision". Joint "Board of Aldermen & Plan Commission"
+    # meetings also match the council filter and are owned by council.
+    title_filter=re.compile(
+        r"pc[\s/-]*arb|plan(?:ning)?\s+comm|architectural review", re.IGNORECASE
+    ),
+    transcribe_prompt=(
+        "City of Clayton, Missouri Plan Commission and Architectural Review Board meeting. "
+        "Plan Commission, Architectural Review Board, rezoning, variance, site plan, "
+        "setback, overlay district, agenda, motion carried."
+    ),
+)
+
+BODIES: dict[str, TranscriptionBody] = {
+    "schools": SCHOOLS,
+    "council": COUNCIL,
+    "plan-commission": PLAN_COMMISSION,
+}
 
 
 def get_body(key: str) -> TranscriptionBody:

@@ -9,7 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from actalux.errors import IngestError
-from actalux.ingest.bodies import COUNCIL
+from actalux.ingest.bodies import COUNCIL, PLAN_COMMISSION
 from actalux.ingest.youtube import (
     BoardMeeting,
     download_audio,
@@ -84,9 +84,7 @@ class TestListBoardMeetings:
         def fake_run(cmd, **kw):
             if cmd[-1].endswith("/streams"):
                 raise subprocess.CalledProcessError(1, cmd, stderr="tab not available")
-            return SimpleNamespace(
-                stdout="v1|06-09-2026 City Council Meeting\n", returncode=0
-            )
+            return SimpleNamespace(stdout="v1|06-09-2026 City Council Meeting\n", returncode=0)
 
         with patch("actalux.ingest.youtube.subprocess.run", side_effect=fake_run):
             meetings = list_board_meetings(title_filter=COUNCIL.title_filter)
@@ -116,6 +114,23 @@ class TestListBoardMeetings:
             run.return_value = SimpleNamespace(stdout=stdout, returncode=0)
             meetings = list_board_meetings(title_filter=COUNCIL.title_filter)
         assert {m.video_id for m in meetings} == {"c1", "c2", "c3", "c4"}
+
+    def test_plan_commission_filter_handles_naming_variants(self) -> None:
+        # PC/ARB titles vary: "PC/ARB", "PC-ARB", "Plan Commission", older
+        # "Planning Commission", and a real typo "Plan Commision". Council and
+        # Board of Adjustment must NOT be swept in.
+        stdout = (
+            "p1|06-15-2026 PC/ARB Meeting\n"
+            "p2|PC-ARB 06/01/2026\n"
+            "p3|03-04-2024 Plan Commision/ARB Meeting\n"  # typo "Commision"
+            "p4|December 19, 2016 Planning Commission/ARB Meeting\n"  # older naming
+            "c1|06-09-2026 City Council Meeting\n"  # council -> dropped
+            "b1|06-04-2026 Board of Adjustment\n"  # different body -> dropped
+        )
+        with patch("actalux.ingest.youtube.subprocess.run") as run:
+            run.return_value = SimpleNamespace(stdout=stdout, returncode=0)
+            meetings = list_board_meetings(title_filter=PLAN_COMMISSION.title_filter)
+        assert {m.video_id for m in meetings} == {"p1", "p2", "p3", "p4"}
 
 
 class TestDownloadAudioRetry:

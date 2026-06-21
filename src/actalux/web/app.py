@@ -248,6 +248,7 @@ def _page(ev: EntityView | None, **extra: Any) -> dict[str, Any]:
             "entity_tag": "",
             "nav": _sidebar_nav(None),
             "switcher": [],
+            "meeting_kind": _meeting_kind(None),
             **extra,
         }
     return {
@@ -256,6 +257,7 @@ def _page(ev: EntityView | None, **extra: Any) -> dict[str, Any]:
         "entity_tag": ev.tag,
         "nav": _sidebar_nav(ev.entity),
         "switcher": _switcher(ev.entity),
+        "meeting_kind": _meeting_kind(ev.entity),
         **extra,
     }
 
@@ -559,18 +561,39 @@ _COUNCIL_NAV = SidebarNav(
     documents=(),
 )
 
+# Plan Commission / ARB (land use) — likewise transcripts-only for now.
+_PLAN_COMMISSION_NAV = SidebarNav(
+    topics=(NavLink("Commission Meetings", "/meetings", "topic-meetings"),),
+    documents=(),
+)
+
 _NAV_BY_TYPE: dict[str, SidebarNav] = {
     "school_district": _SCHOOL_NAV,
     "city_council": _COUNCIL_NAV,
+    "plan_commission": _PLAN_COMMISSION_NAV,
+}
+
+# Per-body label for the governing body of a meeting (the "kind" badge on cards).
+_MEETING_KIND = {
+    "school_district": "Board of Education",
+    "city_council": "City Council",
+    "plan_commission": "Plan Commission / ARB",
 }
 
 # Per-body-type copy for the place directory landing cards.
-_BODY_KIND = {"school_district": "School board", "city_council": "City government"}
+_BODY_KIND = {
+    "school_district": "School board",
+    "city_council": "City government",
+    "plan_commission": "Land use & zoning",
+}
 _BODY_BLURB = {
     "school_district": (
         "Board of Education meetings, minutes, budgets, curriculum, and Sunshine-Law records."
     ),
     "city_council": "City Council meeting videos and searchable transcripts.",
+    "plan_commission": (
+        "Plan Commission & Architectural Review Board meeting videos and searchable transcripts."
+    ),
 }
 
 
@@ -579,6 +602,13 @@ def _sidebar_nav(entity: dict[str, Any] | None) -> SidebarNav:
     if not entity:
         return SidebarNav(topics=(), documents=())
     return _NAV_BY_TYPE.get(entity.get("type", ""), _SCHOOL_NAV)
+
+
+def _meeting_kind(entity: dict[str, Any] | None) -> str:
+    """Governing-body label for a meeting (falls back to the body's display name)."""
+    if not entity:
+        return "Meeting"
+    return _MEETING_KIND.get(entity.get("type", "")) or entity.get("display_name") or "Meeting"
 
 
 def _switcher(entity: dict[str, Any]) -> list[dict[str, Any]]:
