@@ -4,11 +4,23 @@ Citation-first searchable archive of Clayton, MO school district public records.
 
 ## Content policy
 
+Universal (all bodies):
 - Every AI-generated statement must cite a verbatim source quote
-- Board and administration policy only — no individual personnel, teachers, or students
-- Closed session content is never published
-- Actalux is nonpartisan — no mention of PropO bond campaign, MEC complaints, or advocacy content
+- Closed/executive session content is never published
+- Nonpartisan — no advocacy, campaign, or complaint framing; never adjudicate
+  baseline-dependent claims (e.g. tax/levy "increase vs no increase")
 - No editorializing, no opinions, no inferred intent
+- The ingest-time PII guard (SSN/DOB and similar) blocks records pre-DB
+  regardless of body — "as published" never means publishing an SSN
+
+School district (mo/clayton/schools):
+- Board and administration policy only — no individual personnel, teachers,
+  or students (protects minors and employees)
+
+City government (mo/clayton/council, mo/clayton/plan-commission, …):
+- The full public record as the body published it — public officials, land-use
+  applicants, the subject property, and hearing participants appear as they do
+  in the official minutes; no redaction beyond the universal PII guard
 
 ## Tech stack
 
