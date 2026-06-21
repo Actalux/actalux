@@ -1,0 +1,62 @@
+name: civicplus-probe
+
+# One-off diagnostic: can a GitHub Actions runner (datacenter IP) clear Clayton's
+# Akamai bot protection with real Chrome? Real Chrome + masking works from a
+# residential IP; this checks whether the same holds from CI before we build the
+# minutes/agenda crawler on it. Dispatch-only; safe to delete once answered.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up uv + Python 3.11
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+      - name: Runner egress IP / ASN
+        run: |
+          IP=$(curl -s https://api.ipify.org); echo "runner IP: $IP"
+          curl -s "https://ipinfo.io/$IP/org" || true; echo
+      - name: Install Playwright + real Chrome
+        run: uv run --with playwright python -m playwright install --with-deps chrome
+      - name: Probe Akamai (real Chrome, datacenter IP, no proxy)
+        run: |
+          uv run --with playwright python - <<'PY'
+          from playwright.sync_api import sync_playwright
+          UA=("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+              "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
+          STEALTH="Object.defineProperty(navigator,'webdriver',{get:()=>undefined});window.chrome={runtime:{}};"
+          targets={
+            "archive":"https://www.claytonmo.gov/government/boards-and-commissions/meeting-archive",
+            "meeting":"https://www.claytonmo.gov/Home/Components/MeetingsManager/MeetingAgenda/2245/285",
+          }
+          with sync_playwright() as p:
+              b=p.chromium.launch(headless=True, channel="chrome",
+                  args=["--disable-blink-features=AutomationControlled","--no-sandbox"])
+              ctx=b.new_context(user_agent=UA, locale="en-US", viewport={"width":1366,"height":900})
+              ctx.add_init_script(STEALTH)
+              pg=ctx.new_page()
+              for n,u in targets.items():
+                  try:
+                      r=pg.goto(u, wait_until="domcontentloaded", timeout=60000); pg.wait_for_timeout(4000)
+                      h=pg.content()
+                      print(f"[{n}] status={r.status if r else '?'} len={len(h)} denied={'Access Denied' in h} title={pg.title()[:60]!r}")
+                  except Exception as e:
+                      print(f"[{n}] ERROR {type(e).__name__}: {e}")
+              try:
+                  r=pg.goto("https://www.claytonmo.gov/Home/Components/MeetingsManager/MeetingMinutes/ShowPrimaryDocument/?minutesID=3060&isPub=True",
+                            wait_until="domcontentloaded", timeout=60000)
+                  bb=r.body()
+                  print(f"[pdf] status={r.status} type={r.headers.get('content-type')} bytes={len(bb)} pdf={bb[:5]==b'%PDF-'}")
+              except Exception as e:
+                  print(f"[pdf] ERROR {type(e).__name__}: {e}")
+              b.close()
+          PY
