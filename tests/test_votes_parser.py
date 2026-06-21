@@ -55,6 +55,66 @@ class TestLayoutA:
         assert len(details["members"]) == 4
 
 
+class TestPageBreakMotion:
+    """A motion split across a PDF page break — blank lines and a 'Page N of M'
+    footer fall between its two halves — is still recovered whole, and anchors to
+    the chunk that verbatim-contains it (footer and all)."""
+
+    TEXT = (
+        "8.5\n"
+        "Bid Award: Security Camera System Replacements\n"
+        "District administration is authorized to negotiate a contract with\n"
+        "Warner Communications for a sum not to exceed\n"
+        "\n"
+        "\n"
+        "Page 5 of 7\n"
+        "$875,000 (proposal cost plus contingency).\n"
+        "Moved by: Ms. Chris Win\n"
+        "Seconded by: Mr. Jason Growe\n"
+        "Aye\n"
+        "Ms. Stacy Siwak, Ms. Kim Hurst, Ms. Chris Win, Mr. Jason Growe, "
+        "Dr Pamela Lyss-Lerman, and Mr. Ben Beinfeld\n"
+        "Motion Carries 6-0\n"
+    )
+
+    def test_recovers_full_motion_across_break(self) -> None:
+        v = _one(self.TEXT)
+        assert v.result == "passed"
+        assert v.result_basis == "stated"
+        assert (v.vote_count_yes, v.vote_count_no, v.vote_count_abstain) == (6, 0, 0)
+        assert "for a sum not to exceed" in v.motion  # the pre-break half
+        assert "$875,000 (proposal cost plus contingency)." in v.motion  # the post-break half
+        assert "Page 5 of 7" not in v.motion  # footer excluded from the motion
+
+    def test_anchors_past_inline_footer(self) -> None:
+        v = _one(self.TEXT)
+        chunk = {
+            "id": 8094,
+            "citation_id": "d3fe9da2",
+            "content": (
+                "8.5 Bid Award: Security Camera System Replacements District "
+                "administration is authorized to negotiate a contract with Warner "
+                "Communications for a sum not to exceed Page 5 of 7 $875,000 "
+                "(proposal cost plus contingency). Moved by: Ms. Chris Win"
+            ),
+        }
+        assert find_citing_chunk(v.anchors, [chunk]) is chunk
+
+    def test_plain_blank_gap_still_separates_blocks(self) -> None:
+        # A blank gap with NO footer must not be crossed: the bare "$875,000..."
+        # fragment above it is not a motion, so the second block is skipped.
+        text = (
+            "Approve item A.\n"
+            "Moved by: Ms. Chris Win\n"
+            "Motion Carries 6-0\n"
+            "\n"
+            "$875,000 (proposal cost plus contingency).\n"
+            "Moved by: Ms. Chris Win\n"
+            "Motion Carries 6-0\n"
+        )
+        assert [v.motion for v in parse_votes(text)] == ["Approve item A."]
+
+
 class TestLayoutB:
     """'Aye' header + name list + 'Motion Carries N-N' explicit total."""
 

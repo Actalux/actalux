@@ -119,6 +119,10 @@ _VOTE_HEADER_RE = re.compile(
 # A page footer ("Page 1 of 2") — noise the PDF interleaves into a block; skipped
 # when collecting a motion so it neither breaks the run nor lands in the text.
 _PAGE_FOOTER_RE = re.compile(r"^Page\s+\d+\s+of\s+\d+\s*$", re.IGNORECASE)
+# The same footer matched anywhere inline, for normalizing it out before an anchor
+# match: a motion collected across a page break has no footer, but the chunk that
+# verbatim-contains it does, so it must be stripped from both sides to compare.
+_PAGE_FOOTER_INLINE_RE = re.compile(r"\s*Page\s+\d+\s+of\s+\d+\s*", re.IGNORECASE)
 # "All aye" / "The votes were all aye" — a unanimous result with no counted roll
 # call. The result is determinable (passed) but the tally is not.
 _UNANIMOUS_AYE_RE = re.compile(r"(?i)^(?:the votes were )?all ayes?\.?$")
@@ -330,11 +334,24 @@ def _find_motion(stripped: list[str], moved_idx: int) -> tuple[int, str] | None:
     while i >= 0 and (not stripped[i] or _PAGE_FOOTER_RE.match(stripped[i])):
         i -= 1  # skip the blank gap (and any footer) directly above the moved-by
     lo = max(0, moved_idx - _MOTION_LOOKUP)
-    while i >= lo and stripped[i] and not _is_boundary(stripped[i]):
+    while i >= lo and not _is_boundary(stripped[i]):
         if _MOVED_BY_RE.match(stripped[i]) or _SECONDED_RE.match(stripped[i]):
             break
-        if not _PAGE_FOOTER_RE.match(stripped[i]):
-            run.append((i, stripped[i]))
+        if not stripped[i] or _PAGE_FOOTER_RE.match(stripped[i]):
+            # A contiguous blank/footer gap. Cross it only when it carries a page
+            # footer (the PDF split one motion across a page break, e.g. "...for a
+            # sum not to exceed" | Page 5 of 7 | "$875,000..."); a gap of plain
+            # blank lines separates blocks, so stop there.
+            j = i
+            saw_footer = False
+            while j >= lo and (not stripped[j] or _PAGE_FOOTER_RE.match(stripped[j])):
+                saw_footer = saw_footer or bool(_PAGE_FOOTER_RE.match(stripped[j]))
+                j -= 1
+            if not saw_footer:
+                break
+            i = j
+            continue
+        run.append((i, stripped[i]))
         i -= 1
     run.reverse()  # top-to-bottom
     while run and _looks_like_title(run[0][1]):
@@ -525,9 +542,9 @@ def find_citing_chunk(anchors: tuple[str, ...], chunks: list[dict]) -> dict | No
     none match (the caller then skips the vote rather than cite a passage that does
     not carry it).
     """
-    normalized = [(c, _norm(c.get("content", ""))) for c in chunks]
+    normalized = [(c, _norm(_PAGE_FOOTER_INLINE_RE.sub(" ", c.get("content", "")))) for c in chunks]
     for anchor in anchors:
-        na = _norm(anchor)
+        na = _norm(_PAGE_FOOTER_INLINE_RE.sub(" ", anchor))
         if not na:
             continue
         for chunk, content in normalized:
