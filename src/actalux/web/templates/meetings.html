@@ -1,17 +1,20 @@
 {% extends "base.html" %}
-{% block title %}Board Meetings{% endblock %}
+{% block title %}Meetings{% endblock %}
 {% block content %}
+
+{% set is_school = entity and entity.type == 'school_district' %}
+{% set meeting_kind = 'Board of Education' if is_school else 'City Council' %}
 
 <section class="pane-header">
   <h2>Topic</h2>
-  <span class="meta">Board Meetings</span>
+  <span class="meta">Meetings</span>
 </section>
 
 <div class="topic-head">
-  <span class="kicker">Topic · Board Meetings</span>
-  <h1>{{ entity.display_name if entity else 'District' }} board meetings.</h1>
+  <span class="kicker">Topic · Meetings</span>
+  <h1>{{ entity.display_name if entity else 'Public' }} meetings.</h1>
   <p class="lede">
-    The board meetings we have gathered, newest first. Each meeting opens to its
+    The meetings we have gathered, newest first. Each meeting opens to its
     video and transcript and its minutes. We do not claim the record is complete.
   </p>
 </div>
@@ -31,7 +34,7 @@
     <div class="card-head">
       <h3 class="doc-title">{{ m.date | meeting_date_long }}</h3>
       <div class="card-meta">
-        <span class="kind">Board of Education</span>
+        <span class="kind">{{ meeting_kind }}</span>
         {% if m.has_minutes %}<span class="badge">Minutes</span>{% endif %}
         {% if m.has_transcript %}<span class="badge{% if m.has_video %} badge-accent{% endif %}">{{ 'Video & transcript' if m.has_video else 'Transcript' }}</span>{% endif %}
       </div>
@@ -45,7 +48,7 @@
   </a>
   {% endfor %}
   {% else %}
-  <p class="lede">No board meetings in the record yet. Try the <a href="{{ base }}/search">search</a>.</p>
+  <p class="lede">No meetings in the record yet. Try the <a href="{{ base }}/search">search</a>.</p>
   {% endif %}
 </div>
 

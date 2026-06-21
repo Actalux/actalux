@@ -20,6 +20,14 @@ _FAKE_ENTITY = {
     "place": {"state": "mo", "slug": "clayton", "display_name": "Clayton"},
 }
 
+_FAKE_COUNCIL = {
+    "id": 2,
+    "body_slug": "council",
+    "type": "city_council",
+    "display_name": "Clayton City Council",
+    "place": {"state": "mo", "slug": "clayton", "display_name": "Clayton"},
+}
+
 
 class TestCanonicalHostRedirect:
     """www.actalux.org redirects to the apex; other hosts pass through."""
@@ -108,10 +116,10 @@ class TestSearchEndpoint:
 class TestJurisdictionRouting:
     """Entity-scoped routing, redirects from legacy flat paths, and 404s."""
 
-    def test_apex_redirects_to_default_body(self) -> None:
+    def test_apex_redirects_to_place_landing(self) -> None:
         r = client.get("/", follow_redirects=False)
         assert r.status_code == 307
-        assert r.headers["location"] == "/mo/clayton/schools"
+        assert r.headers["location"] == "/mo/clayton"
 
     def test_legacy_search_redirects_preserving_query(self) -> None:
         r = client.get("/search?q=board+meeting", follow_redirects=False)
@@ -166,10 +174,27 @@ class TestJurisdictionRouting:
 
     @patch("actalux.web.app._get_db")
     @patch("actalux.web.app.list_entities", return_value=[_FAKE_ENTITY])
-    def test_place_hub_redirects_to_body(self, mock_list, mock_db) -> None:
-        r = client.get("/mo/clayton", follow_redirects=False)
-        assert r.status_code == 307
-        assert r.headers["location"] == "/mo/clayton/schools"
+    def test_place_hub_renders_directory(self, mock_list, mock_db) -> None:
+        r = client.get("/mo/clayton")
+        assert r.status_code == 200
+        assert "Clayton School District" in r.text  # body listed as a card
+        assert "/mo/clayton/schools" in r.text  # card links to the body
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.list_entities", return_value=[_FAKE_ENTITY, _FAKE_COUNCIL])
+    @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_COUNCIL)
+    def test_city_body_nav_is_entity_aware(self, mock_ent, mock_list, mock_db) -> None:
+        r = client.get("/mo/clayton/council")
+        assert r.status_code == 200
+        assert "Clayton City Council" in r.text
+        assert "Council Meetings" in r.text
+        # school-only nav must not leak onto a city body
+        assert "Curriculum maps" not in r.text
+        assert "Facilities Master Plan" not in r.text
+        # the jurisdiction switcher lists both bodies (place name dropped from labels)
+        assert "Jurisdiction" in r.text
+        assert ">City Council<" in r.text
+        assert ">School District<" in r.text
 
 
 _FAKE_DOC = {

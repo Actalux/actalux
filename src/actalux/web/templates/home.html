@@ -4,9 +4,10 @@
 
 <section class="pane-header">
   <h2>Home</h2>
-  <span class="meta">{{ entity.display_name if entity else 'Public records' }} · Board of Education</span>
+  <span class="meta">{{ entity.display_name if entity else 'Public records' }}</span>
 </section>
 
+{% if entity and entity.type == 'school_district' %}
 <div class="landing">
   <span class="tagline">What this is</span>
   <h1>Clayton school board meetings and public documents, made searchable — with every quote traceable to its source.</h1>
@@ -62,5 +63,35 @@
     </ul>
   </div>
 </div>
+{% else %}
+<div class="landing">
+  <span class="tagline">What this is</span>
+  <h1>{{ entity.display_name if entity else 'City' }} meetings and public records, made searchable — with every quote traceable to its source.</h1>
+  <p class="lede">
+    Actalux is a nonpartisan, independent archive of the public records of the {{ entity.display_name if entity else 'city' }} in Clayton, Missouri: meeting videos and searchable transcripts, and the records produced in session. Every passage on this site is a verbatim quote with its source citation attached. We add nothing to the record. We take nothing away. <a href="{{ base }}/methodology">Read how this works.</a>
+  </p>
+
+  <div class="recent">
+    <div class="recent-head">Start here</div>
+    <ul class="recent-list">
+      <li>
+        <span class="date">Browse</span>
+        <span class="type">Meetings</span>
+        <a class="title" href="{{ base }}/meetings">Council meetings, newest first</a>
+      </li>
+      <li>
+        <span class="date">Ask</span>
+        <span class="type">Beta</span>
+        <a class="title" href="{{ base }}/ask">Ask the archive a question</a>
+      </li>
+      <li>
+        <span class="date">Search</span>
+        <span class="type">Try it</span>
+        <a class="title" href="{{ base }}/search?q=public+hearing">public hearing</a>
+      </li>
+    </ul>
+  </div>
+</div>
+{% endif %}
 
 {% endblock %}

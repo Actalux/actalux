@@ -46,24 +46,36 @@
 <div class="shell">
 
   <aside class="sidebar" id="sidebar" aria-label="Browse the archive">
+    {% if switcher|length > 1 %}
+    <div class="nav-section">
+      <span class="nav-label">Jurisdiction</span>
+      {% for s in switcher %}
+      <a class="nav-item{% if s.current %} active{% endif %}" href="{{ s.base }}"><span>{{ s.label }}</span></a>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if nav.topics or nav.documents %}
     <div class="nav-section">
       <span class="nav-label">Browse</span>
 
-      {% set docs_active = active in ['browse-budgets', 'browse-curriculum-maps', 'browse-facilities-plan', 'browse-communications', 'browse-resolutions'] %}
-
+      {% if nav.topics %}
       <button class="nav-toggle" aria-expanded="true" data-target="sub-topics">
         <span class="left">
           <svg class="chev" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 4l3 3 3-3"/></svg>
           <span>Topics</span>
         </span>
-        <span class="count">3</span>
+        <span class="count">{{ nav.topics|length }}</span>
       </button>
       <div class="nav-sub" id="sub-topics">
-        <a class="nav-item{% if active == 'topic-meetings' %} active{% endif %}" href="{{ base }}/meetings"><span>Board Meetings</span></a>
-        <a class="nav-item{% if active == 'topic-budget' %} active{% endif %}" href="{{ base }}/budget"><span>Budget &amp; Spending</span></a>
-        <a class="nav-item{% if active == 'topic-facilities' %} active{% endif %}" href="{{ base }}/facilities-plan"><span>Facilities Master Plan</span></a>
+        {% for t in nav.topics %}
+        <a class="nav-item{% if active == t.active %} active{% endif %}" href="{{ base }}{{ t.suffix }}"><span>{{ t.label }}</span></a>
+        {% endfor %}
       </div>
+      {% endif %}
 
+      {% if nav.documents %}
+      {% set docs_active = active and active.startswith('browse-') %}
       <button class="nav-toggle" aria-expanded="{{ 'true' if docs_active else 'false' }}" data-target="sub-docs">
         <span class="left">
           <svg class="chev" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 4l3 3 3-3"/></svg>
@@ -71,13 +83,13 @@
         </span>
       </button>
       <div class="nav-sub{% if not docs_active %} collapsed{% endif %}" id="sub-docs">
-        <a class="nav-item{% if active == 'browse-budgets' %} active{% endif %}" href="{{ base }}/browse/budgets"><span>Budgets</span></a>
-        <a class="nav-item{% if active == 'browse-resolutions' %} active{% endif %}" href="{{ base }}/browse/resolutions"><span>Resolutions</span></a>
-        <a class="nav-item{% if active == 'browse-curriculum-maps' %} active{% endif %}" href="{{ base }}/browse/curriculum-maps"><span>Curriculum maps</span></a>
-        <a class="nav-item{% if active == 'browse-facilities-plan' %} active{% endif %}" href="{{ base }}/browse/facilities-plan"><span>Facilities plan</span></a>
-        <a class="nav-item{% if active == 'browse-communications' %} active{% endif %}" href="{{ base }}/browse/communications"><span>Communications</span></a>
+        {% for d in nav.documents %}
+        <a class="nav-item{% if active == d.active %} active{% endif %}" href="{{ base }}{{ d.suffix }}"><span>{{ d.label }}</span></a>
+        {% endfor %}
       </div>
+      {% endif %}
     </div>
+    {% endif %}
 
     <div class="nav-section">
       <span class="nav-label">Pages</span>

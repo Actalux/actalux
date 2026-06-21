@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Public records{% endblock %}
+{% block content %}
+
+<section class="pane-header">
+  <h2>{{ place_name }} public records</h2>
+  <span class="meta">{{ place_name }}, Missouri</span>
+</section>
+
+<div class="landing">
+  <span class="tagline">Choose a body</span>
+  <h1>{{ place_name }} public records, made searchable.</h1>
+  <p class="lede">
+    Independent, nonpartisan archives of {{ place_name }}'s public bodies — every
+    passage a verbatim quote with its source citation attached. We add nothing to
+    the record. We take nothing away.
+  </p>
+
+  <div class="topic-sections">
+    {% for b in bodies %}
+    <a class="result-card" href="{{ b.base }}">
+      <div class="card-head">
+        <h3 class="doc-title">{{ b.name }}</h3>
+        <div class="card-meta"><span class="kind">{{ b.kind }}</span></div>
+      </div>
+      {% if b.blurb %}
+      <div class="card-summary">
+        <span class="card-body">{{ b.blurb }}</span>
+      </div>
+      {% endif %}
+    </a>
+    {% endfor %}
+  </div>
+</div>
+
+{% endblock %}

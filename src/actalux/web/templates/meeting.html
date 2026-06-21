@@ -1,17 +1,20 @@
 {% extends "base.html" %}
-{% block title %}{{ meeting_date | meeting_date_long }} — Board Meeting{% endblock %}
+{% block title %}{{ meeting_date | meeting_date_long }} — {{ 'Board Meeting' if entity and entity.type == 'school_district' else 'Meeting' }}{% endblock %}
 {% block content %}
 
+{% set is_school = entity and entity.type == 'school_district' %}
+{% set meeting_kind = 'Board of Education' if is_school else 'City Council' %}
+
 <section class="pane-header">
-  <h2>Board Meeting</h2>
-  <span class="meta">{{ entity.display_name if entity else 'Board of Education' }}</span>
+  <h2>{{ 'Board Meeting' if is_school else 'Meeting' }}</h2>
+  <span class="meta">{{ entity.display_name if entity else 'Public meeting' }}</span>
 </section>
 
 <div style="padding: var(--s-6) var(--s-6) var(--s-8);">
   <article class="doc-page">
     <h1>{{ meeting_date | meeting_date_long }}</h1>
     <p style="font-family: var(--mono); font-size: 11px; color: var(--muted); margin-bottom: var(--s-5);">
-      Board of Education · <a href="{{ base }}/meetings" style="color: var(--accent);">All meetings</a>
+      {{ meeting_kind }} · <a href="{{ base }}/meetings" style="color: var(--accent);">All meetings</a>
     </p>
 
     {# Video & transcript — the meeting's highest-fidelity record. One section per

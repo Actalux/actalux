@@ -182,6 +182,7 @@ async def redirect_www_to_apex(request: Request, call_next: Any) -> Any:
 # to it (a directory landing arrives with the second body). See
 # docs/architecture/multi-tenancy.md.
 DEFAULT_ENTITY_PATH = "/mo/clayton/schools"
+DEFAULT_PLACE_PATH = "/mo/clayton"  # the directory landing the apex redirects to
 
 
 @dataclass(frozen=True)
@@ -232,16 +233,31 @@ def _pdf_available(doc: dict[str, Any] | None) -> bool:
 
 
 def _page(ev: EntityView | None, **extra: Any) -> dict[str, Any]:
-    """Template context with the entity chrome (entity, base, tag) merged in.
+    """Template context with the entity chrome (entity, base, tag, nav, switcher).
 
     Parameter is named ``ev`` (not ``view``) so callers can spread a breakdown
     context that carries its own ``view`` key without a keyword collision.
     base defaults to the canonical body so flat pages and the few entity-less
-    contexts still render valid links while there is one body.
+    contexts still render valid links. ``nav`` is the body-appropriate sidebar
+    and ``switcher`` the sibling bodies for the jurisdiction switch.
     """
     if ev is None:
-        return {"entity": None, "base": DEFAULT_ENTITY_PATH, "entity_tag": "", **extra}
-    return {"entity": ev.entity, "base": ev.base, "entity_tag": ev.tag, **extra}
+        return {
+            "entity": None,
+            "base": DEFAULT_ENTITY_PATH,
+            "entity_tag": "",
+            "nav": _sidebar_nav(None),
+            "switcher": [],
+            **extra,
+        }
+    return {
+        "entity": ev.entity,
+        "base": ev.base,
+        "entity_tag": ev.tag,
+        "nav": _sidebar_nav(ev.entity),
+        "switcher": _switcher(ev.entity),
+        **extra,
+    }
 
 
 def _match_snippet(content: str, query: str, width: int = 220) -> Markup:
@@ -388,8 +404,8 @@ def _redirect_to_default(suffix: str, request: Request) -> RedirectResponse:
 
 @app.get("/")
 async def apex() -> RedirectResponse:
-    """Apex -> the one body for now; becomes a directory landing in Phase C."""
-    return RedirectResponse(DEFAULT_ENTITY_PATH, status_code=307)
+    """Apex -> the Clayton public-records directory landing."""
+    return RedirectResponse(DEFAULT_PLACE_PATH, status_code=307)
 
 
 @jurisdiction.get("", response_class=HTMLResponse)
@@ -503,6 +519,98 @@ BROWSE_KINDS: dict[str, BrowseKind] = {
     ),
     "communications": BrowseKind("communications", "Communications", document_type="communication"),
 }
+
+
+# Sidebar navigation per body type. Topics are curated landing pages; documents
+# are browse-by-type lists. Each body lists only items it has content for, so a
+# body without a budget page or curriculum maps shows no dead links.
+@dataclass(frozen=True)
+class NavLink:
+    label: str
+    suffix: str  # appended to the body base, e.g. "/meetings" or "/browse/budgets"
+    active: str  # active-key matched against the page's ``active`` flag
+
+
+@dataclass(frozen=True)
+class SidebarNav:
+    topics: tuple[NavLink, ...]
+    documents: tuple[NavLink, ...]
+
+
+_SCHOOL_NAV = SidebarNav(
+    topics=(
+        NavLink("Board Meetings", "/meetings", "topic-meetings"),
+        NavLink("Budget & Spending", "/budget", "topic-budget"),
+        NavLink("Facilities Master Plan", "/facilities-plan", "topic-facilities"),
+    ),
+    documents=(
+        NavLink("Budgets", "/browse/budgets", "browse-budgets"),
+        NavLink("Resolutions", "/browse/resolutions", "browse-resolutions"),
+        NavLink("Curriculum maps", "/browse/curriculum-maps", "browse-curriculum-maps"),
+        NavLink("Facilities plan", "/browse/facilities-plan", "browse-facilities-plan"),
+        NavLink("Communications", "/browse/communications", "browse-communications"),
+    ),
+)
+
+# City Council Phase 1 carries meeting transcripts only (minutes/ordinances arrive
+# with the CivicPlus crawler), so it lists just Meetings — no empty doc lists.
+_COUNCIL_NAV = SidebarNav(
+    topics=(NavLink("Council Meetings", "/meetings", "topic-meetings"),),
+    documents=(),
+)
+
+_NAV_BY_TYPE: dict[str, SidebarNav] = {
+    "school_district": _SCHOOL_NAV,
+    "city_council": _COUNCIL_NAV,
+}
+
+# Per-body-type copy for the place directory landing cards.
+_BODY_KIND = {"school_district": "School board", "city_council": "City government"}
+_BODY_BLURB = {
+    "school_district": (
+        "Board of Education meetings, minutes, budgets, curriculum, and Sunshine-Law records."
+    ),
+    "city_council": "City Council meeting videos and searchable transcripts.",
+}
+
+
+def _sidebar_nav(entity: dict[str, Any] | None) -> SidebarNav:
+    """Sidebar layout for a body's type. Empty for the place landing (no body)."""
+    if not entity:
+        return SidebarNav(topics=(), documents=())
+    return _NAV_BY_TYPE.get(entity.get("type", ""), _SCHOOL_NAV)
+
+
+def _switcher(entity: dict[str, Any]) -> list[dict[str, Any]]:
+    """Sibling bodies under the same place, for the jurisdiction switcher.
+
+    Best-effort chrome: a failure here returns [] (no switcher) rather than
+    breaking the page. Within one place the place name is dropped from each
+    label, so under Clayton the options read "School District" / "City Council".
+    """
+    place = entity.get("place") or {}
+    try:
+        entities = list_entities(_get_db())
+    except Exception:  # noqa: BLE001 — chrome must render even if this query fails
+        return []
+    if not isinstance(entities, list):
+        return []
+    prefix = f"{place.get('display_name', '')} "
+    out: list[dict[str, Any]] = []
+    for e in entities:
+        ep = e.get("place") or {}
+        if ep.get("id") != place.get("id"):
+            continue
+        name = e.get("display_name", "")
+        out.append(
+            {
+                "label": name[len(prefix) :] if name.startswith(prefix) else name,
+                "base": f"/{ep.get('state', '')}/{ep.get('slug', '')}/{e.get('body_slug', '')}",
+                "current": e.get("id") == entity.get("id"),
+            }
+        )
+    out.sort(key=lambda s: s["label"])
+    return out
 
 
 @jurisdiction.get("/browse/{kind}", response_class=HTMLResponse)
@@ -1799,20 +1907,31 @@ def _render_citation_links(text: str, results: list[dict[str, Any]]) -> str:
 
 
 # Registered after the flat routes so /document/{id} and /topic/budget win the
-# match; with one body the place hub just redirects to it.
-@app.get("/{state}/{place}")
-async def place_hub(state: str, place: str) -> RedirectResponse:
-    """Place hub: redirect to the (currently only) body; a directory in Phase C."""
-    client = _get_db()
+# match over this greedy two-segment prefix.
+@app.get("/{state}/{place}", response_class=HTMLResponse)
+async def place_hub(request: Request, state: str, place: str) -> HTMLResponse:
+    """Place hub: the directory of public bodies archived for this place."""
     bodies = [
         e
-        for e in list_entities(client)
+        for e in list_entities(_get_db())
         if (e.get("place") or {}).get("state") == state
         and (e.get("place") or {}).get("slug") == place
     ]
     if not bodies:
         raise HTTPException(status_code=404, detail="Unknown place")
-    return RedirectResponse(f"/{state}/{place}/{bodies[0]['body_slug']}", status_code=307)
+    place_name = (bodies[0].get("place") or {}).get("display_name") or place.title()
+    cards = [
+        {
+            "name": e["display_name"],
+            "base": f"/{state}/{place}/{e['body_slug']}",
+            "kind": _BODY_KIND.get(e.get("type", ""), "Public body"),
+            "blurb": _BODY_BLURB.get(e.get("type", ""), ""),
+        }
+        for e in sorted(bodies, key=lambda e: e.get("display_name", ""))
+    ]
+    return templates.TemplateResponse(
+        request, "landing.html", _page(None, place_name=place_name, bodies=cards)
+    )
 
 
 # The JSON API lives under the literal /api/v1 prefix; include it before the
