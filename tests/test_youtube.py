@@ -9,6 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from actalux.errors import IngestError
+from actalux.ingest.bodies import COUNCIL
 from actalux.ingest.youtube import (
     BoardMeeting,
     download_audio,
@@ -36,6 +37,11 @@ class TestParseDateFromTitle:
 
     def test_eight_digit(self) -> None:
         assert parse_date_from_title("BOE Meeting 11132019") == "2019-11-13"
+
+    def test_dash_date_city_council(self) -> None:
+        # City of Clayton titles use MM-DD-YYYY (dashes) — must parse, not skip.
+        assert parse_date_from_title("06-09-2026 City Council Meeting") == "2026-06-09"
+        assert parse_date_from_title("05-26-2026 Clayton City Council Meeting") == "2026-05-26"
 
     def test_no_date(self) -> None:
         assert parse_date_from_title("Board of Education Meeting") is None
@@ -71,6 +77,21 @@ class TestListBoardMeetings:
 
     def test_blank_lines_ignored(self) -> None:
         assert self._run("\n\n") == []
+
+    def test_custom_title_filter_selects_one_body(self) -> None:
+        # The city channel hosts many bodies; the council filter keeps only council
+        # meetings (incl. dash-dated and work sessions) and drops the rest.
+        stdout = (
+            "c1|06-09-2026 City Council Meeting\n"
+            "c2|04-17-2026 City Council Strategic Discussion Session\n"
+            "p1|06-15-2026 PC/ARB Meeting\n"  # plan commission -> dropped
+            "b1|06-04-2026 Board of Adjustment\n"  # other body -> dropped
+        )
+        with patch("actalux.ingest.youtube.subprocess.run") as run:
+            run.return_value = SimpleNamespace(stdout=stdout, returncode=0)
+            meetings = list_board_meetings(title_filter=COUNCIL.title_filter)
+        assert [m.video_id for m in meetings] == ["c1", "c2"]
+        assert meetings[0].meeting_date == "2026-06-09"
 
 
 class TestDownloadAudioRetry:

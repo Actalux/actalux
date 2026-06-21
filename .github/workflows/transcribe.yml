@@ -22,6 +22,10 @@ on:
         description: "Max meetings to process"
         required: false
         default: "5"
+      body:
+        description: "Which public body: schools or council"
+        required: false
+        default: "schools"
       force:
         description: "Re-transcribe even if already ingested"
         type: boolean
@@ -109,18 +113,20 @@ jobs:
           SINCE: ${{ inputs.since }}
           LIMIT: ${{ inputs.limit }}
           FORCE: ${{ inputs.force }}
+          BODY: ${{ inputs.body }}
           VIDEO_ID: ${{ inputs.video_id }}
           MEETING_DATE: ${{ inputs.date }}
           MEETING_TITLE: ${{ inputs.title }}
         run: |
           PROXY="socks5h://127.0.0.1:40000"
+          BODY="${BODY:-schools}"  # scheduled runs send no inputs
           if [ -n "$VIDEO_ID" ]; then
             # Targeted re-transcribe of one meeting (re-ingest supersedes the old doc).
             uv run python scripts/transcribe_meetings.py \
-              --video-id "$VIDEO_ID" --date "$MEETING_DATE" --title "$MEETING_TITLE" \
+              --body "$BODY" --video-id "$VIDEO_ID" --date "$MEETING_DATE" --title "$MEETING_TITLE" \
               --force --proxy "$PROXY"
           else
-            ARGS="--discover --proxy $PROXY --limit ${LIMIT:-5}"
+            ARGS="--discover --body $BODY --proxy $PROXY --limit ${LIMIT:-5}"
             [ -n "$SINCE" ] && ARGS="$ARGS --since $SINCE"
             [ "$FORCE" = "true" ] && ARGS="$ARGS --force"
             uv run python scripts/transcribe_meetings.py $ARGS
@@ -128,9 +134,12 @@ jobs:
 
       - name: Ingest transcripts
         if: ${{ github.event_name == 'schedule' || inputs.ingest }}
+        env:
+          BODY: ${{ inputs.body }}
         run: |
+          BODY="${BODY:-schools}"  # scheduled runs send no inputs
           if [ -f data/documents/youtube_manifest.json ]; then
-            uv run python scripts/ingest.py --manifest data/documents/youtube_manifest.json
+            uv run python scripts/ingest.py --manifest data/documents/youtube_manifest.json --body "$BODY"
           else
             echo "::warning::no transcripts produced; nothing to ingest"
           fi

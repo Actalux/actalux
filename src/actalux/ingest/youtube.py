@@ -44,7 +44,7 @@ AUDIO_FORMAT = "bestaudio/18/best"
 BOARD_MEETING_RE = re.compile(r"board of education|BOE meeting", re.IGNORECASE)
 
 DATE_PATTERNS = [
-    re.compile(r"(\d{1,2})/(\d{1,2})/(\d{2,4})\b"),  # 2/19/26 or 12/13/2023
+    re.compile(r"(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b"),  # 2/19/26, 12/13/2023, 06-09-2026
     re.compile(
         r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})",
         re.IGNORECASE,
@@ -117,18 +117,25 @@ def _list_channel_tab(tab_url: str, proxy: str | None) -> list[str]:
     return result.stdout.strip().splitlines()
 
 
-def list_board_meetings(channel: str = CHANNEL, *, proxy: str | None = None) -> list[BoardMeeting]:
-    """List the channel's board-meeting videos (newest first), with parsed dates.
+def list_board_meetings(
+    channel: str = CHANNEL,
+    *,
+    title_filter: re.Pattern[str] = BOARD_MEETING_RE,
+    proxy: str | None = None,
+) -> list[BoardMeeting]:
+    """List a channel's meeting videos (newest first), with parsed dates.
 
-    Enumerates both the /streams (livestreamed meetings) and /videos tabs and
-    dedups by video id — board meetings are livestreams, so /videos alone misses
-    most of them.
+    ``title_filter`` selects which videos count as this body's meetings — the city
+    channel hosts several bodies (City Council, Plan Commission, committees), so the
+    caller passes a body-specific pattern (see ``actalux.ingest.bodies``). Enumerates
+    both the /streams (livestreamed meetings) and /videos tabs and dedups by video
+    id — board meetings are livestreams, so /videos alone misses most of them.
     """
     seen: dict[str, BoardMeeting] = {}
     for tab in CHANNEL_TABS:
         for line in _list_channel_tab(f"{channel}/{tab}", proxy):
             vid, _, title = line.partition("|")
-            if not vid or vid in seen or not BOARD_MEETING_RE.search(title):
+            if not vid or vid in seen or not title_filter.search(title):
                 continue
             seen[vid] = BoardMeeting(
                 video_id=vid,

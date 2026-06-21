@@ -32,9 +32,12 @@ import subprocess
 import time
 from pathlib import Path
 
+from supabase import Client
+
 from actalux.config import load_config
-from actalux.db import get_client
+from actalux.db import get_client, get_entity_by_path
 from actalux.errors import ActaluxError
+from actalux.ingest.bodies import TranscriptionBody, get_body
 from actalux.ingest.transcribe import Transcript, transcribe_audio
 from actalux.ingest.youtube import BoardMeeting, download_audio, list_board_meetings
 
@@ -49,12 +52,6 @@ logger = logging.getLogger(__name__)
 OUTPUT_DIR = Path("data/documents")
 MANIFEST_PATH = Path("data/documents/youtube_manifest.json")
 AUDIO_DIR = Path("data/audio")  # transient; gitignored, deleted after transcription
-
-# Biases Whisper toward the meeting's proper nouns (names mis-heard otherwise).
-TRANSCRIBE_PROMPT = (
-    "School District of Clayton Board of Education meeting. "
-    "Superintendent, Board of Education, Proposition O, levy, agenda, motion carried."
-)
 
 
 def safe_stem(title: str) -> str:
@@ -101,7 +98,7 @@ def reconnect_warp() -> None:
 
 
 def process_meeting(
-    meeting: BoardMeeting, out_dir: Path, audio_dir: Path, *, proxy: str | None
+    meeting: BoardMeeting, out_dir: Path, audio_dir: Path, *, proxy: str | None, prompt: str
 ) -> dict[str, str]:
     """Download, transcribe, and stage one meeting; return its manifest entry."""
     cfg = load_config()
@@ -123,7 +120,7 @@ def process_meeting(
             cfg.groq_api_key,
             model=cfg.transcribe_model,
             base_url=cfg.transcribe_base_url,
-            prompt=TRANSCRIBE_PROMPT,
+            prompt=prompt,
         )
     finally:
         audio.unlink(missing_ok=True)  # the audio is transient; only the text is kept
@@ -134,14 +131,14 @@ def process_meeting(
 
 
 def select_meetings(
-    args: argparse.Namespace, out_dir: Path, existing_dates: set[str]
+    args: argparse.Namespace, out_dir: Path, existing_dates: set[str], body: TranscriptionBody
 ) -> list[BoardMeeting]:
     """Resolve the meetings to process from --discover or explicit --video-id.
 
-    ``existing_dates`` are meeting dates already ingested as transcripts (from the
-    DB — the source of truth, since ``data/`` is ephemeral in CI). A discovered
-    meeting is skipped when its date is already ingested or a local transcript
-    file already exists, unless ``--force``.
+    ``existing_dates`` are meeting dates already ingested as this body's transcripts
+    (from the DB — the source of truth, since ``data/`` is ephemeral in CI). A
+    discovered meeting is skipped when its date is already ingested or a local
+    transcript file already exists, unless ``--force``.
     """
     if args.video_id:
         return [
@@ -152,7 +149,9 @@ def select_meetings(
                 url=f"https://www.youtube.com/watch?v={args.video_id}",
             )
         ]
-    meetings = list_board_meetings(proxy=args.proxy)
+    meetings = list_board_meetings(
+        channel=body.channel, title_filter=body.title_filter, proxy=args.proxy
+    )
     # Undated meetings can't be DB-deduped by date, so discovery would re-transcribe
     # them every run (and Whisper's slight nondeterminism would spawn duplicate
     # docs). Skip them here; transcribe one explicitly with --video-id --date.
@@ -178,15 +177,19 @@ def select_meetings(
     return meetings
 
 
-def existing_transcript_dates() -> set[str]:
-    """Meeting dates already ingested as YouTube transcripts (DB is source of truth)."""
-    cfg = load_config()
-    client = get_client(cfg.supabase_url, cfg.supabase_key)
+def existing_transcript_dates(client: Client, entity_id: int) -> set[str]:
+    """Meeting dates already ingested as this body's YouTube transcripts.
+
+    Scoped to ``entity_id`` — the city channel feeds several bodies, so dedup must
+    be per body or a council meeting sharing a date with another body's meeting
+    would be wrongly skipped.
+    """
     rows = (
         client.table("documents")
         .select("meeting_date")
         .eq("source_portal", "youtube")
         .eq("document_type", "transcript")
+        .eq("entity_id", entity_id)
         .execute()
         .data
     )
@@ -194,8 +197,13 @@ def existing_transcript_dates() -> set[str]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Transcribe board meetings with Whisper.")
-    parser.add_argument("--discover", action="store_true", help="list channel board meetings")
+    parser = argparse.ArgumentParser(description="Transcribe meeting videos with Whisper.")
+    parser.add_argument("--discover", action="store_true", help="list channel meeting videos")
+    parser.add_argument(
+        "--body",
+        default="schools",
+        help="which public body's meetings to transcribe (default: %(default)s)",
+    )
     parser.add_argument("--since", help="only meetings on/after this date (YYYY-MM-DD)")
     parser.add_argument("--limit", type=int, help="cap the number of meetings processed")
     parser.add_argument("--force", action="store_true", help="re-transcribe even if a file exists")
@@ -208,16 +216,29 @@ def main() -> None:
     if not args.discover and not args.video_id:
         parser.error("pass --discover or --video-id")
 
+    body = get_body(args.body)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    # Skip already-ingested meetings by querying the DB (data/ is ephemeral in CI).
-    existing = existing_transcript_dates() if args.discover and not args.force else set()
-    meetings = select_meetings(args, OUTPUT_DIR, existing)
+    # Skip already-ingested meetings by querying the DB (data/ is ephemeral in CI),
+    # scoped to this body so one channel's bodies don't dedup against each other.
+    existing: set[str] = set()
+    if args.discover and not args.force:
+        cfg = load_config()
+        client = get_client(cfg.supabase_url, cfg.supabase_key)
+        entity = get_entity_by_path(client, *body.entity_path.split("/"))
+        if not entity:
+            raise SystemExit(f"Unknown entity {body.entity_path!r}; seed it first.")
+        existing = existing_transcript_dates(client, entity["id"])
+    meetings = select_meetings(args, OUTPUT_DIR, existing, body)
     logger.info("meetings to transcribe: %d", len(meetings))
 
     entries: list[dict[str, str]] = []
     for meeting in meetings:
         try:
-            entries.append(process_meeting(meeting, OUTPUT_DIR, AUDIO_DIR, proxy=args.proxy))
+            entries.append(
+                process_meeting(
+                    meeting, OUTPUT_DIR, AUDIO_DIR, proxy=args.proxy, prompt=body.transcribe_prompt
+                )
+            )
         except ActaluxError:
             logger.exception("failed: %s (%s)", meeting.title, meeting.video_id)
 

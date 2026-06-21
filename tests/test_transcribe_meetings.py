@@ -5,6 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from actalux.ingest.bodies import COUNCIL, SCHOOLS
 from actalux.ingest.youtube import BoardMeeting
 from scripts.transcribe_meetings import (
     manifest_entry,
@@ -60,7 +61,7 @@ class TestManifestEntry:
 class TestSelectMeetings:
     def test_explicit_video_id(self) -> None:
         out = select_meetings(
-            _args(video_id="vid9", date="2026-06-03", title="June Meeting"), None, set()
+            _args(video_id="vid9", date="2026-06-03", title="June Meeting"), None, set(), SCHOOLS
         )
         assert len(out) == 1
         assert out[0].video_id == "vid9"
@@ -70,7 +71,7 @@ class TestSelectMeetings:
         staged = _meeting("a", "2026-06-03")
         fresh = _meeting("b", "2026-05-13")
         with patch("scripts.transcribe_meetings.list_board_meetings", return_value=[staged, fresh]):
-            out = select_meetings(_args(), tmp_path, {"2026-06-03"})
+            out = select_meetings(_args(), tmp_path, {"2026-06-03"}, SCHOOLS)
         assert [m.video_id for m in out] == ["b"]  # already-ingested date 'a' skipped
 
     def test_discover_skips_already_staged_file(self, tmp_path) -> None:
@@ -78,14 +79,14 @@ class TestSelectMeetings:
         fresh = _meeting("b", "2026-05-13")
         (tmp_path / f"{safe_stem(staged.title)}.txt").write_text("done")
         with patch("scripts.transcribe_meetings.list_board_meetings", return_value=[staged, fresh]):
-            out = select_meetings(_args(), tmp_path, set())
+            out = select_meetings(_args(), tmp_path, set(), SCHOOLS)
         assert [m.video_id for m in out] == ["b"]  # local file 'a' skipped
 
     def test_discover_force_keeps_all(self, tmp_path) -> None:
         m = _meeting("a", "2026-06-03")
         (tmp_path / f"{safe_stem(m.title)}.txt").write_text("done")
         with patch("scripts.transcribe_meetings.list_board_meetings", return_value=[m]):
-            out = select_meetings(_args(force=True), tmp_path, {"2026-06-03"})
+            out = select_meetings(_args(force=True), tmp_path, {"2026-06-03"}, SCHOOLS)
         assert [x.video_id for x in out] == ["a"]
 
     def test_discover_skips_undated_meetings(self, tmp_path) -> None:
@@ -94,7 +95,7 @@ class TestSelectMeetings:
         with patch(
             "scripts.transcribe_meetings.list_board_meetings", return_value=[dated, undated]
         ):
-            out = select_meetings(_args(), tmp_path, set())
+            out = select_meetings(_args(), tmp_path, set(), SCHOOLS)
         assert [m.video_id for m in out] == ["a"]  # undated 'b' dropped (can't dedup)
 
     def test_discover_since_and_limit(self, tmp_path) -> None:
@@ -104,5 +105,14 @@ class TestSelectMeetings:
             _meeting("c", "2026-01-01"),
         ]
         with patch("scripts.transcribe_meetings.list_board_meetings", return_value=meetings):
-            out = select_meetings(_args(since="2026-05-01", limit=1), tmp_path, set())
+            out = select_meetings(_args(since="2026-05-01", limit=1), tmp_path, set(), SCHOOLS)
         assert [m.video_id for m in out] == ["a"]  # 'c' filtered by since, limit caps to 1
+
+    def test_discover_uses_body_channel_and_filter(self, tmp_path) -> None:
+        # The multi-body wiring: discovery must enumerate the body's own channel
+        # with the body's title filter (the city channel hosts several bodies).
+        with patch("scripts.transcribe_meetings.list_board_meetings", return_value=[]) as lbm:
+            select_meetings(_args(), tmp_path, set(), COUNCIL)
+        lbm.assert_called_once_with(
+            channel=COUNCIL.channel, title_filter=COUNCIL.title_filter, proxy=None
+        )

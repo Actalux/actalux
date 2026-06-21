@@ -48,6 +48,7 @@ from actalux.db import (
 )
 from actalux.errors import ActaluxError, ParseError
 from actalux.ingest import pii_guard
+from actalux.ingest.bodies import get_body
 from actalux.ingest.chunker import chunk_document, validate_chunks
 from actalux.ingest.classify import classify_document_type, parse_meeting_date
 from actalux.ingest.embedder import embed_chunks
@@ -723,15 +724,21 @@ def main() -> None:
         default=DEFAULT_ENTITY_PATH,
         help="owning body as state/place/body (default: %(default)s)",
     )
+    parser.add_argument(
+        "--body",
+        help="owning body by short key (schools/council); overrides --entity",
+    )
     args = parser.parse_args()
 
+    entity_path = get_body(args.body).entity_path if args.body else args.entity
+
     if args.manifest:
-        ingest_from_manifest(Path(args.manifest), entity_path=args.entity)
+        ingest_from_manifest(Path(args.manifest), entity_path=entity_path)
     elif args.data_dir:
         data_dir = Path(args.data_dir)
         if not data_dir.is_dir():
             parser.error(f"{data_dir} is not a directory")
-        ingest_directory(data_dir, entity_path=args.entity)
+        ingest_directory(data_dir, entity_path=entity_path)
     else:
         parser.error("provide a data directory or --manifest <manifest.json>")
 
