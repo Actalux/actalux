@@ -128,12 +128,24 @@ def list_board_meetings(
     ``title_filter`` selects which videos count as this body's meetings — the city
     channel hosts several bodies (City Council, Plan Commission, committees), so the
     caller passes a body-specific pattern (see ``actalux.ingest.bodies``). Enumerates
-    both the /streams (livestreamed meetings) and /videos tabs and dedups by video
-    id — board meetings are livestreams, so /videos alone misses most of them.
+    the /streams (livestreamed meetings) and /videos tabs and dedups by video id —
+    board meetings are livestreams, so /videos alone misses most of them.
+
+    Not every channel has every tab: a channel that never livestreams has no
+    /streams tab, which yt-dlp reports as an error. A per-tab failure is skipped
+    (logged) so one missing tab doesn't abort discovery; only a total failure
+    (no tab could be listed at all) is fatal.
     """
     seen: dict[str, BoardMeeting] = {}
+    listed_any = False
     for tab in CHANNEL_TABS:
-        for line in _list_channel_tab(f"{channel}/{tab}", proxy):
+        try:
+            lines = _list_channel_tab(f"{channel}/{tab}", proxy)
+        except IngestError as exc:
+            logger.warning("skipping channel tab %s/%s: %s", channel, tab, exc)
+            continue
+        listed_any = True
+        for line in lines:
             vid, _, title = line.partition("|")
             if not vid or vid in seen or not title_filter.search(title):
                 continue
@@ -143,6 +155,8 @@ def list_board_meetings(
                 meeting_date=parse_date_from_title(title) or "",
                 url=f"https://www.youtube.com/watch?v={vid}",
             )
+    if not listed_any:
+        raise IngestError(f"no channel tab could be listed for {channel}")
     return sorted(seen.values(), key=lambda m: m.meeting_date, reverse=True)
 
 

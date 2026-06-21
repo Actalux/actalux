@@ -78,6 +78,28 @@ class TestListBoardMeetings:
     def test_blank_lines_ignored(self) -> None:
         assert self._run("\n\n") == []
 
+    def test_one_tab_missing_is_skipped(self) -> None:
+        # A channel that never livestreams has no /streams tab (yt-dlp errors);
+        # discovery must skip it and still list /videos rather than aborting.
+        def fake_run(cmd, **kw):
+            if cmd[-1].endswith("/streams"):
+                raise subprocess.CalledProcessError(1, cmd, stderr="tab not available")
+            return SimpleNamespace(
+                stdout="v1|06-09-2026 City Council Meeting\n", returncode=0
+            )
+
+        with patch("actalux.ingest.youtube.subprocess.run", side_effect=fake_run):
+            meetings = list_board_meetings(title_filter=COUNCIL.title_filter)
+        assert [m.video_id for m in meetings] == ["v1"]
+
+    def test_all_tabs_failing_raises(self) -> None:
+        def always_fail(cmd, **kw):
+            raise subprocess.CalledProcessError(1, cmd, stderr="blocked")
+
+        with patch("actalux.ingest.youtube.subprocess.run", side_effect=always_fail):
+            with pytest.raises(IngestError):
+                list_board_meetings()
+
     def test_custom_title_filter_selects_one_body(self) -> None:
         # The city channel hosts many bodies; the council filter keeps only council
         # meetings (incl. dash-dated and work sessions) and drops the rest.
