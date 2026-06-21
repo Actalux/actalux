@@ -43,9 +43,11 @@ SCHOOLS = TranscriptionBody(
 COUNCIL = TranscriptionBody(
     entity_path="mo/clayton/council",
     channel="https://www.youtube.com/@CityofClayton",
-    # The city channel hosts several bodies; restrict to City Council (renamed from
-    # Board of Aldermen in 2026 — older meeting videos still carry the old name).
-    title_filter=re.compile(r"city council|board of aldermen", re.IGNORECASE),
+    # The city channel hosts several bodies; restrict to City Council. "Board of
+    # Aldermen" (abbreviated "BOA") is the body's OLD name — those meetings ARE the
+    # City Council and are included. The Board of ADJUSTMENT is a different body and
+    # always spells its name out (never "BOA"), so it stays correctly excluded.
+    title_filter=re.compile(r"city council|board of alderm(?:an|en)|\bboa\b", re.IGNORECASE),
     transcribe_prompt=(
         "City of Clayton, Missouri City Council meeting. "
         "Mayor, City Council, alderman, ordinance, resolution, agenda, motion carried."

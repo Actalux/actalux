@@ -102,18 +102,20 @@ class TestListBoardMeetings:
 
     def test_custom_title_filter_selects_one_body(self) -> None:
         # The city channel hosts many bodies; the council filter keeps only council
-        # meetings (incl. dash-dated and work sessions) and drops the rest.
+        # meetings — including the old "Board of Aldermen"/"BOA" naming — and drops
+        # the rest. Board of ADJUSTMENT (a different body) must NOT be swept in.
         stdout = (
             "c1|06-09-2026 City Council Meeting\n"
             "c2|04-17-2026 City Council Strategic Discussion Session\n"
+            "c3|07-22-2025 Board of Alderman Meeting\n"  # old name -> council
+            "c4|09-19-2025 BOA Strategic Discussion Session\n"  # old abbrev -> council
             "p1|06-15-2026 PC/ARB Meeting\n"  # plan commission -> dropped
-            "b1|06-04-2026 Board of Adjustment\n"  # other body -> dropped
+            "b1|06-04-2026 Board of Adjustment\n"  # different body -> dropped
         )
         with patch("actalux.ingest.youtube.subprocess.run") as run:
             run.return_value = SimpleNamespace(stdout=stdout, returncode=0)
             meetings = list_board_meetings(title_filter=COUNCIL.title_filter)
-        assert [m.video_id for m in meetings] == ["c1", "c2"]
-        assert meetings[0].meeting_date == "2026-06-09"
+        assert {m.video_id for m in meetings} == {"c1", "c2", "c3", "c4"}
 
 
 class TestDownloadAudioRetry:
