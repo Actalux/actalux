@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Newsreader:ital,opsz,wght@0,6..72,300..700;1,6..72,300..700&family=Geist:wght@300..700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/actalux.css?v=15">
+  <link rel="stylesheet" href="/static/css/actalux.css?v=16">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
 </head>
@@ -93,7 +93,7 @@
 
     <div class="nav-section">
       <span class="nav-label">Pages</span>
-      <a class="nav-item{% if active == 'page-ask' %} active{% endif %}" href="{{ base }}/ask"><span>Ask the archive</span></a>
+      <a class="nav-cta{% if active == 'page-ask' %} active{% endif %}" href="{{ base }}/ask"><span>Ask the archive</span><span class="arrow" aria-hidden="true">→</span></a>
       <a class="nav-item{% if active == 'methodology' %} active{% endif %}" href="{{ base }}/methodology"><span>How this works</span></a>
       <a class="nav-item" href="https://github.com/Actalux/actalux/issues/new" target="_blank" rel="noopener"><span>Report an error</span></a>
     </div>

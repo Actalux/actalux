@@ -207,6 +207,21 @@ img { max-width: 100%; display: block; }
 .nav-item.active .count { color: var(--accent); }
 .nav-item .count { font-family: var(--mono); font-size: 11px; color: var(--muted); }
 
+/* Emphasised nav link (e.g. "Ask the archive") — a bordered CTA in place, so it
+   reads as a destination without leaving the menu flow. Accent on hover/active. */
+.nav-cta {
+  display: flex; align-items: center; justify-content: space-between;
+  margin: var(--s-2) 0;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--rule-strong);
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.nav-cta:hover, .nav-cta.active { border-color: var(--accent); color: var(--accent); }
+.nav-cta .arrow { color: var(--accent); font-family: var(--mono); }
+
 .nav-toggle {
   all: unset;
   display: flex; align-items: baseline; justify-content: space-between;
