@@ -624,6 +624,34 @@ def generate_doc_summary(
 
 
 CHAPTERS_MAX_TOKENS = 700
+# Budget for the transcript fed to the chapter model. A 3-hour meeting is ~200k
+# chars, so the whole thing won't fit — but head-truncating it would only chapter
+# the opening minutes. _fit_timestamped_transcript downsamples across the FULL
+# meeting instead, so chapters span end to end.
+CHAPTERS_INPUT_MAX_CHARS = 60000
+
+
+def _fit_timestamped_transcript(transcript: str, max_chars: int = CHAPTERS_INPUT_MAX_CHARS) -> str:
+    """Fit a ``[seconds]``-marked transcript into ``max_chars``, spanning the whole meeting.
+
+    Short transcripts pass through unchanged. Long ones keep an evenly-spaced
+    subset of lines (first and last always included) so the model sees the entire
+    arc of the meeting and can place chapters across its full duration, rather than
+    only over the opening minutes a head-truncation would expose.
+    """
+    if len(transcript) <= max_chars:
+        return transcript
+    lines = [ln for ln in transcript.split("\n") if ln.strip()]
+    if len(lines) <= 2:
+        return transcript[:max_chars]
+    avg_line = len(transcript) / len(lines)
+    keep = max(2, int(max_chars / max(avg_line, 1)))
+    if keep >= len(lines):
+        return "\n".join(lines)
+    step = (len(lines) - 1) / (keep - 1)
+    idx = sorted({round(i * step) for i in range(keep)})
+    return "\n".join(lines[i] for i in idx)
+
 
 CHAPTERS_SYSTEM = """\
 You divide a school board meeting transcript into its agenda/topic sections so a \
@@ -708,7 +736,7 @@ def generate_chapters(
     user_message = CHAPTERS_USER.format(
         title=title or "(untitled)",
         date=date or "(undated)",
-        transcript=timestamped_transcript[:24000],
+        transcript=_fit_timestamped_transcript(timestamped_transcript),
     )
     try:
         client = OpenAI(api_key=api_key)

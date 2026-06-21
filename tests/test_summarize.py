@@ -14,6 +14,7 @@ from actalux.search.summarize import (
     Summary,
     _dedupe_variants,
     _drain_complete_sentences,
+    _fit_timestamped_transcript,
     _parse_chapters,
     _split_sentences,
     _verify_citations,
@@ -55,6 +56,27 @@ class TestParseChapters:
             _parse_chapters("not json", 100)
         with pytest.raises(SummaryError):
             _parse_chapters('[{"t": -1, "title": ""}]', 100)  # nothing valid
+
+
+class TestFitTimestampedTranscript:
+    """Long transcripts are downsampled across the FULL meeting, not head-truncated."""
+
+    def test_short_passes_through(self) -> None:
+        t = "[0] hello\n[5] world"
+        assert _fit_timestamped_transcript(t, max_chars=1000) == t
+
+    def test_long_spans_full_meeting_within_budget(self) -> None:
+        # 600 one-second lines (~7800 chars); a 1500-char budget must still keep
+        # the LAST line, so chapters can be placed at the end of the meeting.
+        lines = [f"[{i}] line {i:04d}" for i in range(600)]
+        full = "\n".join(lines)
+        out = _fit_timestamped_transcript(full, max_chars=1500)
+        assert len(out) <= 1700  # close to budget (line-granular, not exact)
+        assert out.startswith("[0] ")
+        assert lines[-1] in out  # the final line survives -> end-of-meeting coverage
+        # markers stay in increasing order (chronological)
+        secs = [int(ln[1 : ln.index("]")]) for ln in out.split("\n")]
+        assert secs == sorted(secs)
 
 
 class TestQueryVariants:
