@@ -4,7 +4,7 @@
    The facade lives inside #source-col, so the swap script scopes to it. #}
 <div class="video-embed">
   <button type="button" class="yt-facade" data-video="{{ document.video_id | urlencode }}" data-start="{{ cue }}"
-          aria-label="Play the board meeting video{% if cue %} from the cited moment{% endif %}"
+          aria-label="Play the meeting video{% if cue %} from the cited moment{% endif %}"
           style="position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; padding: 0; border: 0; background: #000; cursor: pointer;">
     <img src="https://i.ytimg.com/vi/{{ document.video_id | urlencode }}/hqdefault.jpg" alt=""
          loading="lazy" style="width: 100%; height: 100%; object-fit: cover; display: block;">
@@ -30,7 +30,7 @@
       if (start > 0) { src += '&start=' + start; }
       var frame = document.createElement('iframe');
       frame.src = src;
-      frame.title = 'Board meeting video';
+      frame.title = 'Meeting video';
       frame.setAttribute('style', 'width:100%;aspect-ratio:16/9;border:0;');
       frame.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen');
       frame.setAttribute('allowfullscreen', '');

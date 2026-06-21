@@ -30,7 +30,7 @@
         data-stream-url="{{ base }}/ask/stream">
     <input type="hidden" name="history" id="ask-history" value="{{ history_json }}">
     <textarea class="textarea" name="q" id="ask-q" rows="3"
-              placeholder="e.g. How has the district's fund balance changed over recent years?"
+              placeholder="{% if entity and entity.type == 'school_district' %}e.g. How has the district's fund balance changed over recent years?{% else %}e.g. What has the Council discussed about development and zoning?{% endif %}"
               aria-label="Your question"></textarea>
     <div class="ask-form-row">
       <span class="ask-hint">Answers cite their sources. You can also <a href="{{ base }}/search">search the records</a> directly.</span>

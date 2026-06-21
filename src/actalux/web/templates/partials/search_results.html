@@ -55,7 +55,7 @@
   <span class="tagline">No matches</span>
   <h1>No records found for "{{ query }}".</h1>
   <p class="lede">
-    Try different keywords, or browse the <a href="{{ base }}/budget">Budget topic page</a>, or use the sidebar to browse by document type.
+    Try different keywords{% if entity and entity.type == 'school_district' %}, or browse the <a href="{{ base }}/budget">Budget topic page</a>{% endif %}, or use the sidebar to browse.
   </p>
 </div>
 {% else %}
@@ -63,7 +63,7 @@
   <span class="tagline">Search</span>
   <h1>Search the public records of the {{ entity.display_name if entity else 'district' }}.</h1>
   <p class="lede">
-    Use the search field in the top bar. Every result is a verbatim quote with its source citation attached. Try "multilingual learner program," "long range facilities master plan," or "curriculum adoption."
+    Use the search field in the top bar. Every result is a verbatim quote with its source citation attached. Try {% if entity and entity.type == 'school_district' %}"multilingual learner program," "long range facilities master plan," or "curriculum adoption."{% else %}"public hearing," "rezoning," or "liquor license."{% endif %}
   </p>
 </div>
 {% endif %}

@@ -11,13 +11,17 @@
   <h1>How Actalux works</h1>
 
   <h2>What we publish</h2>
+  {% if entity and entity.type == 'school_district' %}
   <p>Actalux indexes public records of the Clayton, Missouri school district: board meeting agendas, minutes, board packets, resolutions, curriculum documents, budgets, strategic plans, district communications (such as newsletters and press releases), and transcripts of public board meetings. We also publish records obtained through Missouri Sunshine Law requests. We do not claim completeness of the record. We publish what we have gathered and can verify against a source.</p>
+  {% else %}
+  <p>Actalux indexes public records of the {{ entity.display_name if entity else 'public bodies' }} in Clayton, Missouri: videos and searchable transcripts of public meetings, and the records produced in session. We do not claim completeness of the record. We publish what we have gathered and can verify against a source.</p>
+  {% endif %}
 
   <h2>Document processing</h2>
   <p>Documents are converted from their original format (PDF, HTML, or transcript) to plain text. Text is split into verbatim passages of approximately 200 words, preserving section boundaries and sentence integrity. No text is paraphrased or rewritten.</p>
 
   <h2>Meeting transcripts</h2>
-  <p>Transcripts of public board meetings are produced by automatic speech recognition — the open-source Whisper model — not by a human transcriber. They are accurate enough to search and read, but they can contain errors: misheard words, missing punctuation, and unlabeled or misattributed speakers. We publish the machine output as produced; we do not hand-correct it. Every transcript is shown next to the meeting's video and can be cued to the moment a passage was spoken, so any text can be checked against the recording. Longer meetings are divided into topic sections to aid navigation; those section labels are generated automatically and are a finding aid, not part of the record.</p>
+  <p>Transcripts of public meetings are produced by automatic speech recognition — the open-source Whisper model — not by a human transcriber. They are accurate enough to search and read, but they can contain errors: misheard words, missing punctuation, and unlabeled or misattributed speakers. We publish the machine output as produced; we do not hand-correct it. Every transcript is shown next to the meeting's video and can be cued to the moment a passage was spoken, so any text can be checked against the recording. Longer meetings are divided into topic sections to aid navigation; those section labels are generated automatically and are a finding aid, not part of the record.</p>
 
   <h2>How search works</h2>
   <p>Search uses two methods in parallel:</p>
@@ -25,7 +29,7 @@
     <li><strong>Keyword matching</strong> finds passages containing your exact search terms, using PostgreSQL full-text search.</li>
     <li><strong>Semantic search</strong> finds passages with similar meaning, even when the exact words differ, using a 384-dimensional embedding (bge-small-en-v1.5) and pgvector cosine similarity.</li>
   </ul>
-  <p>Results from both methods are combined using reciprocal rank fusion (k=60); passages that appear in both result sets rank higher than those appearing in only one. The combined results are then re-ordered by a cross-encoder model that scores how directly each passage answers the query. To widen recall, your query may also be expanded into a few alternate phrasings (for example, "bond measure" alongside "Proposition O" and "bond referendum"), each searched in parallel; the re-ordering always scores against your original wording.</p>
+  <p>Results from both methods are combined using reciprocal rank fusion (k=60); passages that appear in both result sets rank higher than those appearing in only one. The combined results are then re-ordered by a cross-encoder model that scores how directly each passage answers the query. To widen recall, your query may also be expanded into a few alternate phrasings (for example, "bond measure" alongside "bond referendum"), each searched in parallel; the re-ordering always scores against your original wording.</p>
 
   <h2>Citations and generated text</h2>
   <p>At ingestion time, every passage is verified to be an exact substring of its source document. Passages that fail this check are rejected. Each displayed passage has a stable hash ID (for example, <code style="font-family: var(--mono); font-size: 0.9em;">#q3f9a1c20</code>) that you can cite and share; the ID stays the same when a document is re-processed.</p>
@@ -39,7 +43,9 @@
   <ul>
     <li>We do not editorialize or express opinions.</li>
     <li>We do not publish closed session content.</li>
+    {% if entity and entity.type == 'school_district' %}
     <li>We do not publish content about individual personnel, teachers, or students.</li>
+    {% endif %}
     <li>We never publish sensitive personal data such as Social Security numbers or dates of birth; an automated check screens for these and blocks the record before it enters the archive.</li>
     <li>We do not infer intent or make causal claims unless explicitly stated in a source document.</li>
     <li>We do not advocate for or against any candidate, ballot measure, or policy position.</li>
