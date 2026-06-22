@@ -639,6 +639,10 @@ img { max-width: 100%; display: block; }
   gap: var(--s-3);
   align-items: baseline;
 }
+/* Landing body cards carry no .card-label, so the 62px/1fr grid above would
+   squeeze the lone blurb into the 62px label column (one word per line). Collapse
+   to a single column on the landing only — search/browse cards keep the 2-col grid. */
+.landing .result-card .card-summary { display: block; }
 .result-card .card-label {
   font-family: var(--sans);
   font-size: 10px;
