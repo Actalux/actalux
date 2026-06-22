@@ -9,8 +9,10 @@ import pytest
 
 from actalux.errors import SearchError
 from actalux.search.hybrid import (
+    AGENDA_RANK_PENALTY,
     SearchFilters,
     SearchResult,
+    _demote_low_priority_types,
     _fuse_ranked_lists,
     _keyword_search,
     _normalize_fts_query,
@@ -318,3 +320,39 @@ class TestHybridSearchExpansion:
         client = _RowFakeClient(errors={"semantic:(0.0,)"})
         with pytest.raises(SearchError):
             hybrid_search(client, "q", [0.0], SearchFilters(), expansions=[("v", [1.0])])
+
+
+def _sr(chunk_id: int, dtype: str) -> SearchResult:
+    return SearchResult(
+        chunk_id=chunk_id,
+        document_id=chunk_id,
+        content="",
+        section="",
+        speaker="",
+        rrf_score=0.0,
+        document_type=dtype,
+    )
+
+
+class TestDemoteLowPriorityTypes:
+    """Agendas are nudged below comparable records, but never banished."""
+
+    def test_agenda_demoted_below_adjacent_record(self) -> None:
+        out = _demote_low_priority_types([_sr(1, "agenda"), _sr(2, "minutes")])
+        assert [r.chunk_id for r in out] == [2, 1]
+
+    def test_strong_agenda_not_banished(self) -> None:
+        # A top-ranked agenda drops by exactly the penalty but still outranks
+        # records that were more than AGENDA_RANK_PENALTY places below it.
+        records = [_sr(i, "minutes") for i in range(1, AGENDA_RANK_PENALTY + 5)]
+        out = _demote_low_priority_types([_sr(0, "agenda"), *records])
+        assert [r.chunk_id for r in out].index(0) == AGENDA_RANK_PENALTY
+        assert out[-1].document_type == "minutes"  # not pushed to the bottom
+
+    def test_no_agendas_unchanged(self) -> None:
+        rows = [_sr(1, "minutes"), _sr(2, "transcript"), _sr(3, "minutes")]
+        assert _demote_low_priority_types(rows) == rows
+
+    def test_relative_order_among_agendas_preserved(self) -> None:
+        rows = [_sr(1, "agenda"), _sr(2, "agenda"), _sr(3, "minutes")]
+        assert [r.chunk_id for r in _demote_low_priority_types(rows)] == [3, 1, 2]

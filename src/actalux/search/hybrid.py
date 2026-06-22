@@ -33,6 +33,15 @@ MAX_RESULTS = 20
 RERANK_POOL_SIZE = 50  # RRF candidates reranked before truncating to max_results
 SIMILARITY_THRESHOLD = 0.35
 
+# Doc types ranked below the rest at equal relevance. An agenda is a forward-
+# looking item list; the minutes/transcript is the actual record of what happened,
+# so for a comparable pair we surface the record. This is a thumb on the scale,
+# not a banishment (see _demote_low_priority_types): a clearly-more-relevant agenda
+# still outranks a marginal record. AGENDA_RANK_PENALTY is the place demotion in
+# the final pool — moderate by design; tune against the eval set if needed.
+DEMOTED_DOC_TYPES = frozenset({"agenda"})
+AGENDA_RANK_PENALTY = 5
+
 # Reorders an RRF candidate pool for a query. Raises RerankError on failure so
 # the search boundary can fall back to RRF order (a reranker outage must never
 # break search). Built by the web layer from config; None = RRF-only.
@@ -49,6 +58,7 @@ class SearchResult:
     section: str
     speaker: str
     rrf_score: float
+    document_type: str = ""
     semantic_rank: int | None = None
     keyword_rank: int | None = None
 
@@ -107,6 +117,9 @@ def hybrid_search(
     if reranker is not None and results:
         results = _apply_reranker(reranker, query, results)
         reranked = True
+    # Down-weight agendas vs the actual record, on the full pool before truncating
+    # so a demoted agenda can be displaced from the top-N by a record beneath it.
+    results = _demote_low_priority_types(results)
     results = results[:max_results]
 
     elapsed_ms = (time.monotonic() - start) * 1000
@@ -186,6 +199,24 @@ def _apply_reranker(
     except RerankError as exc:
         logger.warning("rerank failed (%s); falling back to RRF order", exc)
         return results
+
+
+def _demote_low_priority_types(results: list[SearchResult]) -> list[SearchResult]:
+    """Stably push DEMOTED_DOC_TYPES (agendas) below comparable results.
+
+    Applied after fusion/rerank but before truncation, so a demoted agenda can be
+    displaced out of the visible top-N by a more authoritative record just beneath
+    it — without dropping agendas entirely. A demoted item's effective position is
+    its current rank plus AGENDA_RANK_PENALTY; the sort is stable and breaks ties
+    in favor of the non-demoted item, so a strongly-relevant agenda still wins.
+    """
+
+    def sort_key(pair: tuple[int, SearchResult]) -> tuple[int, bool]:
+        idx, r = pair
+        demoted = r.document_type in DEMOTED_DOC_TYPES
+        return (idx + (AGENDA_RANK_PENALTY if demoted else 0), demoted)
+
+    return [r for _, r in sorted(enumerate(results), key=sort_key)]
 
 
 def _semantic_search(
@@ -309,6 +340,7 @@ def _fuse_ranked_lists(
                 section=row["section"],
                 speaker=row["speaker"],
                 rrf_score=info["rrf_score"],
+                document_type=row.get("document_type", ""),
                 semantic_rank=info["semantic_rank"],
                 keyword_rank=info["keyword_rank"],
             )
