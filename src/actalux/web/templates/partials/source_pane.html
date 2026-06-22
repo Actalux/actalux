@@ -71,7 +71,15 @@
 
 {% if is_video %}
 <section class="original-block">
-  <div class="block-label">Original — meeting video{% if cue %}, cued to the citation{% endif %}</div>
+  <div class="block-label">Original — meeting video</div>
+  {% if cue %}
+  {% set _c = cue | int %}
+  {% set _h = _c // 3600 %}{% set _m = (_c % 3600) // 60 %}{% set _s = _c % 60 %}
+  <p class="video-cue">
+    <span class="label">▶ Jumps to the cited moment</span>
+    <span class="time">{% if _h %}{{ _h }}:{{ '%02d'|format(_m) }}:{{ '%02d'|format(_s) }}{% else %}{{ _m }}:{{ '%02d'|format(_s) }}{% endif %}</span>
+  </p>
+  {% endif %}
   {% include "partials/_video_embed.html" %}
 </section>
 {% elif is_pdf %}

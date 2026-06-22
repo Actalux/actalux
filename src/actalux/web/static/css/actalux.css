@@ -779,6 +779,24 @@ img { max-width: 100%; display: block; }
   color: var(--muted);
   margin-bottom: var(--s-3);
 }
+/* The cited video jumps to a specific timestamp, not the whole recording — make
+   that obvious with the citation motif (vermillion rule + soft-accent fill) plus
+   the actual cue time, so a reader doesn't assume it's the same video each time. */
+.video-cue {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-2);
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  padding: var(--s-2) var(--s-3);
+  margin: 0 0 var(--s-3);
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--ink);
+}
+.video-cue .label { font-weight: 600; color: var(--accent); }
+.video-cue .time { font-family: var(--mono); }
 .cite-section {
   font-family: var(--mono);
   font-size: 10px;
