@@ -582,7 +582,7 @@ _MEETING_KIND = {
 
 # Per-body-type copy for the place directory landing cards.
 _BODY_KIND = {
-    "school_district": "School board",
+    "school_district": "Board of Education",
     "city_council": "City government",
     "plan_commission": "Land use & zoning",
 }
