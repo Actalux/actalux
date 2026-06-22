@@ -11,7 +11,7 @@
   <span class="kicker">Budget &amp; Spending</span>
   <h1>The {{ entity.display_name if entity else 'district' }} budget, by the numbers.</h1>
   <p class="lede">
-    Figures below are read from public financial records the district has filed
+    Figures below are read from public financial records the {{ body_noun | default('district') }} has filed
     or published. Every number links to the exact passage it was taken from.
   </p>
 </div>
@@ -34,7 +34,7 @@
   {% else %}
     <div class="empty-note">
       <p class="lede">No budget figures have been verified and published yet. The
-      cited records below show what the district has said about the budget in the
+      cited records below show what the {{ body_noun | default('district') }} has said about the budget in the
       meantime.</p>
     </div>
   {% endif %}
@@ -44,7 +44,7 @@
 {% if budget_actual %}
 <section class="figures-section">
   <div class="section-label">Budget vs. actual — {{ latest_year }}</div>
-  <p class="hint">Budgetary (cash-basis) figures from the district's budget-and-actual
+  <p class="hint">Budgetary figures from the {{ body_noun | default('district') }}'s budget-and-actual
   schedules. They differ from the audited figures above, which are reported on the
   modified-accrual basis. "vs final" is actual minus the final amended budget.</p>
   <table class="figures-table budget-actual-table">
@@ -86,7 +86,7 @@
 {% from "_cited_matrix.html" import cited_matrix %}
 <section class="figures-section" id="audited-figures">
   <div class="section-label">Audited figures &amp; sources</div>
-  <p class="hint">The district's audited fund-level revenue, spending, and year-end
+  <p class="hint">The {{ body_noun | default('district') }}'s audited fund-level revenue, spending, and year-end
   balances by fiscal year, from the annual financial audits. Every figure links to
   the verbatim passage it was read from.</p>
   {% for m in gaap_matrices %}
@@ -112,7 +112,7 @@
    leads with the document and opens the original in its native form. --- #}
 {% from "_cited_record.html" import cited_record %}
 <section class="topic-sections">
-  <div class="section-label">What the district has said about the budget</div>
+  <div class="section-label">What the {{ body_noun | default('district') }} has said about the budget</div>
   {% for section in sections %}
     {% if section.results %}
     <div class="section-group">

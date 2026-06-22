@@ -51,10 +51,14 @@ class TestRouterRoutes:
         it = finance_intent("debt service principal and interest payments")
         assert it is not None
         assert it.dimension == "function"
-        assert set(it.subcategories) == {
+        # The router is entity-agnostic: a debt query pulls both schools debt-service
+        # subcategories (the test's purpose). It may also match the city's distinct
+        # debt-service labels; the entity-scoped fetch returns only the rows that the
+        # queried body actually has, so extra labels here are harmless.
+        assert {
             "Debt service - Principal retirements",
             "Debt service - Interest and other charges",
-        }
+        } <= set(it.subcategories)
 
     def test_capital_projects_fund(self) -> None:
         it = finance_intent("capital projects fund spending")
@@ -62,6 +66,21 @@ class TestRouterRoutes:
         assert it.dimension == "fund"
         assert it.funds == ("Capital Projects",)
         assert it.category == "expenditure"
+
+    def test_city_public_safety_routes_to_function(self) -> None:
+        # City of Clayton expenditure function; the entity-scoped fetch returns city rows.
+        it = finance_intent("how much did the city spend on public safety")
+        assert it is not None
+        assert it.dimension == "function"
+        assert "Public safety" in it.subcategories
+        assert it.category == "expenditure"
+
+    def test_city_property_tax_routes_to_source(self) -> None:
+        it = finance_intent("city property tax revenue over time")
+        assert it is not None
+        assert it.dimension == "source"
+        assert "Property taxes" in it.subcategories
+        assert it.category == "revenue"
 
     def test_operation_of_plant_function(self) -> None:
         it = finance_intent("operation of plant and facilities maintenance costs")

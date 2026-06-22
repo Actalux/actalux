@@ -1,0 +1,527 @@
+{
+  "FY2020": {
+    "fund_columns": [
+      "General",
+      "Capital Improvement",
+      "Equipment Replacement",
+      "Capital Projects",
+      "2014 General Obligation Bond Issue",
+      "Other Governmental"
+    ],
+    "total_column_header": "Total Governmental Funds",
+    "statement_page_0idx": 34,
+    "statement_pages_0idx": [
+      34
+    ],
+    "statement_page_label": "18",
+    "revenue": {
+      "by_fund": {
+        "General": 25891539,
+        "Capital Improvement": 5390386,
+        "Equipment Replacement": 194629,
+        "Capital Projects": 300224,
+        "2014 General Obligation Bond Issue": 961387,
+        "Other Governmental": 2200543
+      },
+      "total": 34938708
+    },
+    "expenditure": {
+      "by_fund": {
+        "General": 26221686,
+        "Capital Improvement": 3864783,
+        "Equipment Replacement": 2128649,
+        "Capital Projects": 4607630,
+        "2014 General Obligation Bond Issue": 1016116,
+        "Other Governmental": 2147434
+      },
+      "total": 39986298
+    },
+    "fund_balance": {
+      "by_fund": {
+        "General": 18801733,
+        "Capital Improvement": 6335811,
+        "Equipment Replacement": 6324376,
+        "Capital Projects": -1811011,
+        "2014 General Obligation Bond Issue": 4942109,
+        "Other Governmental": 708238
+      },
+      "total": 35301256
+    },
+    "revenue_by_source": {
+      "Property taxes": 9403270,
+      "Special assessments": 100535,
+      "Sales taxes": 7851390,
+      "Licenses and permits": 2575902,
+      "Public utility licenses": 4773931,
+      "Intergovernmental": 4785080,
+      "Community programs": 1331322,
+      "Parking facilities and meters": 1750570,
+      "Fines and forfeitures": 670438,
+      "Donations and reimbursements": 529423,
+      "Investment income": 766036,
+      "Miscellaneous": 400811
+    },
+    "expenditure_by_function": {
+      "General government": 4068834,
+      "Parks and recreation": 5246803,
+      "Public safety": 12802677,
+      "Public works": 5941193,
+      "Economic development": 370173,
+      "Community development": 1048198,
+      "Capital outlay": 7276661,
+      "Debt service - Principal": 1888018,
+      "Debt service - Interest and fiscal charges": 1192382,
+      "Bond issuance costs": 151359
+    },
+    "budget_vs_actual_general_fund": {
+      "basis": "Budget basis (schedule titled 'BUDGET BASIS') | Budgets are adopted on a basis generally consistent with accounting principles generally accepted in the United States of America.",
+      "columns": [
+        "Original",
+        "Final",
+        "Actual"
+      ],
+      "revenue": {
+        "original": 27819655,
+        "final": 25769037,
+        "actual": 25727889
+      },
+      "expenditure": {
+        "original": 28981721,
+        "final": 26538299,
+        "actual": 26058036
+      },
+      "rsi_page_0idx": 74,
+      "rsi_page_label": "57",
+      "column_labels": [
+        "Original Budget",
+        "Final Budget",
+        "Actual",
+        "Variance Over (Under) Budget"
+      ]
+    },
+    "reconciliation_checks": {
+      "rev_funds_sum": true,
+      "exp_funds_sum": true,
+      "fb_funds_sum": true,
+      "rev_by_source_sum": true,
+      "exp_by_function_sum": true
+    },
+    "reconciles": true
+  },
+  "FY2021": {
+    "fund_columns": [
+      "General",
+      "Capital Improvement",
+      "Equipment Replacement",
+      "Capital Projects",
+      "2014 General Obligation Bond Issue",
+      "Other Governmental"
+    ],
+    "total_column_header": "Total Governmental Funds",
+    "statement_page_0idx": 34,
+    "statement_pages_0idx": [
+      34
+    ],
+    "statement_page_label": "18",
+    "revenue": {
+      "by_fund": {
+        "General": 26780598,
+        "Capital Improvement": 4928937,
+        "Equipment Replacement": 161094,
+        "Capital Projects": 979000,
+        "2014 General Obligation Bond Issue": 856601,
+        "Other Governmental": 3215751
+      },
+      "total": 36921981
+    },
+    "expenditure": {
+      "by_fund": {
+        "General": 26642051,
+        "Capital Improvement": 1348956,
+        "Equipment Replacement": 1004269,
+        "Capital Projects": 2167115,
+        "2014 General Obligation Bond Issue": 1007414,
+        "Other Governmental": 2075465
+      },
+      "total": 34245270
+    },
+    "fund_balance": {
+      "by_fund": {
+        "General": 19893687,
+        "Capital Improvement": 5909838,
+        "Equipment Replacement": 7828678,
+        "Capital Projects": 1540598,
+        "2014 General Obligation Bond Issue": 1060635,
+        "Other Governmental": 1961856
+      },
+      "total": 38195292
+    },
+    "revenue_by_source": {
+      "Property taxes": 8775991,
+      "Special assessments": 107156,
+      "Sales taxes": 8583839,
+      "Licenses and permits": 2320249,
+      "Public utility licenses": 4617848,
+      "Intergovernmental": 5986363,
+      "Community programs": 1666054,
+      "Parking facilities and meters": 1736967,
+      "Fines and forfeitures": 1665342,
+      "Donations and reimbursements": 474412,
+      "Investment income": 390110,
+      "Miscellaneous": 597650
+    },
+    "expenditure_by_function": {
+      "General government": 4217397,
+      "Parks and recreation": 2483734,
+      "Public safety": 12934302,
+      "Public works": 5897747,
+      "Economic development": 313678,
+      "Community development": 991403,
+      "Capital outlay": 4308596,
+      "Debt service - Principal": 2038018,
+      "Debt service - Interest and fiscal charges": 1060395
+    },
+    "budget_vs_actual_general_fund": {
+      "basis": "Budget basis (schedule titled 'BUDGET BASIS') | Budgets are adopted on a basis generally consistent with accounting principles generally accepted in the United States of America (GAAP), except that donated items received and used are recorded as revenue and expenditures under GAAP, but are not recorded on the budget basis.",
+      "columns": [
+        "Original",
+        "Final",
+        "Actual"
+      ],
+      "revenue": {
+        "original": 25641395,
+        "final": 26554854,
+        "actual": 26575092
+      },
+      "expenditure": {
+        "original": 27885153,
+        "final": 27358531,
+        "actual": 26436545
+      },
+      "rsi_page_0idx": 73,
+      "rsi_page_label": "56",
+      "column_labels": [
+        "Original Budget",
+        "Final Budget",
+        "Actual",
+        "Variance Over (Under) Budget"
+      ]
+    },
+    "reconciliation_checks": {
+      "rev_funds_sum": true,
+      "exp_funds_sum": true,
+      "fb_funds_sum": true,
+      "rev_by_source_sum": true,
+      "exp_by_function_sum": true
+    },
+    "reconciles": true
+  },
+  "FY2022": {
+    "fund_columns": [
+      "General",
+      "Capital Improvement",
+      "Equipment Replacement",
+      "Capital Projects",
+      "Other Governmental"
+    ],
+    "total_column_header": "Total Governmental Funds",
+    "statement_page_0idx": 38,
+    "statement_pages_0idx": [
+      38,
+      39
+    ],
+    "statement_page_label": "20",
+    "revenue": {
+      "by_fund": {
+        "General": 29738592,
+        "Capital Improvement": 6086843,
+        "Equipment Replacement": 345073,
+        "Capital Projects": 218033,
+        "Other Governmental": 3387475
+      },
+      "total": 39776016
+    },
+    "expenditure": {
+      "by_fund": {
+        "General": 27012096,
+        "Capital Improvement": 2479236,
+        "Equipment Replacement": 1005587,
+        "Capital Projects": 294577,
+        "Other Governmental": 2768797
+      },
+      "total": 33560293
+    },
+    "fund_balance": {
+      "by_fund": {
+        "General": 22311579,
+        "Capital Improvement": 5882901,
+        "Equipment Replacement": 9293680,
+        "Capital Projects": 1981099,
+        "Other Governmental": 3311482
+      },
+      "total": 42780741
+    },
+    "revenue_by_source": {
+      "Property taxes": 9854654,
+      "Special assessments": 99376,
+      "Sales taxes": 10524550,
+      "Licenses and permits": 2605419,
+      "Public utility licenses": 4943445,
+      "Intergovernmental": 5564435,
+      "Community programs": 1850437,
+      "Parking facilities and meters": 2164292,
+      "Fines and forfeitures": 740125,
+      "Donations and reimbursements": 388050,
+      "Investment income": 716342,
+      "Miscellaneous": 324891
+    },
+    "expenditure_by_function": {
+      "General government": 4352173,
+      "Parks and recreation": 2424668,
+      "Public safety": 12963884,
+      "Public works": 5992473,
+      "Economic development": 392143,
+      "Community development": 925754,
+      "Capital outlay": 3827347,
+      "Debt service - Principal": 1652125,
+      "Debt service - Interest and fiscal charges": 758385,
+      "Bond issuance costs": 271341
+    },
+    "budget_vs_actual_general_fund": {
+      "basis": "Budgets are adopted on a basis generally consistent with accounting principles generally accepted in the United States of America (GAAP).",
+      "columns": [
+        "Original",
+        "Final",
+        "Actual"
+      ],
+      "revenue": {
+        "original": 26798981,
+        "final": 29383279,
+        "actual": 29738592
+      },
+      "expenditure": {
+        "original": 28546964,
+        "final": 27881915,
+        "actual": 27012096
+      },
+      "rsi_page_0idx": 92,
+      "rsi_page_label": "73",
+      "column_labels": [
+        "Original Budget",
+        "Final Budget",
+        "Actual",
+        "Variance Over (Under) Budget"
+      ]
+    },
+    "reconciliation_checks": {
+      "rev_funds_sum": true,
+      "exp_funds_sum": true,
+      "fb_funds_sum": true,
+      "rev_by_source_sum": true,
+      "exp_by_function_sum": true
+    },
+    "reconciles": true
+  },
+  "FY2023": {
+    "fund_columns": [
+      "General",
+      "Capital Improvement",
+      "Equipment Replacement",
+      "Other Governmental"
+    ],
+    "total_column_header": "Total Governmental Funds",
+    "statement_page_0idx": 37,
+    "statement_pages_0idx": [
+      37,
+      38
+    ],
+    "statement_page_label": "20",
+    "revenue": {
+      "by_fund": {
+        "General": 30096522,
+        "Capital Improvement": 5999394,
+        "Equipment Replacement": 462544,
+        "Other Governmental": 3261211
+      },
+      "total": 39819671
+    },
+    "expenditure": {
+      "by_fund": {
+        "General": 29491520,
+        "Capital Improvement": 2004255,
+        "Equipment Replacement": 1640879,
+        "Other Governmental": 3244508
+      },
+      "total": 36381162
+    },
+    "fund_balance": {
+      "by_fund": {
+        "General": 23404114,
+        "Capital Improvement": 6418966,
+        "Equipment Replacement": 9416616,
+        "Other Governmental": 5739999
+      },
+      "total": 44979695
+    },
+    "revenue_by_source": {
+      "Property taxes": 9390375,
+      "Special assessments": 98504,
+      "Sales taxes": 11195173,
+      "Licenses and permits": 2050642,
+      "Public utility licenses": 6102376,
+      "Intergovernmental": 3359672,
+      "Community programs": 2100177,
+      "Parking facilities and meters": 2210578,
+      "Fines and forfeitures": 839670,
+      "Donations and reimbursements": 257218,
+      "Investment income": 2011581,
+      "Miscellaneous": 203705
+    },
+    "expenditure_by_function": {
+      "General government": 4819983,
+      "Parks and recreation": 2498857,
+      "Public safety": 13868482,
+      "Public works": 6782188,
+      "Economic development": 465278,
+      "Community development": 1151382,
+      "Capital outlay": 3863391,
+      "Debt service - Principal": 2045000,
+      "Debt service - Interest and fiscal charges": 886601
+    },
+    "budget_vs_actual_general_fund": {
+      "basis": "Budgets are adopted on a basis generally consistent with accounting principles generally accepted in the United States of America (GAAP).",
+      "columns": [
+        "Original",
+        "Final",
+        "Actual"
+      ],
+      "revenue": {
+        "original": 27166670,
+        "final": 29824239,
+        "actual": 30096522
+      },
+      "expenditure": {
+        "original": 30559757,
+        "final": 29538793,
+        "actual": 29491520
+      },
+      "rsi_page_0idx": 90,
+      "rsi_page_label": "72",
+      "column_labels": [
+        "Original Budget",
+        "Final Budget",
+        "Actual",
+        "Variance Over (Under) Budget"
+      ]
+    },
+    "reconciliation_checks": {
+      "rev_funds_sum": true,
+      "exp_funds_sum": true,
+      "fb_funds_sum": true,
+      "rev_by_source_sum": true,
+      "exp_by_function_sum": true
+    },
+    "reconciles": true
+  },
+  "FY2024": {
+    "fund_columns": [
+      "General",
+      "Capital Improvement",
+      "Equipment Replacement",
+      "Other Governmental"
+    ],
+    "total_column_header": "Total Governmental Funds",
+    "statement_page_0idx": 51,
+    "statement_pages_0idx": [
+      51,
+      52
+    ],
+    "statement_page_label": "13",
+    "revenue": {
+      "by_fund": {
+        "General": 31247016,
+        "Capital Improvement": 7783790,
+        "Equipment Replacement": 779933,
+        "Other Governmental": 3463059
+      },
+      "total": 43273798
+    },
+    "expenditure": {
+      "by_fund": {
+        "General": 28914792,
+        "Capital Improvement": 2877782,
+        "Equipment Replacement": 1045686,
+        "Other Governmental": 3326150
+      },
+      "total": 36164410
+    },
+    "fund_balance": {
+      "by_fund": {
+        "General": 26988429,
+        "Capital Improvement": 7409046,
+        "Equipment Replacement": 11510705,
+        "Other Governmental": 6375413
+      },
+      "total": 52283593
+    },
+    "revenue_by_source": {
+      "Property taxes": 9716642,
+      "Special assessments": 100593,
+      "Sales taxes": 11882392,
+      "Licenses and permits": 2214039,
+      "Public utility licenses": 5596998,
+      "Intergovernmental": 4665568,
+      "Community programs": 2193619,
+      "Parking facilities and meters": 1975686,
+      "Fines and forfeitures": 783039,
+      "Donations and reimbursements": 292119,
+      "Investment income": 3530096,
+      "Miscellaneous": 323007
+    },
+    "expenditure_by_function": {
+      "General government": 5005155,
+      "Parks and recreation": 2872576,
+      "Public safety": 14417458,
+      "Public works": 4930159,
+      "Economic development": 488204,
+      "Community development": 1245058,
+      "Capital outlay": 4246444,
+      "Debt service - Principal": 2170000,
+      "Debt service - Interest and fiscal charges": 789356
+    },
+    "budget_vs_actual_general_fund": {
+      "basis": "Budgets are adopted on a basis generally consistent with accounting principles generally accepted in the United States of America (GAAP).",
+      "columns": [
+        "Original",
+        "Final",
+        "Actual"
+      ],
+      "revenue": {
+        "original": 29729664,
+        "final": 31259676,
+        "actual": 31247016
+      },
+      "expenditure": {
+        "original": 30275614,
+        "final": 28996902,
+        "actual": 28914792
+      },
+      "rsi_page_0idx": 104,
+      "rsi_page_label": "65",
+      "column_labels": [
+        "Original Budget",
+        "Final Budget",
+        "Actual",
+        "Variance Over (Under) Budget"
+      ]
+    },
+    "reconciliation_checks": {
+      "rev_funds_sum": true,
+      "exp_funds_sum": true,
+      "fb_funds_sum": true,
+      "rev_by_source_sum": true,
+      "exp_by_function_sum": true
+    },
+    "reconciles": true
+  }
+}

@@ -569,10 +569,14 @@ _SCHOOL_NAV = SidebarNav(
     ),
 )
 
-# City Council Phase 1 carries meeting transcripts only (minutes/ordinances arrive
-# with the CivicPlus crawler), so it lists just Meetings — no empty doc lists.
+# City Council carries meeting transcripts plus the audited-budget page (city
+# ACFR figures); minutes/ordinances arrive with the CivicPlus crawler, so no
+# browse-by-type doc lists yet.
 _COUNCIL_NAV = SidebarNav(
-    topics=(NavLink("Council Meetings", "/meetings", "topic-meetings"),),
+    topics=(
+        NavLink("Council Meetings", "/meetings", "topic-meetings"),
+        NavLink("Budget & Spending", "/budget", "topic-budget"),
+    ),
     documents=(),
 )
 
@@ -610,6 +614,22 @@ _BODY_BLURB = {
         "Plan Commission & Architectural Review Board meeting videos and searchable transcripts."
     ),
 }
+
+
+# The possessive subject noun used in body-neutral budget-page copy ("the <noun>'s
+# audited figures"). Defaults to "district" so the schools page reads unchanged.
+_BODY_NOUN = {
+    "school_district": "district",
+    "city_council": "city",
+    "plan_commission": "commission",
+}
+
+
+def _body_noun(entity: dict[str, Any] | None) -> str:
+    """The subject noun for budget-page prose (district/city/commission)."""
+    if not entity:
+        return "district"
+    return _BODY_NOUN.get(entity.get("type", ""), "district")
 
 
 def _sidebar_nav(entity: dict[str, Any] | None) -> SidebarNav:
@@ -1123,6 +1143,7 @@ async def budget(request: Request, view: EntityView = Depends(resolve_entity)) -
         _page(
             view,
             active="topic-budget",
+            body_noun=_body_noun(view.entity),
             line_items=line_items,
             year_totals=year_totals,
             latest_year=latest_year,

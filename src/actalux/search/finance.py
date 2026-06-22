@@ -43,7 +43,8 @@ logger = logging.getLogger(__name__)
 
 MAX_FINANCE_ITEMS = 16  # cap on evidence rows handed to the summary LLM
 
-# --- Vocabulary (distinct budget_line_items values, 2026-06-07) --------------
+# --- Vocabulary (distinct budget_line_items values; schools 2026-06-07, City of
+#     Clayton governmental funds added 2026-06-22) ----------------------------
 # Each alias list maps natural-language phrasings to the canonical label stored
 # in the table. Matching is case-insensitive substring against the query.
 
@@ -55,6 +56,12 @@ FUND_ALIASES: dict[str, list[str]] = {
     "Special Revenue (Teachers)": ["special revenue", "teachers fund", "teacher fund"],
     "Debt Service": ["debt service fund"],
     "Capital Projects": ["capital projects", "capital fund", "capital project"],
+    # City of Clayton governmental funds (the major-fund set varies by year). The
+    # data fetch is entity-scoped, so these resolve to city rows only.
+    "Capital Improvement": ["capital improvement fund", "capital improvement"],
+    "Equipment Replacement": ["equipment replacement fund", "equipment replacement"],
+    "Other Governmental": ["other governmental fund", "nonmajor fund", "non-major fund"],
+    "2014 General Obligation Bond Issue": ["general obligation bond", "go bond", "2014 bond"],
 }
 
 # Expenditure functions (dimension='function', category='expenditure').
@@ -94,6 +101,25 @@ FUNCTION_ALIASES: dict[str, list[str]] = {
     "Executive administration": ["executive administration"],
     "Building level administration": ["building administration", "building-level administration"],
     "Board of Education services": ["board of education services", "board services"],
+    # City of Clayton governmental-fund expenditure functions (entity-scoped fetch).
+    "General government": ["general government"],
+    "Public safety": ["public safety", "police", "fire department", "police department"],
+    "Public works": ["public works", "street maintenance", "streets and roads"],
+    "Parks and recreation": ["parks and recreation", "parks department", "recreation"],
+    "Economic development": ["economic development"],
+    "Community development": ["community development", "planning and zoning"],
+    "Capital outlay": ["capital outlay"],
+    "Debt service - Principal": [
+        "debt service principal",
+        "debt principal",
+        "principal payment",
+        "principal retirement",
+    ],
+    "Debt service - Interest and fiscal charges": [
+        "debt service interest",
+        "interest and fiscal charges",
+        "debt interest",
+    ],
 }
 
 # Revenue sources (dimension='source', category='revenue').
@@ -102,6 +128,16 @@ SOURCE_ALIASES: dict[str, list[str]] = {
     "County": ["county revenue", "county source", "county funding"],
     "State": ["state revenue", "state source", "state funding", "state aid"],
     "Federal": ["federal revenue", "federal source", "federal funding", "federal grant"],
+    # City of Clayton revenue sources (governmental funds; entity-scoped fetch).
+    "Property taxes": ["property tax", "property taxes"],
+    "Sales taxes": ["sales tax", "sales taxes"],
+    "Public utility licenses": ["utility tax", "utility license", "gross receipts tax"],
+    "Licenses and permits": ["licenses and permits", "building permit", "permit revenue"],
+    "Intergovernmental": ["intergovernmental"],
+    "Fines and forfeitures": ["fines and forfeitures", "court fines"],
+    "Parking facilities and meters": ["parking revenue", "parking meter", "parking facilities"],
+    "Investment income": ["investment income", "interest earnings"],
+    "Community programs": ["community programs"],
 }
 
 EXPENDITURE_WORDS = (
