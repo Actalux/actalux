@@ -103,6 +103,20 @@ class TestNormalizeSourceRef:
         ):
             assert normalize_source_ref(url) == "https://www.youtube.com/watch?v=I-N5ViDmskw"
 
+    def test_civicplus_preserves_doc_id(self) -> None:
+        # Like YouTube, CivicPlus keeps the stable id in the query (minutesID/
+        # agendaID) while the path is identical for every doc — it must survive or
+        # all minutes/agendas collapse to one ref.
+        base = (
+            "https://www.claytonmo.gov/Home/Components/MeetingsManager/"
+            "MeetingMinutes/ShowPrimaryDocument/?minutesID="
+        )
+        a = normalize_source_ref(base + "4500&isPub=True")
+        b = normalize_source_ref(base + "4496&isPub=True")
+        assert a != b
+        assert a.lower().endswith("minutesid=4500")
+        assert "ispub" not in a.lower()
+
     def test_empty_url_returns_empty(self) -> None:
         assert normalize_source_ref("") == ""
 

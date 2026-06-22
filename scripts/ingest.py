@@ -576,6 +576,27 @@ def _youtube_video_id(parts: SplitResult) -> str | None:
     return None
 
 
+# CivicPlus (MeetingsManager) is like YouTube: the stable per-document id lives in
+# the QUERY string (ShowPrimaryDocument?agendaID=N / ?minutesID=N) while the path is
+# identical across all docs, so the query id must be kept or every minutes/agenda
+# doc collapses to one ref and dedup treats unrelated meetings as one document.
+_CIVICPLUS_DOC_RE = re.compile(
+    r"/MeetingsManager/(?:MeetingAgenda|MeetingMinutes)/ShowPrimaryDocument", re.IGNORECASE
+)
+_CIVICPLUS_ID_PARAMS = ("agendaid", "minutesid")
+
+
+def _civicplus_doc_id(parts: SplitResult) -> tuple[str, str] | None:
+    """Return ``(param, id)`` for a CivicPlus ShowPrimaryDocument URL, else None."""
+    if not _CIVICPLUS_DOC_RE.search(parts.path):
+        return None
+    q = {k.lower(): v for k, v in parse_qs(parts.query).items()}
+    for key in _CIVICPLUS_ID_PARAMS:
+        if q.get(key):
+            return key, q[key][0]
+    return None
+
+
 def normalize_source_ref(source_url: str) -> str:
     """Derive a stable external id from a crawler's canonical origin URL.
 
@@ -610,6 +631,9 @@ def normalize_source_ref(source_url: str) -> str:
         return ""
     if video_id := _youtube_video_id(parts):
         return f"https://www.youtube.com/watch?v={video_id}"
+    if cp := _civicplus_doc_id(parts):
+        key, val = cp
+        return f"{parts.scheme.lower()}://{parts.netloc.lower()}{parts.path.rstrip('/')}?{key}={val}"
     return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), parts.path.rstrip("/"), "", ""))
 
 

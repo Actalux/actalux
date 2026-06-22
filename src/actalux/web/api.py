@@ -48,7 +48,7 @@ from actalux.web.text_snippets import normalize_whitespace
 # The document types that are "meetings" — they carry real meeting dates, so a
 # date-keyed bundle and a recency feed are meaningful for them. Budgets, plans,
 # and curriculum docs are reached via search, not these endpoints.
-MEETING_TYPES = ("minutes", "transcript", "resolution")
+MEETING_TYPES = ("minutes", "transcript", "resolution", "agenda")
 
 # Hits/results are capped so a single call can't ask the reranker for an
 # unbounded pool.
