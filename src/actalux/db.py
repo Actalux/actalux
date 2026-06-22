@@ -967,7 +967,7 @@ def get_budget_line_items(
 
 
 def get_proposed_budget_line_items(
-    client: Client, fiscal_year: str, dimension: str
+    client: Client, fiscal_year: str, dimension: str, entity_id: int | None = None
 ) -> list[dict[str, Any]]:
     """Fetch one fiscal year's proposed-budget rows for a namespaced dimension.
 
@@ -981,20 +981,26 @@ def get_proposed_budget_line_items(
 
     ``basis='proposed'`` is required in addition to the dimension as a second,
     independent guard against a stray non-proposed row sharing a dimension name.
+    ``entity_id`` scopes to one body via the document FK (see
+    ``get_budget_line_items``).
     """
-    result = (
+    select = "*, documents!inner(entity_id)" if entity_id is not None else "*"
+    query = (
         client.table("budget_line_items")
-        .select("*")
+        .select(select)
         .eq("fiscal_year", fiscal_year)
         .eq("dimension", dimension)
         .eq("basis", "proposed")
-        .order("amount", desc=True)
-        .execute()
     )
+    if entity_id is not None:
+        query = query.eq("documents.entity_id", entity_id)
+    result = query.order("amount", desc=True).execute()
     return result.data or []
 
 
-def get_dese_line_items(client: Client, dimension: str) -> list[dict[str, Any]]:
+def get_dese_line_items(
+    client: Client, dimension: str, entity_id: int | None = None
+) -> list[dict[str, Any]]:
     """Fetch the DESE state-filing actuals for one namespaced dimension, oldest year first.
 
     The DESE multi-year actuals (ASBR object-level and per-fund, Per-Pupil
@@ -1008,15 +1014,19 @@ def get_dese_line_items(client: Client, dimension: str) -> list[dict[str, Any]]:
 
     ``basis='actual'`` is required alongside the dimension as a second,
     independent guard against a stray non-actual row sharing a dimension name.
+    ``entity_id`` scopes to one body via the document FK (see
+    ``get_budget_line_items``); DESE data is school-only, so a city body returns [].
     """
-    result = (
+    select = "*, documents!inner(entity_id)" if entity_id is not None else "*"
+    query = (
         client.table("budget_line_items")
-        .select("*")
+        .select(select)
         .eq("dimension", dimension)
         .eq("basis", "actual")
-        .order("fiscal_year")
-        .execute()
     )
+    if entity_id is not None:
+        query = query.eq("documents.entity_id", entity_id)
+    result = query.order("fiscal_year").execute()
     return result.data or []
 
 

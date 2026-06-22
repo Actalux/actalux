@@ -47,7 +47,11 @@ class _FakeQuery:
         return self
 
     def eq(self, col: str, val: object) -> _FakeQuery:
-        self._filters.append(("eq", col, val))
+        # Embedded-resource predicates (e.g. "documents.entity_id") filter a joined
+        # table; this flat single-entity fixture can't model the join, and entity
+        # scoping is covered by the finance + real-data checks, so skip them here.
+        if "." not in col:
+            self._filters.append(("eq", col, val))
         return self
 
     def is_(self, col: str, val: object) -> _FakeQuery:

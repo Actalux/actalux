@@ -786,26 +786,30 @@ _BREAKDOWN_VIEWS = ("function", "fund", "source")
 _DEFAULT_BREAKDOWN_VIEW = "function"
 
 
-def _breakdown_context(client: Client, view: str, fiscal_year: str | None) -> dict[str, Any]:
+def _breakdown_context(
+    client: Client, view: str, fiscal_year: str | None, entity_id: int | None = None
+) -> dict[str, Any]:
     """Shares + heading + citation anchor for one breakdown view of one year."""
     if view == "source":
-        items = get_budget_line_items(client, dimension="source")
+        items = get_budget_line_items(client, dimension="source", entity_id=entity_id)
         shares = source_breakdown(items, fiscal_year) if fiscal_year else []
         measure = "Revenue by source"
     elif view == "fund":
-        items = get_budget_line_items(client, dimension="fund")
+        items = get_budget_line_items(client, dimension="fund", entity_id=entity_id)
         shares = fund_breakdown(items, fiscal_year) if fiscal_year else []
         measure = "Expenditure by fund"
     else:  # function
-        items = get_budget_line_items(client, dimension="function")
+        items = get_budget_line_items(client, dimension="function", entity_id=entity_id)
         shares = function_breakdown(items, fiscal_year) if fiscal_year else []
         measure = "Expenditure by function"
     return {"view": view, "year": fiscal_year, "shares": shares, "measure": measure}
 
 
-def _latest_budget_year(client: Client) -> str | None:
+def _latest_budget_year(client: Client, entity_id: int | None = None) -> str | None:
     """Most recent fiscal year present in the by-fund figures, or None."""
-    year_totals = aggregate_by_year(get_budget_line_items(client, dimension="fund"))
+    year_totals = aggregate_by_year(
+        get_budget_line_items(client, dimension="fund", entity_id=entity_id)
+    )
     return year_totals[-1].fiscal_year if year_totals else None
 
 
@@ -813,22 +817,24 @@ def _latest_budget_year(client: Client) -> str | None:
 _VIEW_LABEL = {"function": "by function", "fund": "by fund", "source": "by source"}
 
 
-def _detail_context(client: Client, view: str, key: str) -> dict[str, Any]:
+def _detail_context(
+    client: Client, view: str, key: str, entity_id: int | None = None
+) -> dict[str, Any]:
     """A single component's trend over all years + its fund<->function cross-split.
 
     The split bars drill the *other* direction: a function detail splits by fund
     (and each fund drills to its own detail), a fund detail splits by function.
     """
-    latest = _latest_budget_year(client)
+    latest = _latest_budget_year(client, entity_id)
     if view == "fund":
         trend = component_trend(
-            get_budget_line_items(client, dimension="fund"),
+            get_budget_line_items(client, dimension="fund", entity_id=entity_id),
             category="expenditure",
             key="fund",
             value=key,
         )
         split = cross_split(
-            get_budget_line_items(client, dimension="function"),
+            get_budget_line_items(client, dimension="function", entity_id=entity_id),
             latest or "",
             match={"category": "expenditure", "fund": key},
             group_key="subcategory",
@@ -836,14 +842,14 @@ def _detail_context(client: Client, view: str, key: str) -> dict[str, Any]:
         split_label, split_view, measure = "by function", "function", "Expenditure"
     elif view == "source":
         trend = component_trend(
-            get_budget_line_items(client, dimension="source"),
+            get_budget_line_items(client, dimension="source", entity_id=entity_id),
             category="revenue",
             key="subcategory",
             value=key,
         )
         split, split_label, split_view, measure = [], "", "", "Revenue"
     else:  # function
-        function_items = get_budget_line_items(client, dimension="function")
+        function_items = get_budget_line_items(client, dimension="function", entity_id=entity_id)
         trend = component_trend(
             function_items, category="expenditure", key="subcategory", value=key
         )
@@ -881,26 +887,27 @@ _PROPOSED_BUDGET_FISCAL_YEAR = "2024-2025"
 _PROPOSED_BUDGET_DOC_ID = 262
 
 
-def _proposed_budget_context(client: Client) -> dict[str, Any]:
+def _proposed_budget_context(client: Client, entity_id: int | None = None) -> dict[str, Any]:
     """The proposed-budget section: revenue (by source, by fund) + expenditure (by
     object, by function), each slice citeable to its source chunk in doc #262.
 
     Returns ``{"proposed": None}`` when the proposed rows are absent (e.g. before
-    the loader has run), so the section simply does not render.
+    the loader has run, or for a body with no proposed-budget filing), so the
+    section simply does not render.
     """
     fy = _PROPOSED_BUDGET_FISCAL_YEAR
-    fund_rows = get_proposed_budget_line_items(client, fy, "proposed_fund")
+    fund_rows = get_proposed_budget_line_items(client, fy, "proposed_fund", entity_id=entity_id)
     revenue_by_source = proposed_breakdown(
-        get_proposed_budget_line_items(client, fy, "proposed_source")
+        get_proposed_budget_line_items(client, fy, "proposed_source", entity_id=entity_id)
     )
     # The fund dimension carries both revenue and fund_balance rows; split the
     # revenue rows BY FUND (group on fund, not subcategory) for the by-fund mix.
     revenue_by_fund = proposed_breakdown(fund_rows, group_key="fund", where={"category": "revenue"})
     expenditure_by_object = proposed_breakdown(
-        get_proposed_budget_line_items(client, fy, "proposed_object")
+        get_proposed_budget_line_items(client, fy, "proposed_object", entity_id=entity_id)
     )
     expenditure_by_function = proposed_breakdown(
-        get_proposed_budget_line_items(client, fy, "proposed_function")
+        get_proposed_budget_line_items(client, fy, "proposed_function", entity_id=entity_id)
     )
     if not (revenue_by_source or expenditure_by_object):
         return {"proposed": None}
@@ -940,7 +947,7 @@ def _dese_filed_reports(client: Client, items: list[dict[str, Any]]) -> list[dic
     return reports
 
 
-def _dese_section_context(client: Client) -> dict[str, Any]:
+def _dese_section_context(client: Client, entity_id: int | None = None) -> dict[str, Any]:
     """The "Multi-year actuals — state filings (DESE)" section: three stacked views.
 
     Object-level expenditure and per-fund reserves come from the ASBR filings (12
@@ -950,9 +957,9 @@ def _dese_section_context(client: Client) -> dict[str, Any]:
     no DESE rows are present (e.g. before the loaders have run), so the section
     simply does not render.
     """
-    object_items = get_dese_line_items(client, "asbr_object")
-    fund_items = get_dese_line_items(client, "asbr_fund")
-    school_items = get_dese_line_items(client, "perpupil_building")
+    object_items = get_dese_line_items(client, "asbr_object", entity_id=entity_id)
+    fund_items = get_dese_line_items(client, "asbr_fund", entity_id=entity_id)
+    school_items = get_dese_line_items(client, "perpupil_building", entity_id=entity_id)
     if not (object_items or fund_items or school_items):
         return {"dese": None}
 
@@ -1019,18 +1026,19 @@ def _gaap_figures_context(line_items: list[dict[str, Any]]) -> dict[str, Any]:
 async def budget(request: Request, view: EntityView = Depends(resolve_entity)) -> HTMLResponse:
     """First-class Budget page: charts from budget_line_items plus cited quotes.
 
-    The budget_line_items figures are not yet entity-scoped (one body has budget
-    data today); the cited-quote sections are. Scope the figures in Phase C when
-    a second body carries budget data.
+    Every figure source is scoped to this body (``entity_id``) — figures,
+    proposed-budget, DESE, and the cited-quote sections alike — so a body with no
+    budget data renders an empty page rather than another body's figures.
     """
     client = _get_db()
+    entity_id = view.entity["id"]
     # By-fund rows drive the time-series chart and the figures table; the
     # breakdown panel below the chart switches between fund/function/source.
-    line_items = get_budget_line_items(client, dimension="fund")
+    line_items = get_budget_line_items(client, dimension="fund", entity_id=entity_id)
     year_totals = aggregate_by_year(line_items)
     latest_year = year_totals[-1].fiscal_year if year_totals else None
-    breakdown = _breakdown_context(client, _DEFAULT_BREAKDOWN_VIEW, latest_year)
-    budget_items = get_budget_line_items(client, dimension="budget")
+    breakdown = _breakdown_context(client, _DEFAULT_BREAKDOWN_VIEW, latest_year, entity_id)
+    budget_items = get_budget_line_items(client, dimension="budget", entity_id=entity_id)
     budget_actual = budget_vs_actual(budget_items, latest_year) if latest_year else []
 
     return templates.TemplateResponse(
@@ -1044,10 +1052,10 @@ async def budget(request: Request, view: EntityView = Depends(resolve_entity)) -
             latest_year=latest_year,
             chart_svg=revenue_expenditure_svg(year_totals),
             budget_actual=budget_actual,
-            sections=_budget_quote_sections(view.entity["id"]),
+            sections=_budget_quote_sections(entity_id),
             **_gaap_figures_context(line_items),
-            **_proposed_budget_context(client),
-            **_dese_section_context(client),
+            **_proposed_budget_context(client, entity_id),
+            **_dese_section_context(client, entity_id),
             **breakdown,
         ),
     )
@@ -1063,7 +1071,10 @@ async def budget_breakdown(
     if breakdown_view not in _BREAKDOWN_VIEWS:
         breakdown_view = _DEFAULT_BREAKDOWN_VIEW
     client = _get_db()
-    breakdown = _breakdown_context(client, breakdown_view, _latest_budget_year(client))
+    entity_id = view.entity["id"]
+    breakdown = _breakdown_context(
+        client, breakdown_view, _latest_budget_year(client, entity_id), entity_id
+    )
     return templates.TemplateResponse(request, "_budget_breakdown.html", _page(view, **breakdown))
 
 
@@ -1078,9 +1089,8 @@ async def budget_detail(
     if breakdown_view not in _BREAKDOWN_VIEWS:
         breakdown_view = _DEFAULT_BREAKDOWN_VIEW
     client = _get_db()
-    return templates.TemplateResponse(
-        request, "_budget_detail.html", _page(view, **_detail_context(client, breakdown_view, key))
-    )
+    detail = _detail_context(client, breakdown_view, key, view.entity["id"])
+    return templates.TemplateResponse(request, "_budget_detail.html", _page(view, **detail))
 
 
 def _facilities_plan_context(client: Client) -> dict[str, Any]:
