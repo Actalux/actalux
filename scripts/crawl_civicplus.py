@@ -38,6 +38,8 @@ from pathlib import Path
 from playwright.sync_api import Error as PWError
 from playwright.sync_api import sync_playwright
 
+from actalux.ingest.docket import extract_docket
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
@@ -45,6 +47,7 @@ ARCHIVE_URL = "https://www.claytonmo.gov/government/boards-and-commissions/meeti
 ORIGIN = "https://www.claytonmo.gov"
 OUTPUT_DIR = Path("data/documents")
 MANIFEST_PATH = Path("data/documents/civicplus_manifest.json")
+QUARANTINE_PATH = Path("data/documents/civicplus_quarantine.json")
 
 _UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
@@ -193,15 +196,18 @@ def fetch_pdf(pg, url: str) -> bytes | None:
 
 def crawl(
     body: str, *, limit: int | None, since: date | None, minutes_only: bool = False
-) -> list[dict[str, str]]:
-    """Crawl a body's agendas + minutes; write PDFs + return manifest entries.
+) -> tuple[list[dict[str, str]], list[dict[str, object]]]:
+    """Crawl a body's agendas + minutes; write files + return (manifest, quarantine).
 
-    ``minutes_only`` skips the agenda packets (large, attachment-heavy) and keeps
-    just the clean minutes record.
+    Minutes are ingested as their full (clean, small) PDF. Agendas are packets, so
+    only the verbatim docket text is ingested (the full packet is linked via
+    ``source_url``); a low-confidence docket extraction is quarantined — linked but
+    not ingested — rather than silently clipped. ``minutes_only`` skips agendas.
     """
     category = CIVICPLUS_CATEGORY[body]
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     entries: list[dict[str, str]] = []
+    quarantine: list[dict[str, object]] = []
     with sync_playwright() as p:
         browser = p.chromium.launch(
             headless=True,
@@ -230,28 +236,66 @@ def crawl(
                 if pdf is None:
                     logger.warning("  %s %s: no PDF (skipped)", doc.meeting_date, doc.document_type)
                     continue
-                stem = safe_stem(body, doc.meeting_date, doc.document_type, doc.doc_id)
-                fname = f"{stem}.pdf"
-                (OUTPUT_DIR / fname).write_bytes(pdf)
                 pretty = f"{date.fromisoformat(doc.meeting_date):%B %-d, %Y}"
-                entries.append(
-                    {
-                        "source_file": fname,
-                        "source_url": doc.doc_url,
-                        "source_portal": "civicplus",
-                        "document_type": doc.document_type,
-                        "meeting_date": doc.meeting_date,
-                        "meeting_title": f"{pretty} — {doc.document_type.title()}",
-                        "date_source": "civicplus",
-                    }
-                )
-                logger.info("  wrote %s (%d bytes)", fname, len(pdf))
+                if doc.document_type == "agenda":
+                    result = extract_docket(pdf)
+                    if result.confidence not in ("high", "medium"):
+                        quarantine.append(
+                            {
+                                "meeting_date": doc.meeting_date,
+                                "doc_url": doc.doc_url,
+                                **result.metadata,
+                            }
+                        )
+                        logger.warning(
+                            "  %s agenda: docket %s — quarantined (link only): %s",
+                            doc.meeting_date,
+                            result.confidence,
+                            "; ".join(result.metadata.get("warnings", [])),
+                        )
+                        continue
+                    fname = f"{safe_stem(body, doc.meeting_date, 'agenda', doc.doc_id)}.txt"
+                    (OUTPUT_DIR / fname).write_text(result.text)
+                    entries.append(
+                        {
+                            "source_file": fname,
+                            "source_url": doc.doc_url,
+                            "source_portal": "civicplus",
+                            "document_type": "agenda",
+                            "meeting_date": doc.meeting_date,
+                            "meeting_title": f"{pretty} — Agenda",
+                            "date_source": "civicplus",
+                        }
+                    )
+                    logger.info(
+                        "  wrote %s (docket %d/%d pp, %s)",
+                        fname,
+                        result.metadata["docket_page_count"],
+                        result.metadata["pdf_page_count"],
+                        result.confidence,
+                    )
+                else:
+                    stem = safe_stem(body, doc.meeting_date, doc.document_type, doc.doc_id)
+                    fname = f"{stem}.pdf"
+                    (OUTPUT_DIR / fname).write_bytes(pdf)
+                    entries.append(
+                        {
+                            "source_file": fname,
+                            "source_url": doc.doc_url,
+                            "source_portal": "civicplus",
+                            "document_type": doc.document_type,
+                            "meeting_date": doc.meeting_date,
+                            "meeting_title": f"{pretty} — {doc.document_type.title()}",
+                            "date_source": "civicplus",
+                        }
+                    )
+                    logger.info("  wrote %s (%d bytes)", fname, len(pdf))
                 wrote_any = True
                 time.sleep(1.5)  # be polite
             if wrote_any:
                 meetings_done += 1
         browser.close()
-    return entries
+    return entries, quarantine
 
 
 def main() -> None:
@@ -269,9 +313,18 @@ def main() -> None:
     args = parser.parse_args()
 
     since = date.fromisoformat(args.since) if args.since else None
-    entries = crawl(args.body, limit=args.limit, since=since, minutes_only=args.minutes_only)
+    entries, quarantine = crawl(
+        args.body, limit=args.limit, since=since, minutes_only=args.minutes_only
+    )
     MANIFEST_PATH.write_text(json.dumps(entries, indent=2))
+    QUARANTINE_PATH.write_text(json.dumps(quarantine, indent=2))
     logger.info("staged %d document(s); manifest: %s", len(entries), MANIFEST_PATH)
+    if quarantine:
+        logger.warning(
+            "quarantined %d agenda(s) (low-confidence docket; linked, not ingested): %s",
+            len(quarantine),
+            QUARANTINE_PATH,
+        )
 
 
 if __name__ == "__main__":
