@@ -25,6 +25,10 @@ on:
         description: "Only meetings on/after YYYY-MM-DD"
         required: false
         default: ""
+      minutes_only:
+        description: "Minutes only (skip large agenda packets)"
+        type: boolean
+        default: true
       ingest:
         description: "Ingest into the DB (uncheck for a crawl-only dry run)"
         type: boolean
@@ -72,10 +76,12 @@ jobs:
           BODY: ${{ inputs.body }}
           LIMIT: ${{ inputs.limit }}
           SINCE: ${{ inputs.since }}
+          MINUTES_ONLY: ${{ inputs.minutes_only }}
         run: |
           ARGS="--body $BODY"
           [ -n "$LIMIT" ] && ARGS="$ARGS --limit $LIMIT"
           [ -n "$SINCE" ] && ARGS="$ARGS --since $SINCE"
+          [ "$MINUTES_ONLY" = "true" ] && ARGS="$ARGS --minutes-only"
           uv run --with playwright python scripts/crawl_civicplus.py $ARGS
 
       - name: Ingest documents

@@ -191,8 +191,14 @@ def fetch_pdf(pg, url: str) -> bytes | None:
     return data if data[:5] == b"%PDF-" else None
 
 
-def crawl(body: str, *, limit: int | None, since: date | None) -> list[dict[str, str]]:
-    """Crawl a body's agendas + minutes; write PDFs + return manifest entries."""
+def crawl(
+    body: str, *, limit: int | None, since: date | None, minutes_only: bool = False
+) -> list[dict[str, str]]:
+    """Crawl a body's agendas + minutes; write PDFs + return manifest entries.
+
+    ``minutes_only`` skips the agenda packets (large, attachment-heavy) and keeps
+    just the clean minutes record.
+    """
     category = CIVICPLUS_CATEGORY[body]
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     entries: list[dict[str, str]] = []
@@ -214,6 +220,8 @@ def crawl(body: str, *, limit: int | None, since: date | None) -> list[dict[str,
             if limit and meetings_done >= limit:
                 break
             docs = meeting_documents(pg, agenda_id)
+            if minutes_only:
+                docs = [d for d in docs if d.document_type == "minutes"]
             if since and docs and date.fromisoformat(docs[0].meeting_date) < since:
                 continue
             wrote_any = False
@@ -255,10 +263,13 @@ def main() -> None:
     )
     parser.add_argument("--limit", type=int, help="cap the number of meetings processed")
     parser.add_argument("--since", help="only meetings on/after this date (YYYY-MM-DD)")
+    parser.add_argument(
+        "--minutes-only", action="store_true", help="skip agenda packets; minutes only"
+    )
     args = parser.parse_args()
 
     since = date.fromisoformat(args.since) if args.since else None
-    entries = crawl(args.body, limit=args.limit, since=since)
+    entries = crawl(args.body, limit=args.limit, since=since, minutes_only=args.minutes_only)
     MANIFEST_PATH.write_text(json.dumps(entries, indent=2))
     logger.info("staged %d document(s); manifest: %s", len(entries), MANIFEST_PATH)
 
