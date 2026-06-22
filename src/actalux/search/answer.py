@@ -91,7 +91,10 @@ def assemble_evidence(
     if finance_routing:
         intent = finance_intent(query)
         if intent is not None:
-            evidence = build_finance_evidence(client, intent, max_items=max_results)
+            entity_id = filters.entity_id if filters else None
+            evidence = build_finance_evidence(
+                client, intent, entity_id=entity_id, max_items=max_results
+            )
             if evidence:
                 return evidence, ROUTE_FINANCE
             logger.info("finance intent matched but no rows for %r; using text path", query)

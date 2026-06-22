@@ -290,9 +290,13 @@ class _Row:
     extra_funds: list[str] = field(default_factory=list)
 
 
-def _select_rows(client: Client, intent: FinanceIntent) -> list[dict[str, Any]]:
+def _select_rows(
+    client: Client, intent: FinanceIntent, entity_id: int | None = None
+) -> list[dict[str, Any]]:
     """Pull and filter the budget_line_items rows the intent points at."""
-    items = get_budget_line_items(client, category=intent.category, dimension=intent.dimension)
+    items = get_budget_line_items(
+        client, category=intent.category, dimension=intent.dimension, entity_id=entity_id
+    )
     rows = items
     if intent.funds:
         rows = [r for r in rows if r.get("fund") in intent.funds]
@@ -391,16 +395,22 @@ def _doc_summary_label(row: _Row) -> str:
 
 
 def build_finance_evidence(
-    client: Client, intent: FinanceIntent, *, max_items: int = MAX_FINANCE_ITEMS
+    client: Client,
+    intent: FinanceIntent,
+    *,
+    entity_id: int | None = None,
+    max_items: int = MAX_FINANCE_ITEMS,
 ) -> list[dict[str, Any]]:
     """Render the intent's rows as citeable evidence dicts (enriched-result shape).
 
     Returns at most ``max_items`` rows, most recent fiscal year first. Each dict
     carries the figure's real ``chunk_id`` -> ``hash_id``, so citations verify and
-    the reader pane opens the verbatim source statement. Returns [] if the table
-    has no matching rows (caller then falls back to text retrieval).
+    the reader pane opens the verbatim source statement. ``entity_id`` scopes the
+    rows to one body, so a finance ask on a body with no structured budget returns
+    [] and the caller falls back to (entity-scoped) text retrieval — never another
+    body's figures. Also returns [] when the table has no matching rows.
     """
-    raw = _select_rows(client, intent)
+    raw = _select_rows(client, intent, entity_id)
     if not raw:
         return []
 

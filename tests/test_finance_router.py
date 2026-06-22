@@ -177,3 +177,43 @@ class TestEvidenceBuilder:
         self._patch(monkeypatch, [])
         intent = FinanceIntent(measure="x", dimension="fund", category="expenditure")
         assert build_finance_evidence(None, intent) == []
+
+    def test_entity_id_reaches_the_query(self, monkeypatch) -> None:
+        # The body scope must reach get_budget_line_items, so a finance ask on a
+        # body with no budget data cannot surface another body's figures.
+        captured: dict = {}
+
+        def fake_get(_client, **kwargs):
+            captured.update(kwargs)
+            return []
+
+        monkeypatch.setattr(finance, "get_budget_line_items", fake_get)
+        monkeypatch.setattr(finance, "get_documents", lambda *a, **k: _DOC)
+        intent = FinanceIntent(measure="x", dimension="fund", category="expenditure")
+        build_finance_evidence(None, intent, entity_id=2)
+        assert captured.get("entity_id") == 2
+
+
+class TestAssembleEvidenceScoping:
+    """The finance route must inherit the answer's entity filter (cross-talk fix)."""
+
+    def test_finance_route_scopes_to_filter_entity(self, monkeypatch) -> None:
+        from actalux.search.answer import assemble_evidence
+        from actalux.search.hybrid import SearchFilters
+
+        captured: dict = {}
+
+        def fake_get(_client, **kwargs):
+            captured.update(kwargs)
+            return [_item("2023-2024", "General", "Total expenditures", 1_000_000, 5)]
+
+        monkeypatch.setattr(finance, "get_budget_line_items", fake_get)
+        monkeypatch.setattr(finance, "get_documents", lambda *a, **k: _DOC)
+        _evidence, route = assemble_evidence(
+            None,
+            "general fund total expenditures",
+            [0.0],
+            filters=SearchFilters(entity_id=7),
+        )
+        assert route == "structured-finance"
+        assert captured.get("entity_id") == 7

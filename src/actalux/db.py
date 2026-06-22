@@ -939,14 +939,23 @@ def get_budget_line_items(
     category: str | None = None,
     dimension: str | None = None,
     basis: str | None = None,
+    entity_id: int | None = None,
 ) -> list[dict[str, Any]]:
     """Fetch budget line items, oldest fiscal year first.
 
     Optionally filter by category ('revenue', 'expenditure', 'fund_balance'),
     dimension ('fund', 'source', 'function', 'budget'), and/or basis
     ('original', 'final', 'actual' for the budget-vs-actual rows).
+
+    ``entity_id`` scopes to one public body. budget_line_items has no entity_id
+    of its own; documents carries it (migrate_012), so an inner embed on the
+    document FK drops cross-body rows — without it a finance ask on a body that
+    has no budget data (e.g. City Council) would return another body's figures.
     """
-    query = client.table("budget_line_items").select("*")
+    select = "*, documents!inner(entity_id)" if entity_id is not None else "*"
+    query = client.table("budget_line_items").select(select)
+    if entity_id is not None:
+        query = query.eq("documents.entity_id", entity_id)
     if category:
         query = query.eq("category", category)
     if dimension:
