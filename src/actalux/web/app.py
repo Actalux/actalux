@@ -249,6 +249,9 @@ def _page(ev: EntityView | None, **extra: Any) -> dict[str, Any]:
             "nav": _sidebar_nav(None),
             "switcher": [],
             "meeting_kind": _meeting_kind(None),
+            # Place landing: Ask + search default to ALL bodies of the place.
+            "ask_href": f"{DEFAULT_ENTITY_PATH}/ask?scope=all",
+            "search_scope": "all",
             **extra,
         }
     return {
@@ -258,6 +261,9 @@ def _page(ev: EntityView | None, **extra: Any) -> dict[str, Any]:
         "nav": _sidebar_nav(ev.entity),
         "switcher": _switcher(ev.entity),
         "meeting_kind": _meeting_kind(ev.entity),
+        # Body page: Ask + search default to this body (no scope override).
+        "ask_href": f"{ev.base}/ask",
+        "search_scope": "",
         **extra,
     }
 
@@ -423,18 +429,25 @@ def _run_search(
     date_from: str,
     date_to: str,
     doc_type: str,
+    scope: str = "",
 ) -> HTMLResponse:
-    """Shared search handler for GET and POST routes, scoped to one body."""
+    """Shared search handler for GET and POST routes.
+
+    ``scope`` selects the body scope: a body_slug (one body), 'all' (all bodies of
+    this place), or '' (the current body — the default).
+    """
     is_htmx = bool(request.headers.get("HX-Request"))
     if not q.strip():
         template = "partials/search_results.html" if is_htmx else "search.html"
         return templates.TemplateResponse(request, template, _page(view, results=[], query=""))
 
+    entity_id, entity_ids = _resolve_scope(view.entity, scope)
     filters = SearchFilters(
         date_from=date.fromisoformat(date_from) if date_from else None,
         date_to=date.fromisoformat(date_to) if date_to else None,
         document_type=doc_type or None,
-        entity_id=view.entity["id"],
+        entity_id=entity_id,
+        entity_ids=entity_ids,
     )
 
     client = _get_db()
@@ -466,6 +479,7 @@ def search_get(
     date_from: str = "",
     date_to: str = "",
     doc_type: str = "",
+    scope: str = "",
 ) -> HTMLResponse:
     """GET variant for linkable / restorable search URLs.
 
@@ -473,7 +487,7 @@ def search_get(
     and blocking Supabase RPCs in a threadpool, keeping the event loop free
     for other requests on this single-instance server.
     """
-    return _run_search(request, view, q, date_from, date_to, doc_type)
+    return _run_search(request, view, q, date_from, date_to, doc_type, scope)
 
 
 @jurisdiction.post("/search", response_class=HTMLResponse)
@@ -484,10 +498,11 @@ def search_post(
     date_from: str = Form(""),
     date_to: str = Form(""),
     doc_type: str = Form(""),
+    scope: str = Form(""),
 ) -> HTMLResponse:
     """POST from the search form (works with or without HTMX). Sync for the same
     threadpool reason as ``search_get``."""
-    return _run_search(request, view, q, date_from, date_to, doc_type)
+    return _run_search(request, view, q, date_from, date_to, doc_type, scope)
 
 
 @app.get("/search", response_class=HTMLResponse)
@@ -641,6 +656,67 @@ def _switcher(entity: dict[str, Any]) -> list[dict[str, Any]]:
         )
     out.sort(key=lambda s: s["label"])
     return out
+
+
+def _place_bodies(entity: dict[str, Any]) -> list[dict[str, Any]]:
+    """All bodies under the same place as ``entity``, name-sorted. [] on failure."""
+    place = entity.get("place") or {}
+    try:
+        entities = list_entities(_get_db())
+        bodies = [e for e in entities if (e.get("place") or {}).get("id") == place.get("id")]
+        bodies.sort(key=lambda e: e.get("display_name", ""))
+        return bodies
+    except Exception:  # noqa: BLE001 — scope UI must degrade, not break the page
+        return []
+
+
+def _scope_options(entity: dict[str, Any], selected: str) -> list[dict[str, Any]]:
+    """Ask scope-dropdown options: each sibling body + 'All <place>'.
+
+    value = body_slug | 'all'; the place name is dropped from each body label.
+    Returned only when there is more than one body to choose between (a lone body
+    needs no scope selector).
+    """
+    bodies = _place_bodies(entity)
+    if len(bodies) < 2:
+        return []
+    place = entity.get("place") or {}
+    prefix = f"{place.get('display_name', '')} "
+    opts: list[dict[str, Any]] = []
+    for e in bodies:
+        name = e.get("display_name", "")
+        opts.append(
+            {
+                "value": e.get("body_slug", ""),
+                "label": name[len(prefix) :] if name.startswith(prefix) else name,
+                "selected": e.get("body_slug", "") == selected,
+            }
+        )
+    opts.append(
+        {
+            "value": "all",
+            "label": f"All {place.get('display_name', '') or 'bodies'}",
+            "selected": selected == "all",
+        }
+    )
+    return opts
+
+
+def _resolve_scope(entity: dict[str, Any], scope: str) -> tuple[int | None, tuple[int, ...] | None]:
+    """Map a scope choice to ``(entity_id, entity_ids)`` for ``SearchFilters``.
+
+    ``'all'`` resolves to the place's entity-id LIST so it can never cross into
+    another place; a ``body_slug`` scopes to that one body; ``''`` / unknown falls
+    back to the current body (the default = the page you are on).
+    """
+    if scope == "all":
+        ids = tuple(e["id"] for e in _place_bodies(entity) if e.get("id") is not None)
+        return None, (ids or None)
+    if scope and scope != entity.get("body_slug"):
+        match = next((e for e in _place_bodies(entity) if e.get("body_slug") == scope), None)
+        if match and match.get("id") is not None:
+            return int(match["id"]), None
+    return entity.get("id"), None
 
 
 @jurisdiction.get("/browse/{kind}", response_class=HTMLResponse)
@@ -1667,10 +1743,26 @@ def _blocked_turn(question: str, message: str) -> dict[str, Any]:
 
 
 @jurisdiction.get("/ask", response_class=HTMLResponse)
-def ask_page(request: Request, view: EntityView = Depends(resolve_entity)) -> HTMLResponse:
-    """The Ask page: multi-turn, citation-backed Q&A over this body's records."""
+def ask_page(
+    request: Request, view: EntityView = Depends(resolve_entity), scope: str = ""
+) -> HTMLResponse:
+    """The Ask page: multi-turn, citation-backed Q&A.
+
+    ``scope`` (a body_slug or 'all') preselects the scope dropdown; default = the
+    current body (the landing's Ask CTA passes 'all').
+    """
+    selected = scope or view.entity.get("body_slug", "")
     return templates.TemplateResponse(
-        request, "ask.html", _page(view, active="page-ask", turns=[], history_json="[]")
+        request,
+        "ask.html",
+        _page(
+            view,
+            active="page-ask",
+            turns=[],
+            history_json="[]",
+            scope_options=_scope_options(view.entity, selected),
+            scope=selected,
+        ),
     )
 
 
@@ -1680,6 +1772,7 @@ def ask_post(
     view: EntityView = Depends(resolve_entity),
     q: str = Form(""),
     history: str = Form("[]"),
+    scope: str = Form(""),
 ) -> HTMLResponse:
     """One conversation turn. The client carries history; the server stays stateless.
 
@@ -1692,6 +1785,8 @@ def ask_post(
     # condense/embed cost; genuine questions are far shorter than this.
     question = q.strip()[: cfg.ask_question_max_chars]
     prior = _parse_ask_history(history, cfg)
+    selected = scope or view.entity.get("body_slug", "")
+    sopts = _scope_options(view.entity, selected)
 
     def render(turn: dict[str, Any], new_history: list[dict[str, str]]) -> HTMLResponse:
         history_json = json.dumps(new_history)
@@ -1705,7 +1800,14 @@ def ask_post(
         return templates.TemplateResponse(
             request,
             "ask.html",
-            _page(view, active="page-ask", turns=turns, history_json=history_json),
+            _page(
+                view,
+                active="page-ask",
+                turns=turns,
+                history_json=history_json,
+                scope_options=sopts,
+                scope=selected,
+            ),
         )
 
     if not question:
@@ -1719,6 +1821,8 @@ def ask_post(
                 active="page-ask",
                 turns=_history_to_turns(prior),
                 history_json=json.dumps(prior),
+                scope_options=sopts,
+                scope=selected,
             ),
         )
 
@@ -1752,7 +1856,8 @@ def ask_post(
     try:
         standalone = condense_question(prior, question, cfg.openai_api_key, cfg.condense_model)
         embedding = _embed_query(standalone)
-        filters = SearchFilters(entity_id=view.entity["id"])
+        entity_id, entity_ids = _resolve_scope(view.entity, scope)
+        filters = SearchFilters(entity_id=entity_id, entity_ids=entity_ids)
         enriched, route = assemble_evidence(
             client,
             standalone,
@@ -1798,6 +1903,7 @@ def ask_stream(
     view: EntityView = Depends(resolve_entity),
     q: str = Form(""),
     history: str = Form("[]"),
+    scope: str = Form(""),
 ) -> StreamingResponse:
     """Streaming variant of /ask: emit verified sentences as they are generated.
 
@@ -1859,7 +1965,8 @@ def ask_stream(
             if standalone.strip() != question:
                 yield event({"type": "meta", "standalone": standalone})
             embedding = _embed_query(standalone)
-            filters = SearchFilters(entity_id=view.entity["id"])
+            entity_id, entity_ids = _resolve_scope(view.entity, scope)
+            filters = SearchFilters(entity_id=entity_id, entity_ids=entity_ids)
             enriched, route = assemble_evidence(
                 client,
                 standalone,

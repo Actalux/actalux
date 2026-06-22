@@ -33,6 +33,14 @@
               placeholder="{% if entity and entity.type == 'school_district' %}e.g. How has the district's fund balance changed over recent years?{% else %}e.g. What was discussed about development and zoning?{% endif %}"
               aria-label="Your question"></textarea>
     <div class="ask-form-row">
+      {% if scope_options %}
+      <label class="ask-scope">
+        <span class="ask-scope-label">Search</span>
+        <select name="scope" id="ask-scope">
+          {% for o in scope_options %}<option value="{{ o.value }}"{% if o.selected %} selected{% endif %}>{{ o.label }}</option>{% endfor %}
+        </select>
+      </label>
+      {% endif %}
       <span class="ask-hint">Answers cite their sources. You can also <a href="{{ base }}/search">search the records</a> directly.</span>
       <button class="btn btn-primary" id="ask-send" type="submit">Ask</button>
     </div>
@@ -88,6 +96,8 @@
       var payload = new URLSearchParams();
       payload.set('q', question);
       payload.set('history', history);
+      var scopeEl = document.getElementById('ask-scope');
+      if (scopeEl) payload.set('scope', scopeEl.value);
 
       function handle(obj) {
         if (obj.type === 'meta' && obj.standalone) {

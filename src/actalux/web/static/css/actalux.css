@@ -797,6 +797,28 @@ img { max-width: 100%; display: block; }
 }
 .video-cue .label { font-weight: 600; color: var(--accent); }
 .video-cue .time { font-family: var(--mono); }
+/* Ask scope dropdown: pick which body (or all) a question searches. */
+.ask-scope {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  margin-right: auto;
+}
+.ask-scope-label {
+  font-family: var(--sans);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.ask-scope select {
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  padding: 3px 6px;
+}
 .cite-section {
   font-family: var(--mono);
   font-size: 10px;

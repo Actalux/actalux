@@ -196,6 +196,18 @@ class TestSearchRpcParams:
         _semantic_search(client, [0.1, 0.2], SearchFilters())
 
         assert "filter_entity_id" not in client.calls[0][1]
+        assert "filter_entity_ids" not in client.calls[0][1]
+
+    def test_searches_pass_entity_ids_filter(self) -> None:
+        # The cross-body scope ("all bodies of this place") goes as a list.
+        client = _FakeClient()
+        filters = SearchFilters(entity_ids=(2, 3))
+
+        _semantic_search(client, [0.1, 0.2], filters)
+        _keyword_search(client, "budget", filters)
+
+        assert client.calls[0][1]["filter_entity_ids"] == [2, 3]
+        assert client.calls[1][1]["filter_entity_ids"] == [2, 3]
 
     def test_keyword_search_normalizes_hyphens(self) -> None:
         # A hyphenated term must reach the FTS RPC de-hyphenated, or

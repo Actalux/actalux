@@ -73,6 +73,10 @@ class SearchFilters:
     # Scope to one public body (places/entities model). None = no scope, which
     # for a single-entity corpus is identical to scoping to it.
     entity_id: int | None = None
+    # Scope to a SET of bodies — the place-level "all bodies of this place" search
+    # (cross-body Ask). A tuple for frozen-dataclass immutability. Independent of
+    # entity_id; both None = no entity scope.
+    entity_ids: tuple[int, ...] | None = None
 
 
 def hybrid_search(
@@ -238,6 +242,8 @@ def _semantic_search(
         params["filter_doc_type"] = filters.document_type
     if filters.entity_id is not None:
         params["filter_entity_id"] = filters.entity_id
+    if filters.entity_ids is not None:
+        params["filter_entity_ids"] = list(filters.entity_ids)
 
     try:
         result = client.rpc("semantic_search", params).execute()
@@ -279,6 +285,8 @@ def _keyword_search(
         params["filter_doc_type"] = filters.document_type
     if filters.entity_id is not None:
         params["filter_entity_id"] = filters.entity_id
+    if filters.entity_ids is not None:
+        params["filter_entity_ids"] = list(filters.entity_ids)
 
     try:
         result = client.rpc("keyword_search", params).execute()
