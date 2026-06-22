@@ -1,6 +1,6 @@
 # Actalux
 
-Searchable, citable local government records. Starting with Clayton, MO school district board meetings.
+Searchable, citable local government records. Starting with Clayton, MO city council and board of education.
 
 Every AI-generated statement cites a verbatim source quote. No unconstrained summaries.
 
