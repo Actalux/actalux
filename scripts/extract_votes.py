@@ -41,19 +41,33 @@ from actalux.db import (  # noqa: E402
     insert_votes,
     list_documents,
 )
-from actalux.ingest.votes_parser import (  # noqa: E402
-    ParsedVote,
-    build_details,
-    find_citing_chunk,
-    parse_votes,
-)
+from actalux.ingest import votes_parser, votes_parser_civicplus  # noqa: E402
+from actalux.ingest.votes_parser import ParsedVote, build_details  # noqa: E402
 from actalux.models import Vote  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 MINUTES_TYPE = "minutes"
+# City-body minutes (entity 2/3) record votes in prose and use a different parser
+# from the line-anchored Diligent school-board minutes; dispatch is by portal.
+CIVICPLUS_PORTAL = "civicplus"
 _MOVED_BY_LINE_RE = re.compile(r"(?im)^moved by:")
+
+
+def _parser_for(doc: dict):
+    """(parse_votes, find_citing_chunk) for the document's minutes format."""
+    if doc.get("source_portal") == CIVICPLUS_PORTAL:
+        return votes_parser_civicplus.parse_votes, votes_parser_civicplus.find_citing_chunk
+    return votes_parser.parse_votes, votes_parser.find_citing_chunk
+
+
+def _lead_in_count(doc: dict) -> int:
+    """Audit denominator: motion lead-ins the document carries, per its format."""
+    content = doc.get("content") or ""
+    if doc.get("source_portal") == CIVICPLUS_PORTAL:
+        return votes_parser_civicplus.count_lead_ins(content)
+    return len(_MOVED_BY_LINE_RE.findall(content))
 
 
 def _to_vote(parsed: ParsedVote, doc_id: int, meeting_date: date, chunk: dict) -> Vote:
@@ -76,6 +90,7 @@ def _to_vote(parsed: ParsedVote, doc_id: int, meeting_date: date, chunk: dict) -
 
 def _build_votes(doc: dict, chunks: list[dict]) -> tuple[list[Vote], int]:
     """Parse a document into citeable Vote records. Returns (votes, skipped_uncited)."""
+    parse_votes, find_citing_chunk = _parser_for(doc)
     parsed = parse_votes(doc.get("content") or "")
     meeting_date = date.fromisoformat(doc["meeting_date"])
     votes: list[Vote] = []
@@ -108,18 +123,18 @@ def process_document(client, doc_id: int, *, apply: bool) -> tuple[int, int]:
     chunks = get_document_chunks(client, doc_id)
     votes, skipped = _build_votes(doc, chunks)
 
-    # Surface "Moved by:" blocks that produced no record (no recognizable motion
-    # or result) so a parser gap is visible for audit rather than silent.
-    moved_blocks = len(_MOVED_BY_LINE_RE.findall(doc.get("content") or ""))
-    unparsed = moved_blocks - (len(votes) + skipped)
+    # Surface motion lead-ins that produced no record (no recognizable motion or
+    # result) so a parser gap is visible for audit rather than silent.
+    lead_ins = _lead_in_count(doc)
+    unparsed = lead_ins - (len(votes) + skipped)
     logger.info(
-        "doc %s %s: %d votes, %d uncited, %d of %d moved-by blocks unparsed",
+        "doc %s %s: %d votes, %d uncited, %d of %d motion lead-ins unparsed",
         doc_id,
         doc.get("meeting_date"),
         len(votes),
         skipped,
         max(unparsed, 0),
-        moved_blocks,
+        lead_ins,
     )
     for v in votes:
         logger.info(
@@ -146,6 +161,12 @@ def process_document(client, doc_id: int, *, apply: bool) -> tuple[int, int]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--doc", type=int, action="append", help="document id (repeatable)")
+    parser.add_argument(
+        "--portal", help="scope to one source_portal (e.g. 'civicplus', 'diligent')"
+    )
+    parser.add_argument(
+        "--entity", type=int, help="scope to one public body (entities.id, e.g. 2 = council)"
+    )
     parser.add_argument("--apply", action="store_true", help="write to the DB (default: dry run)")
     args = parser.parse_args()
 
@@ -157,6 +178,19 @@ def main() -> int:
 
     if args.doc:
         doc_ids = args.doc
+    elif args.portal or args.entity is not None:
+        query = (
+            client.table("documents")
+            .select("id")
+            .eq("document_type", MINUTES_TYPE)
+            .is_("replaces_id", "null")
+        )
+        if args.portal:
+            query = query.eq("source_portal", args.portal)
+        if args.entity is not None:
+            query = query.eq("entity_id", args.entity)
+        rows = query.order("meeting_date", desc=True).execute().data or []
+        doc_ids = [r["id"] for r in rows]
     else:
         doc_ids = [d["id"] for d in list_documents(client, document_type=MINUTES_TYPE)]
 
