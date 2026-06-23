@@ -33,6 +33,12 @@ on:
         description: "Ingest into the DB (uncheck for a crawl-only dry run)"
         type: boolean
         default: true
+  schedule:
+    # Weekly (Mon), one body per fire — keeps council + Plan Commission minutes
+    # and agenda dockets current. The cron maps to a body in "Resolve crawl
+    # params"; newest-first crawl with a modest cap, already-ingested deduped.
+    - cron: "0 6 * * 1" # council
+    - cron: "30 6 * * 1" # plan-commission
 
 permissions:
   contents: read
@@ -71,15 +77,42 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y tesseract-ocr
 
       - name: Verify schema is up to date
-        if: ${{ inputs.ingest }}
+        if: ${{ github.event_name == 'schedule' || inputs.ingest }}
         run: uv run python scripts/apply_migrations.py --check
 
-      - name: Crawl agendas + minutes
+      # Scheduled runs send no inputs, so the body comes from which cron fired;
+      # dispatch runs use the inputs. Resolved once into $GITHUB_ENV.
+      - name: Resolve crawl params
         env:
-          BODY: ${{ inputs.body }}
-          LIMIT: ${{ inputs.limit }}
-          SINCE: ${{ inputs.since }}
-          MINUTES_ONLY: ${{ inputs.minutes_only }}
+          INPUT_BODY: ${{ inputs.body }}
+          INPUT_LIMIT: ${{ inputs.limit }}
+          INPUT_SINCE: ${{ inputs.since }}
+          INPUT_MINUTES_ONLY: ${{ inputs.minutes_only }}
+          SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            case "$SCHEDULE" in
+              "30 6 * * 1") BODY=plan-commission ;;
+              *) BODY=council ;;
+            esac
+            LIMIT=25            # newest-first; already-ingested are deduped
+            SINCE=""
+            MINUTES_ONLY=false  # capture agenda dockets too, not just minutes
+          else
+            BODY="$INPUT_BODY"
+            LIMIT="$INPUT_LIMIT"
+            SINCE="$INPUT_SINCE"
+            MINUTES_ONLY="$INPUT_MINUTES_ONLY"
+          fi
+          {
+            echo "BODY=$BODY"
+            echo "LIMIT=$LIMIT"
+            echo "SINCE=$SINCE"
+            echo "MINUTES_ONLY=$MINUTES_ONLY"
+          } >> "$GITHUB_ENV"
+          echo "Resolved: body=$BODY limit=$LIMIT since=$SINCE minutes_only=$MINUTES_ONLY"
+
+      - name: Crawl agendas + minutes
         run: |
           ARGS="--body $BODY"
           [ -n "$LIMIT" ] && ARGS="$ARGS --limit $LIMIT"
@@ -88,9 +121,7 @@ jobs:
           uv run --with playwright python scripts/crawl_civicplus.py $ARGS
 
       - name: Ingest documents
-        if: ${{ inputs.ingest }}
-        env:
-          BODY: ${{ inputs.body }}
+        if: ${{ github.event_name == 'schedule' || inputs.ingest }}
         run: |
           if [ -f data/documents/civicplus_manifest.json ]; then
             uv run python scripts/ingest.py --manifest data/documents/civicplus_manifest.json --body "$BODY"
@@ -99,7 +130,7 @@ jobs:
           fi
 
       - name: Generate document summaries
-        if: ${{ inputs.ingest }}
+        if: ${{ github.event_name == 'schedule' || inputs.ingest }}
         run: uv run python scripts/backfill_doc_summaries.py
 
       - name: Upload artifacts

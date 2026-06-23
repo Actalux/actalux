@@ -47,9 +47,12 @@ on:
         required: false
         default: ""
   schedule:
-    # 03:30 UTC daily (~21:30/22:30 US Central) — after typical meeting nights,
-    # catching the same-evening VOD. Capped at 5 new meetings/run.
-    - cron: "30 3 * * *"
+    # One body per nightly fire (~21:30–23:30 US Central), staggered so they don't
+    # overlap; each catches new meetings (capped at 5/run, already-ingested skipped).
+    # The cron string maps to a body in the "Resolve target body" step below.
+    - cron: "30 3 * * *" # schools
+    - cron: "0 4 * * *" # council
+    - cron: "30 4 * * *" # plan-commission
 
 permissions:
   contents: read
@@ -108,18 +111,36 @@ jobs:
         if: ${{ github.event_name == 'schedule' || inputs.ingest }}
         run: uv run python scripts/apply_migrations.py --check
 
+      # Scheduled runs send no inputs, so the target body comes from which cron
+      # fired (github.event.schedule); dispatch runs use the body input. Resolved
+      # once here into $GITHUB_ENV so the transcribe + ingest steps agree.
+      - name: Resolve target body
+        env:
+          INPUT_BODY: ${{ inputs.body }}
+          SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            case "$SCHEDULE" in
+              "0 4 * * *") BODY=council ;;
+              "30 4 * * *") BODY=plan-commission ;;
+              *) BODY=schools ;;
+            esac
+          else
+            BODY="${INPUT_BODY:-schools}"
+          fi
+          echo "BODY=$BODY" >> "$GITHUB_ENV"
+          echo "Resolved target body: $BODY"
+
       - name: Transcribe new meetings
         env:
           SINCE: ${{ inputs.since }}
           LIMIT: ${{ inputs.limit }}
           FORCE: ${{ inputs.force }}
-          BODY: ${{ inputs.body }}
           VIDEO_ID: ${{ inputs.video_id }}
           MEETING_DATE: ${{ inputs.date }}
           MEETING_TITLE: ${{ inputs.title }}
         run: |
           PROXY="socks5h://127.0.0.1:40000"
-          BODY="${BODY:-schools}"  # scheduled runs send no inputs
           if [ -n "$VIDEO_ID" ]; then
             # Targeted re-transcribe of one meeting (re-ingest supersedes the old doc).
             uv run python scripts/transcribe_meetings.py \
@@ -134,10 +155,7 @@ jobs:
 
       - name: Ingest transcripts
         if: ${{ github.event_name == 'schedule' || inputs.ingest }}
-        env:
-          BODY: ${{ inputs.body }}
         run: |
-          BODY="${BODY:-schools}"  # scheduled runs send no inputs
           if [ -f data/documents/youtube_manifest.json ]; then
             uv run python scripts/ingest.py --manifest data/documents/youtube_manifest.json --body "$BODY"
           else
