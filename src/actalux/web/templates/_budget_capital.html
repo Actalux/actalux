@@ -1,0 +1,43 @@
+{# Capital outlay over time: audited actuals (solid) alongside the planned CIP
+   (hatched), on one timeline. Planned bars link down to the cited CIP table; each
+   audited year links to the statement passage it was read from. Planned figures are
+   appropriations, not actuals, and are labelled as such — never presented as spend. #}
+<section class="chart-section capital-section">
+  <div class="section-label">Capital outlay over time</div>
+  <p class="hint">
+    The City's capital outlay by fiscal year: audited actuals from the annual
+    financial audits, shown with the planned five-year Capital Improvements Plan.
+    Planned figures are appropriations, not actuals. Every figure links to the
+    passage it was read from.
+  </p>
+  {{ capital_outlay.svg }}
+  <div class="chart-legend">
+    <span class="legend-item"><span class="swatch swatch-capital-actual"></span>Actual (audited)</span>
+    {% if capital_outlay.has_planned %}
+    <span class="legend-item"><span class="swatch swatch-capital-planned"></span>Planned (CIP)</span>
+    {% endif %}
+  </div>
+
+  {% if capital_outlay.actual %}
+  <table class="figures-table" style="margin-top: var(--s-5);">
+    <thead>
+      <tr><th>Fiscal year</th><th class="num">Capital outlay (actual)</th><th>Source</th></tr>
+    </thead>
+    <tbody>
+      {% for p in capital_outlay.actual %}
+      <tr>
+        <td>FY{{ p.fiscal_year }}</td>
+        <td class="num">{{ p.amount | usd }}</td>
+        <td>
+          {% if p.cite_ref is not none %}
+            <a href="/chunk/{{ p.cite_ref }}/source" class="hash">{{ p.cite_ref | chunk_hash_id }}</a>
+          {% else %}
+            <span class="muted">&mdash;</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>

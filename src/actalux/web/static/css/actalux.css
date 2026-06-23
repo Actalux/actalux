@@ -1452,6 +1452,8 @@ img { max-width: 100%; display: block; }
 .chart .bar-revenue { fill: var(--ink-soft); }
 .chart .bar-trend { fill: var(--ink-soft); }
 .chart .bar-expenditure { fill: url(#hatch); }
+.chart .bar-capital-actual { fill: var(--ink-soft); }
+.chart .bar-capital-planned { fill: url(#hatch); }
 .chart .bar-deficit { stroke: var(--accent); stroke-width: 2; }
 .chart a:hover .bar { opacity: 0.7; }
 .chart .hatch-bg { fill: var(--paper); }
@@ -1471,6 +1473,12 @@ img { max-width: 100%; display: block; }
   border: 1px solid var(--rule-strong);
 }
 .swatch-deficit { background: var(--paper); border: 2px solid var(--accent); }
+.swatch-capital-actual { background: var(--ink-soft); }
+.swatch-capital-planned {
+  background: repeating-linear-gradient(
+    45deg, var(--paper), var(--paper) 2px, var(--ink-soft) 2px, var(--ink-soft) 3px);
+  border: 1px solid var(--rule-strong);
+}
 
 /* Stacked-bar chart (DESE multi-year actuals): warm-grey ramp, hairline paper
    separator between segments so series read by value, not hue. */

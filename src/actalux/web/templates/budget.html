@@ -101,6 +101,11 @@
   {% include "_budget_proposed.html" %}
 {% endif %}
 
+{# --- Capital outlay over time: audited actuals + the planned CIP, one timeline --- #}
+{% if capital_outlay %}
+  {% include "_budget_capital.html" %}
+{% endif %}
+
 {# --- Multi-year Capital Improvements Plan (funded projects × fiscal year) --- #}
 {% if cip %}
   {% include "_budget_cip.html" %}

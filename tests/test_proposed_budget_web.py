@@ -19,7 +19,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from actalux.db import get_budget_line_items, get_proposed_budget_line_items
-from actalux.web.app import app
+from actalux.web.app import _capital_outlay_context, app
 
 client = TestClient(app, raise_server_exceptions=False)
 
@@ -344,3 +344,52 @@ class TestProposedSectionRender:
         # Opens the original; the portal is shown in the record meta.
         assert "/chunk/7a60af78/source" in r.text
         assert "Open the original" in r.text
+
+
+def _capital_row(dimension, sub, fy, amount, citation_id=None):
+    """A budget_line_items row for capital-outlay context tests."""
+    return {
+        "fiscal_year": fy,
+        "dimension": dimension,
+        "category": "expenditure",
+        "fund": "",
+        "subcategory": sub,
+        "amount": str(amount),
+        "basis": "proposed" if dimension == "cip" else None,
+        "document_id": 1451 if dimension == "cip" else 1441,
+        "chunk_id": 700,
+        "citation_id": citation_id,
+        "source_quote": f"{sub} {amount}",
+        "note": "",
+    }
+
+
+class TestCapitalOutlayContext:
+    def test_actuals_and_planned_aggregate_per_year(self) -> None:
+        rows = [
+            _capital_row("function", "Capital outlay", "2022-2023", 3863391, citation_id="aa"),
+            _capital_row("function", "Capital outlay", "2023-2024", 4246444, citation_id="bb"),
+            _capital_row("function", "Public safety", "2023-2024", 9000000),  # not capital
+            # Two FY2026 CIP projects must aggregate into one planned year.
+            _capital_row("cip", "Project A", "2025-2026", 700000),
+            _capital_row("cip", "Project B", "2025-2026", 4028078),
+        ]
+        ctx = _capital_outlay_context(_FakeClient(rows))["capital_outlay"]
+        assert ctx is not None
+        # Audited actuals: oldest first, only the Capital outlay line.
+        assert [(p.fiscal_year, str(p.amount)) for p in ctx["actual"]] == [
+            ("2022-2023", "3863391"),
+            ("2023-2024", "4246444"),
+        ]
+        assert ctx["actual"][1].cite_ref == "bb"  # carries the stable citation id
+        assert ctx["has_planned"] is True
+        svg = str(ctx["svg"])
+        assert 'class="bar bar-capital-actual"' in svg
+        assert 'class="bar bar-capital-planned"' in svg
+        # The aggregated planned bar ($4,728,078) links to the cited CIP section.
+        assert 'href="#cip-plan"' in svg
+        assert "$4,728,078 (planned)" in svg
+
+    def test_no_capital_rows_omits_the_section(self) -> None:
+        rows = [_capital_row("function", "Public safety", "2023-2024", 9000000)]
+        assert _capital_outlay_context(_FakeClient(rows)) == {"capital_outlay": None}

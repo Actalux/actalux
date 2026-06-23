@@ -434,6 +434,86 @@ def trend_svg(points: list[YearPoint]) -> Markup:
     return Markup("".join(parts))
 
 
+@dataclass(frozen=True)
+class CapitalBar:
+    """One fiscal year's capital outlay — audited actual, or planned (CIP)."""
+
+    fiscal_year: str
+    amount: Decimal
+    planned: bool  # True -> hatch fill + CIP-section link; False -> solid audited bar
+    href: str | None = None  # deep-link target for the bar (source chunk, or #anchor)
+
+
+def capital_outlay_svg(bars: list[CapitalBar]) -> Markup:
+    """Single timeline of capital outlay by fiscal year: solid actuals, hatched plan.
+
+    Audited (ACFR) years are solid ink; planned (CIP) years use the hatch texture and
+    link to the CIP section, so a forward plan is never presented as an actual. Each
+    bar deep-links to the source its figure was read from. Years are ordered oldest
+    first; a gap year with no figure simply has no bar (its absence reads on the
+    x-axis labels rather than being silently closed up).
+    """
+    if not bars:
+        return Markup("")
+    bars = sorted(bars, key=lambda b: b.fiscal_year)
+
+    plot_w = _CHART_W - _PAD_LEFT - _PAD_RIGHT
+    plot_h = _CHART_H - _PAD_TOP - _PAD_BOTTOM
+    baseline = _PAD_TOP + plot_h
+    ceiling = _nice_ceiling(max((b.amount for b in bars), default=Decimal(1)))
+
+    def y_for(value: Decimal) -> float:
+        return baseline - float(value / ceiling) * plot_h
+
+    parts: list[str] = [
+        f'<svg class="chart" viewBox="0 0 {_CHART_W} {_CHART_H}" role="img" '
+        f'aria-label="Capital outlay by fiscal year" preserveAspectRatio="xMidYMid meet">',
+        '<defs><pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" '
+        'patternTransform="rotate(45)">'
+        '<rect width="6" height="6" class="hatch-bg"/>'
+        '<line x1="0" y1="0" x2="0" y2="6" class="hatch-line"/></pattern></defs>',
+    ]
+    for i in range(_GRIDLINES + 1):
+        gv = ceiling * Decimal(i) / Decimal(_GRIDLINES)
+        gy = y_for(gv)
+        parts.append(
+            f'<line class="grid" x1="{_PAD_LEFT}" y1="{gy:.1f}" '
+            f'x2="{_CHART_W - _PAD_RIGHT}" y2="{gy:.1f}"/>'
+        )
+        parts.append(
+            f'<text class="axis-y" x="{_PAD_LEFT - 8}" y="{gy + 3:.1f}" '
+            f'text-anchor="end">{escape(_axis_label(gv))}</text>'
+        )
+
+    slot_w = plot_w / len(bars)
+    bar_w = min(slot_w * 0.5, 56)
+    for idx, b in enumerate(bars):
+        cx = _PAD_LEFT + slot_w * (idx + 0.5)
+        x = cx - bar_w / 2
+        y = y_for(b.amount)
+        cls = "bar-capital-planned" if b.planned else "bar-capital-actual"
+        kind = "planned" if b.planned else "actual"
+        rect = (
+            f"<title>{escape(b.fiscal_year)} {escape(usd(b.amount))} ({kind})</title>"
+            f'<rect class="bar {cls}" x="{x:.1f}" y="{y:.1f}" '
+            f'width="{bar_w:.1f}" height="{baseline - y:.1f}"/>'
+        )
+        if b.href:
+            rect = f'<a href="{escape(b.href)}">{rect}</a>'
+        parts.append(rect)
+        parts.append(
+            f'<text class="axis-x" x="{cx:.1f}" y="{baseline + 18:.1f}" '
+            f'text-anchor="middle">{escape(short_year(b.fiscal_year))}</text>'
+        )
+
+    parts.append(
+        f'<line class="axis-base" x1="{_PAD_LEFT}" y1="{baseline}" '
+        f'x2="{_CHART_W - _PAD_RIGHT}" y2="{baseline}"/>'
+    )
+    parts.append("</svg>")
+    return Markup("".join(parts))
+
+
 # Horizontal tier bar (facilities priority tiers). Its own small canvas so the
 # three rows read as a compact comparison, not the tall time-series canvas.
 _TIER_BAR_W = 720

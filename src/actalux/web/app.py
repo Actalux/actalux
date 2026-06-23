@@ -68,10 +68,12 @@ from actalux.search.summarize import (
 from actalux.web import facilities_plan_data as fpd
 from actalux.web.api import _enforce_rate, api_router
 from actalux.web.charts import (
+    CapitalBar,
     TierBar,
     aggregate_by_year,
     budget_vs_actual,
     build_stack,
+    capital_outlay_svg,
     component_trend,
     cross_split,
     function_breakdown,
@@ -1140,6 +1142,47 @@ def _cip_context(client: Client, entity_id: int | None = None) -> dict[str, Any]
     }
 
 
+def _capital_outlay_context(client: Client, entity_id: int | None = None) -> dict[str, Any]:
+    """Capital outlay over time: audited actuals (ACFR) plus the planned CIP per year.
+
+    Actuals are the "Capital outlay" line of the audited governmental-funds statement
+    (one cited figure per year). Planned years are each fiscal year's CIP total — an
+    aggregate of the per-project rows shown, fully cited, in the CIP section below, so
+    the planned bars link there rather than to a single project. Returns
+    ``{"capital_outlay": None}`` when a body has neither line, so the section is
+    omitted for bodies (e.g. the school district) without city-style capital data.
+    """
+    func_items = get_budget_line_items(client, dimension="function", entity_id=entity_id)
+    actual = component_trend(
+        func_items, category="expenditure", key="subcategory", value="Capital outlay"
+    )
+    cip_rows = get_budget_line_items(client, dimension="cip", entity_id=entity_id)
+    planned: dict[str, Decimal] = {}
+    for r in cip_rows:
+        fy = r["fiscal_year"]
+        planned[fy] = planned.get(fy, Decimal(0)) + Decimal(str(r["amount"]))
+    if not actual and not planned:
+        return {"capital_outlay": None}
+
+    bars = [
+        CapitalBar(
+            p.fiscal_year,
+            p.amount,
+            planned=False,
+            href=f"/chunk/{p.cite_ref}/source" if p.cite_ref is not None else None,
+        )
+        for p in actual
+    ]
+    bars += [CapitalBar(fy, amt, planned=True, href="#cip-plan") for fy, amt in planned.items()]
+    return {
+        "capital_outlay": {
+            "svg": capital_outlay_svg(bars),
+            "actual": actual,  # cited per-year rows for the figures table
+            "has_planned": bool(planned),
+        }
+    }
+
+
 def _dese_filed_reports(client: Client, items: list[dict[str, Any]]) -> list[dict[str, str]]:
     """Per fiscal year, the public URL of the official filing the figures were read from.
 
@@ -1270,6 +1313,7 @@ async def budget(request: Request, view: EntityView = Depends(resolve_entity)) -
             sections=_budget_quote_sections(entity_id),
             **_gaap_figures_context(line_items),
             **_proposed_budget_context(client, entity_id, view.entity),
+            **_capital_outlay_context(client, entity_id),
             **_cip_context(client, entity_id),
             **_dese_section_context(client, entity_id),
             **breakdown,

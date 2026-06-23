@@ -6,11 +6,13 @@ from decimal import Decimal
 
 from actalux.web.charts import (
     STACK_RAMP_STEPS,
+    CapitalBar,
     TierBar,
     _axis_label,
     aggregate_by_year,
     budget_vs_actual,
     build_stack,
+    capital_outlay_svg,
     component_trend,
     cross_split,
     function_breakdown,
@@ -295,6 +297,33 @@ class TestTrendSvg:
         assert "<svg" in svg and "</svg>" in svg
         assert svg.count('class="bar bar-trend"') == 2  # one bar per year
         assert "23-24" in svg and "24-25" in svg  # short-year x labels
+
+
+class TestCapitalOutlaySvg:
+    def test_empty_returns_empty_string(self):
+        assert str(capital_outlay_svg([])) == ""
+
+    def test_actuals_solid_planned_hatched_and_ordered(self):
+        bars = [
+            # deliberately out of order to prove the renderer sorts oldest-first
+            CapitalBar("2025-2026", Decimal("4728078"), planned=True, href="#cip-plan"),
+            CapitalBar("2023-2024", Decimal("4246444"), planned=False, href="/chunk/abc/source"),
+        ]
+        svg = str(capital_outlay_svg(bars))
+        assert "<svg" in svg and "</svg>" in svg
+        assert 'class="bar bar-capital-actual"' in svg  # audited year, solid
+        assert 'class="bar bar-capital-planned"' in svg  # planned year, hatch
+        assert "url(#hatch)" not in svg  # fill comes from CSS class, not inline
+        assert '<pattern id="hatch"' in svg  # hatch pattern defined for the CSS fill
+        # oldest-first: the FY2023-2024 actual bar is emitted before the FY2025-2026 plan
+        assert svg.index("23-24") < svg.index("25-26")
+        # each bar deep-links to its source / the CIP section
+        assert 'href="/chunk/abc/source"' in svg and 'href="#cip-plan"' in svg
+        assert "(actual)" in svg and "(planned)" in svg  # title disambiguates the two
+
+    def test_bar_without_href_is_not_wrapped_in_a_link(self):
+        svg = str(capital_outlay_svg([CapitalBar("2019-2020", Decimal("7276661"), planned=False)]))
+        assert "<a " not in svg
 
 
 class TestBudgetVsActual:
