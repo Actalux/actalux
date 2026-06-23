@@ -22,6 +22,7 @@
       <div class="card-head">
         <h3 class="doc-title">{{ r | display_title }}</h3>
         <div class="card-meta">
+          {% if show_body and r.body_label %}<span class="body-badge">{{ r.body_label }}</span>{% endif %}
           <span class="kind">{{ r.document_type or 'Record' }}</span>
           {% if r.meeting_date %}<span class="date">{{ r.meeting_date }}</span>{% endif %}
           {% if r.section %}<span class="section">{{ r.section }}</span>{% endif %}

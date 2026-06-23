@@ -13,6 +13,7 @@
   {% for s in sources %}
   <a class="ask-source" href="/chunk/{{ s.cite_ref }}/source">
     <span class="hash">{{ s.hash_id }}</span>
+    {% if show_body and s.body_label %}<span class="body-badge">{{ s.body_label }}</span>{% endif %}
     <span class="src-title">{{ s | display_title }}</span>
     {% if s.meeting_date %}<span class="src-date">{{ s.meeting_date }}</span>{% endif %}
   </a>

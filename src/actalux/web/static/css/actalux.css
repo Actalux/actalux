@@ -1731,3 +1731,15 @@ img { max-width: 100%; display: block; }
 
 /* Capital Improvements Plan table: total row separated by the emphasis rule. */
 .cip-total-row td { border-top: 2px solid var(--ink); }
+
+/* Body badge: attributes a result to its public body in cross-body (All Clayton)
+   search/Ask. Neutral chip — only shown when results span more than one body. */
+.body-badge {
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0 5px;
+  border: 1px solid var(--rule);
+  color: var(--muted);
+}

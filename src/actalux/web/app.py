@@ -466,9 +466,12 @@ def _run_search(
         results = []
 
     enriched = enrich_results(client, results)
+    show_body = _tag_bodies(client, enriched)
     template = "partials/search_results.html" if is_htmx else "search.html"
 
-    return templates.TemplateResponse(request, template, _page(view, results=enriched, query=q))
+    return templates.TemplateResponse(
+        request, template, _page(view, results=enriched, query=q, show_body=show_body)
+    )
 
 
 @jurisdiction.get("/search", response_class=HTMLResponse)
@@ -644,6 +647,21 @@ def _meeting_kind(entity: dict[str, Any] | None) -> str:
     if not entity:
         return "Meeting"
     return _MEETING_KIND.get(entity.get("type", "")) or entity.get("display_name") or "Meeting"
+
+
+def _tag_bodies(client: Client, results: list[dict[str, Any]]) -> bool:
+    """Attach a body label to each result; return True when they span >1 body.
+
+    Used by cross-body search/Ask (the place-level "All Clayton" scope) so a result
+    is visibly attributed to its body. Single-body result sets need no badge.
+    """
+    ids = {r.get("entity_id") for r in results if r.get("entity_id")}
+    if len(ids) <= 1:
+        return False
+    entities = {e["id"]: e for e in list_entities(client)}
+    for r in results:
+        r["body_label"] = _meeting_kind(entities.get(r.get("entity_id")))
+    return True
 
 
 def _switcher(entity: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1998,6 +2016,7 @@ def ask_post(
             prior,
         )
 
+    sources = _cited_sources(summary.text, enriched)
     turn = {
         "question": question,
         # Surface the condensed query only when it actually differs, so a reader
@@ -2005,7 +2024,8 @@ def ask_post(
         "standalone": standalone if standalone.strip() != question else "",
         "answer_html": _render_citation_links(summary.text, enriched),
         "summary": summary,
-        "sources": _cited_sources(summary.text, enriched),
+        "sources": sources,
+        "show_body": _tag_bodies(client, sources),
         "blocked": False,
     }
     new_history = _bound_history(
@@ -2123,7 +2143,7 @@ def ask_stream(
         answer_text = summary.text if summary else ""
         sources = _cited_sources(answer_text, enriched) if summary else []
         sources_html = templates.env.get_template("partials/ask_sources.html").render(
-            summary=summary, sources=sources
+            summary=summary, sources=sources, show_body=_tag_bodies(client, sources)
         )
         new_history = _bound_history(
             prior

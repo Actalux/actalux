@@ -15,7 +15,7 @@
   <div class="summary-card ask-a">
     <div class="heading">Answer · every claim cites a source</div>
     <div class="body">{{ turn.answer_html | safe }}</div>
-    {% with summary = turn.summary, sources = turn.sources %}
+    {% with summary = turn.summary, sources = turn.sources, show_body = turn.show_body %}
       {% include "partials/ask_sources.html" %}
     {% endwith %}
   </div>
