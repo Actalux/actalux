@@ -82,3 +82,13 @@ class TestExtractDocket:
         assert r.confidence == "low"
         assert r.metadata["has_adjournment"] is False
         assert "no Adjournment marker" in " ".join(r.metadata["warnings"])
+
+    def test_malformed_pdf_is_failed_not_raised(self) -> None:
+        # Akamai sometimes serves a short corrupt stream that still starts with
+        # "%PDF-" (clearing the crawler's magic-byte check). It must grade "failed"
+        # (quarantine, link only), not raise and abort the whole crawl.
+        r = extract_docket(b"%PDF-1.4 truncated, no xref, no objects")
+        assert r.confidence == "failed"
+        assert r.text == ""
+        assert r.boundary_page is None
+        assert "could not read PDF" in " ".join(r.metadata["warnings"])

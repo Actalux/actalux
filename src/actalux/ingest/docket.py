@@ -57,8 +57,31 @@ def _page_markers(text: str) -> int:
 
 
 def extract_docket(pdf_bytes: bytes) -> DocketResult:
-    """Grade and (when confident) extract the docket from an agenda packet PDF."""
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    """Grade and (when confident) extract the docket from an agenda packet PDF.
+
+    A malformed or truncated PDF is graded "failed" (quarantine, link only) rather
+    than raising: Akamai occasionally serves a short corrupt stream that still
+    begins with ``%PDF-`` (so it clears the crawler's magic-byte check), and a
+    single unreadable packet must not abort the whole crawl.
+    """
+
+    def unreadable(exc: Exception) -> DocketResult:
+        return DocketResult(
+            "",
+            "failed",
+            None,
+            {
+                "pdf_page_count": 0,
+                "boundary_method": "none",
+                "confidence": "failed",
+                "warnings": [f"could not read PDF: {exc}"],
+            },
+        )
+
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    except fitz.FileDataError as exc:
+        return unreadable(exc)
     try:
         n = doc.page_count
         texts = [str(doc[i].get_text("text", sort=True)) for i in range(n)]
@@ -73,6 +96,10 @@ def extract_docket(pdf_bytes: bytes) -> DocketResult:
                     ocr = _ocr_page(doc[i])
                     if ocr.strip():
                         texts[i] = ocr
+    except (fitz.FileDataError, RuntimeError) as exc:
+        # Header/xref opened but a page's content stream is corrupt: still failed,
+        # never a crash. (All mupdf read errors derive from RuntimeError.)
+        return unreadable(exc)
     finally:
         doc.close()
 
