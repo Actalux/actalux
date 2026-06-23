@@ -58,10 +58,27 @@ class TestExtractDocket:
         assert r.text == ""
         assert r.boundary_page is None
 
-    def test_no_adjournment_is_low_confidence(self) -> None:
-        # Agenda markers present but no terminal Adjournment -> fallback boundary,
-        # low confidence -> caller quarantines rather than trusting the guess.
+    def test_no_adjournment_strong_run_is_medium(self) -> None:
+        # No terminal "Adjournment", but a strong marker run that drops off cleanly
+        # after the docket -> recovered as medium (ingested), not quarantined.
         r = extract_docket(_pdf([_DOCKET[0] + "\n" + _DOCKET[1], _ATTACHMENTS[0]]))
+        assert r.confidence == "medium"
+        assert r.metadata["has_adjournment"] is False
+        assert r.metadata["boundary_method"] == "marker-run"
+        assert "clean marker run" in " ".join(r.metadata["warnings"])
+
+    def test_no_adjournment_weak_run_is_low(self) -> None:
+        # A thin agenda (few markers, no Adjournment) stays low -> quarantined, since
+        # the boundary guess is not well-supported.
+        thin = (
+            "CITY COUNCIL MEETING\n"
+            "Call to Order and Roll Call of the members present.\n"
+            "1. Discussion of the annual community newsletter and the\n"
+            "upcoming neighborhood events calendar for residents and\n"
+            "visitors to the city during the coming season this year.\n"
+            "General announcements and community updates from the staff."
+        )
+        r = extract_docket(_pdf([thin, _ATTACHMENTS[0]]))
         assert r.confidence == "low"
         assert r.metadata["has_adjournment"] is False
         assert "no Adjournment marker" in " ".join(r.metadata["warnings"])

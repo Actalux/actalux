@@ -21,6 +21,8 @@ from dataclasses import dataclass
 
 import fitz  # PyMuPDF
 
+from actalux.ingest.parser import _ocr_page
+
 # Agenda-ness signals: procedural headers + legislative item types.
 _MARKER_RE = re.compile(
     r"bill no\.|ordinance|resolution|public hearing|consent agenda|adjourn|roll call|call to order",
@@ -33,6 +35,7 @@ _ADJOURN_RE = re.compile(r"adjourn", re.IGNORECASE)
 # as a failed boundary rather than swallowing attachment pages.
 _MAX_DOCKET_PAGES = 15
 _MIN_DOCKET_CHARS = 200
+_OCR_PAGE_MIN_CHARS = 40  # below this a leading page is treated as scanned -> OCR it
 
 
 @dataclass(frozen=True)
@@ -59,11 +62,21 @@ def extract_docket(pdf_bytes: bytes) -> DocketResult:
     try:
         n = doc.page_count
         texts = [str(doc[i].get_text("text", sort=True)) for i in range(n)]
+        scan = min(n, _MAX_DOCKET_PAGES)
+        # Scanned/image-only agenda: the leading window has almost no extractable
+        # text, so a real docket would be quarantined as "no markers". OCR those
+        # pages first. Degrades to the native (empty) text when tesseract is absent,
+        # so a host without an OCR toolchain still grades, just without recovery.
+        if sum(len(t) for t in texts[:scan]) < _MIN_DOCKET_CHARS:
+            for i in range(scan):
+                if len(texts[i].strip()) < _OCR_PAGE_MIN_CHARS:
+                    ocr = _ocr_page(doc[i])
+                    if ocr.strip():
+                        texts[i] = ocr
     finally:
         doc.close()
 
     marks = [_page_markers(t) for t in texts]
-    scan = min(n, _MAX_DOCKET_PAGES)
     warnings: list[str] = []
 
     def fail(reason: str) -> DocketResult:
@@ -109,8 +122,20 @@ def extract_docket(pdf_bytes: bytes) -> DocketResult:
         boundary, method = 0, "marker-run"
         while boundary + 1 < n and boundary + 1 < _MAX_DOCKET_PAGES and marks[boundary + 1] > 0:
             boundary += 1
-        warnings.append("no Adjournment marker; boundary inferred from marker run")
-        confidence = "low"
+        # A strong, self-delimiting marker run (no terminal "Adjournment" printed,
+        # but plenty of agenda markers that drop off cleanly after the run) is a real
+        # docket -> medium, so it is ingested rather than quarantined. A weak or
+        # ambiguous run stays low. This is signal-based, not a blind page cutoff.
+        docket_marks = sum(marks[: boundary + 1])
+        after = marks[boundary + 1 : boundary + 4]
+        peak = max(marks[: boundary + 1]) or 1
+        clear_drop = boundary + 1 >= n or not after or max(after) <= max(1, peak // 3)
+        if docket_marks >= 5 and clear_drop:
+            confidence = "medium"
+            warnings.append("no Adjournment marker; boundary from a clean marker run")
+        else:
+            confidence = "low"
+            warnings.append("no Adjournment marker; boundary inferred from marker run")
 
     if boundary + 1 > _MAX_DOCKET_PAGES:
         return fail(f"docket implausibly long ({boundary + 1} pages)")

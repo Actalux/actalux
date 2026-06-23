@@ -67,6 +67,9 @@ jobs:
       - name: Install Playwright + real Chrome
         run: uv run --with playwright python -m playwright install --with-deps chrome
 
+      - name: Install Tesseract (OCR for scanned agenda dockets)
+        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr
+
       - name: Verify schema is up to date
         if: ${{ inputs.ingest }}
         run: uv run python scripts/apply_migrations.py --check
