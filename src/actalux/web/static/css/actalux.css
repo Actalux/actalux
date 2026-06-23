@@ -1728,3 +1728,6 @@ img { max-width: 100%; display: block; }
   .fp-row summary .num.tier-col { display: none; }
   .fp-facts li, .fp-timeline li { grid-template-columns: 1fr; gap: var(--s-1); }
 }
+
+/* Capital Improvements Plan table: total row separated by the emphasis rule. */
+.cip-total-row td { border-top: 2px solid var(--ink); }

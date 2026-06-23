@@ -101,6 +101,11 @@
   {% include "_budget_proposed.html" %}
 {% endif %}
 
+{# --- Multi-year Capital Improvements Plan (funded projects × fiscal year) --- #}
+{% if cip %}
+  {% include "_budget_cip.html" %}
+{% endif %}
+
 {# --- Multi-year actuals from the district's DESE state filings (ASBR object-level
    + per-fund reserves, Per-Pupil per-school), surfaced from namespaced dimensions
    that never mix into the charts above --- #}

@@ -96,6 +96,9 @@ _SOURCE_LABELS = {
     "youtube": "Board meeting video",
     "sunshine": "Sunshine Law request",
     "dese": "MO DESE",
+    "auditor": "MO State Auditor",
+    "budget": "City budget",
+    "civicplus": "City meeting records",
     "manual": "Added by editor",
 }
 

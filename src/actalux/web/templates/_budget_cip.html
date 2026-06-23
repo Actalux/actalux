@@ -1,0 +1,46 @@
+{# Multi-year Capital Improvements Plan: funded projects × fiscal year, from the
+   adopted budget book's "Funded Capital Projects" table. Each project row links to
+   the verbatim source passage. Planned figures (appropriations), shown separately
+   from the audited actuals. #}
+<section class="figures-section cip-section">
+  <div class="section-label">Capital Improvements Plan — funded projects</div>
+  <p class="hint">
+    The City's funded capital projects across the five-year plan
+    (FY{{ cip.years[0] }}&ndash;FY{{ cip.years[-1] }}), as adopted. These are planned
+    appropriations; every project links to the verbatim passage it was read from.
+  </p>
+  <table class="figures-table cip-table">
+    <thead>
+      <tr>
+        <th>Project</th>
+        {% for y in cip.years %}<th class="num">FY{{ y }}</th>{% endfor %}
+        <th class="num">Total</th>
+        <th>Source</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in cip.projects %}
+      <tr>
+        <td>{{ p.name }}</td>
+        {% for y in cip.years %}
+        <td class="num">{% if p.by_year.get(y) %}{{ p.by_year[y] | usd }}{% else %}<span class="muted">&mdash;</span>{% endif %}</td>
+        {% endfor %}
+        <td class="num"><strong>{{ p.total | usd }}</strong></td>
+        <td>
+          {% if p.cite_ref %}
+            <a href="/chunk/{{ p.cite_ref }}/source" class="hash">{{ p.cite_ref | chunk_hash_id }}</a>
+          {% else %}
+            <span class="muted">&mdash;</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      <tr class="cip-total-row">
+        <td><strong>Total</strong></td>
+        {% for y in cip.years %}<td class="num"><strong>{{ cip.col_totals[y] | usd }}</strong></td>{% endfor %}
+        <td class="num"><strong>{{ cip.grand_total | usd }}</strong></td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+</section>

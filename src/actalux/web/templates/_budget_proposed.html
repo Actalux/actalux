@@ -40,46 +40,49 @@
 {% endmacro %}
 
 <section class="figures-section proposed-section">
-  <div class="section-label">Proposed Budget (June 2024)</div>
+  <div class="section-label">{{ proposed.heading }}</div>
+  <p class="hint">{{ proposed.source_note | safe }}</p>
   <p class="hint">
-    The district's <em>proposed</em> budget for {{ proposed.fiscal_year }}, as published
-    June 2024 (<a href="/document/{{ proposed.doc_id }}" class="hash">doc #{{ proposed.doc_id }}</a>).
-    These are planned figures, not actuals; they are shown separately from the audited
-    results above. Every figure links to the verbatim passage it was read from.
-  </p>
-  <p class="hint">
-    Proposed revenue: <strong>{{ proposed.revenue_total | usd }}</strong>.
-    Proposed expenditures: <strong>{{ proposed.expenditure_total | usd }}</strong>.
+    {{ proposed.basis_word }} revenue: <strong>{{ proposed.revenue_total | usd }}</strong>.
+    {{ proposed.basis_word }} expenditures: <strong>{{ proposed.expenditure_total | usd }}</strong>.
   </p>
 
-  {# --- Proposed revenue --- #}
+  {# --- Planned revenue --- #}
+  {% if proposed.revenue_by_source %}
   <div class="proposed-block">
-    <div class="section-label" style="margin-top: var(--s-6);">Proposed revenue by source</div>
+    <div class="section-label" style="margin-top: var(--s-6);">{{ proposed.basis_word }} revenue by source</div>
     {{ cited_bars(proposed.revenue_by_source) }}
     {{ cited_table(proposed.revenue_by_source, "Revenue source") }}
   </div>
+  {% endif %}
 
   {% if proposed.revenue_by_fund %}
   <div class="proposed-block">
-    <div class="section-label" style="margin-top: var(--s-6);">Proposed revenue by fund</div>
+    <div class="section-label" style="margin-top: var(--s-6);">{{ proposed.basis_word }} revenue by fund</div>
     {{ cited_table(proposed.revenue_by_fund, "Fund") }}
   </div>
   {% endif %}
 
-  {# --- Proposed expenditure --- #}
+  {# --- Planned expenditure (object: schools; function/department: city) --- #}
+  {% if proposed.expenditure_by_object %}
   <div class="proposed-block">
-    <div class="section-label" style="margin-top: var(--s-6);">Proposed expenditure by object</div>
+    <div class="section-label" style="margin-top: var(--s-6);">{{ proposed.basis_word }} expenditure by object</div>
     {{ cited_bars(proposed.expenditure_by_object) }}
     {{ cited_table(proposed.expenditure_by_object, "Object") }}
   </div>
+  {% endif %}
 
+  {% if proposed.expenditure_by_function %}
   <div class="proposed-block">
-    <div class="section-label" style="margin-top: var(--s-6);">Proposed expenditure by function</div>
+    <div class="section-label" style="margin-top: var(--s-6);">{{ proposed.basis_word }} expenditure by function</div>
     {{ cited_bars(proposed.expenditure_by_function) }}
     {{ cited_table(proposed.expenditure_by_function, "Function") }}
+    {% if proposed.expenditure_by_object %}
     <p class="hint" style="margin-top: var(--s-2);">
       Function labels are reproduced exactly as printed in the source budget, where
       the first three are clipped by the table's column width.
     </p>
+    {% endif %}
   </div>
+  {% endif %}
 </section>

@@ -973,51 +973,151 @@ def _detail_context(
     }
 
 
-# The proposed (planned) FY2024-2025 budget from doc #262. Its figures are loaded
-# under namespaced 'proposed_*' dimensions (basis='proposed'), disjoint from the
-# audited actuals above, so they render in their own clearly-separated section and
-# never mix into the actuals charts. Labelled "Proposed (June 2024)" -- the source
-# PDF is titled "Proposed Budget" and carries no adopting vote, so it is never
-# called "Adopted".
-_PROPOSED_BUDGET_FISCAL_YEAR = "2024-2025"
-_PROPOSED_BUDGET_DOC_ID = 262
+# The planned-budget section reads figures loaded under namespaced 'proposed_*'
+# dimensions (basis='proposed'), disjoint from the audited actuals above, so they
+# render in their own clearly-separated section and never mix into the actuals
+# charts. The fiscal year and source document are derived from the data (latest
+# proposed year for the body), so a second body's planned budget renders without
+# any hardcoding. The schools' source PDF is a "Proposed Budget" with no adopting
+# vote (labelled "Proposed"); the city's is an adopted appropriation (labelled
+# "Adopted") -- ``_planned_budget_labels`` carries that per-body wording.
 
 
-def _proposed_budget_context(client: Client, entity_id: int | None = None) -> dict[str, Any]:
-    """The proposed-budget section: revenue (by source, by fund) + expenditure (by
-    object, by function), each slice citeable to its source chunk in doc #262.
+def _latest_proposed_year(client: Client, entity_id: int | None = None) -> str | None:
+    """The most recent fiscal year with planned-budget summary rows for a body.
 
-    Returns ``{"proposed": None}`` when the proposed rows are absent (e.g. before
-    the loader has run, or for a body with no proposed-budget filing), so the
-    section simply does not render.
+    Restricted to the ``proposed_*`` summary dimensions so the multi-year CIP rows
+    (dimension ``cip``, also basis='proposed' and spanning future years) do not
+    pull the planned-budget section onto a CIP out-year.
     """
-    fy = _PROPOSED_BUDGET_FISCAL_YEAR
-    fund_rows = get_proposed_budget_line_items(client, fy, "proposed_fund", entity_id=entity_id)
-    revenue_by_source = proposed_breakdown(
-        get_proposed_budget_line_items(client, fy, "proposed_source", entity_id=entity_id)
+    rows = get_budget_line_items(client, basis="proposed", entity_id=entity_id)
+    years = sorted(
+        {r["fiscal_year"] for r in rows if str(r.get("dimension", "")).startswith("proposed_")}
     )
+    return years[-1] if years else None
+
+
+def _planned_budget_labels(
+    entity: dict[str, Any] | None, fiscal_year: str, doc_id: int
+) -> dict[str, str]:
+    """Per-body heading + wording for the planned-budget section.
+
+    The schools source is a *proposed* budget (no adopting vote); the city's is an
+    *adopted* appropriation. Defaults to the schools' proposed wording.
+    """
+    if entity and entity.get("type") == "city_council":
+        end = fiscal_year.split("-")[-1]
+        return {
+            "heading": f"Adopted Budget — FY{end}",
+            "basis_word": "Adopted",
+            "source_note": (
+                f"The City's adopted operating budget for FY{end} "
+                f'(<a href="/document/{doc_id}" class="hash">doc #{doc_id}</a>). '
+                "These are budgeted appropriations, shown separately from the audited "
+                "actuals above. Every figure links to the verbatim passage it was read from."
+            ),
+        }
+    return {
+        "heading": "Proposed Budget (June 2024)",
+        "basis_word": "Proposed",
+        "source_note": (
+            f"The district's <em>proposed</em> budget for {fiscal_year}, as published "
+            f'June 2024 (<a href="/document/{doc_id}" class="hash">doc #{doc_id}</a>). '
+            "These are planned figures, not actuals; they are shown separately from the "
+            "audited results above. Every figure links to the verbatim passage it was read from."
+        ),
+    }
+
+
+def _proposed_budget_context(
+    client: Client, entity_id: int | None = None, entity: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """The planned-budget section: revenue (by source, by fund) + expenditure (by
+    object and/or function), each slice citeable to its source chunk.
+
+    Returns ``{"proposed": None}`` when the planned rows are absent (e.g. before a
+    loader has run, or for a body with no planned-budget filing), so the section
+    simply does not render. The fiscal year + source doc are read from the data.
+    """
+    fy = _latest_proposed_year(client, entity_id)
+    if fy is None:
+        return {"proposed": None}
+    fund_rows = get_proposed_budget_line_items(client, fy, "proposed_fund", entity_id=entity_id)
+    source_rows = get_proposed_budget_line_items(client, fy, "proposed_source", entity_id=entity_id)
+    object_rows = get_proposed_budget_line_items(client, fy, "proposed_object", entity_id=entity_id)
+    function_rows = get_proposed_budget_line_items(
+        client, fy, "proposed_function", entity_id=entity_id
+    )
+    revenue_by_source = proposed_breakdown(source_rows)
     # The fund dimension carries both revenue and fund_balance rows; split the
     # revenue rows BY FUND (group on fund, not subcategory) for the by-fund mix.
     revenue_by_fund = proposed_breakdown(fund_rows, group_key="fund", where={"category": "revenue"})
-    expenditure_by_object = proposed_breakdown(
-        get_proposed_budget_line_items(client, fy, "proposed_object", entity_id=entity_id)
-    )
-    expenditure_by_function = proposed_breakdown(
-        get_proposed_budget_line_items(client, fy, "proposed_function", entity_id=entity_id)
-    )
-    if not (revenue_by_source or expenditure_by_object):
+    expenditure_by_object = proposed_breakdown(object_rows)
+    expenditure_by_function = proposed_breakdown(function_rows)
+    if not (revenue_by_source or expenditure_by_object or expenditure_by_function):
         return {"proposed": None}
 
+    # The source document is whichever planned rows exist (one doc per body-year).
+    doc_id = next(
+        (r["document_id"] for r in (fund_rows + source_rows + function_rows + object_rows)),
+        0,
+    )
+    # Expenditure total prefers the object breakdown (schools); falls back to the
+    # function breakdown for a body that has no object-level rows (the city).
+    exp_shares = expenditure_by_object or expenditure_by_function
     return {
         "proposed": {
             "fiscal_year": fy,
-            "doc_id": _PROPOSED_BUDGET_DOC_ID,
+            "doc_id": doc_id,
             "revenue_by_source": revenue_by_source,
             "revenue_by_fund": revenue_by_fund,
             "expenditure_by_object": expenditure_by_object,
             "expenditure_by_function": expenditure_by_function,
             "revenue_total": sum((s.amount for s in revenue_by_source), Decimal(0)),
-            "expenditure_total": sum((s.amount for s in expenditure_by_object), Decimal(0)),
+            "expenditure_total": sum((s.amount for s in exp_shares), Decimal(0)),
+            **_planned_budget_labels(entity, fy, doc_id),
+        }
+    }
+
+
+def _cip_context(client: Client, entity_id: int | None = None) -> dict[str, Any]:
+    """The multi-year Capital Improvements Plan: a funded-projects × fiscal-year matrix.
+
+    Reads the ``cip`` dimension (one row per project per year, basis='proposed').
+    Returns ``{"cip": None}`` when a body has no CIP rows so the section is omitted.
+    """
+    rows = get_budget_line_items(client, dimension="cip", entity_id=entity_id)
+    if not rows:
+        return {"cip": None}
+
+    def _end_year(fy: str) -> int:
+        return int(fy.split("-")[-1])
+
+    years = sorted({_end_year(r["fiscal_year"]) for r in rows})
+    projects: dict[str, dict[str, Any]] = {}
+    for r in rows:
+        proj = projects.setdefault(
+            r["subcategory"],
+            {
+                "name": r["subcategory"],
+                "by_year": {},
+                "total": Decimal(0),
+                "cite_ref": r.get("citation_id") or r.get("chunk_id"),
+            },
+        )
+        amt = Decimal(str(r["amount"]))
+        proj["by_year"][_end_year(r["fiscal_year"])] = amt
+        proj["total"] += amt
+    proj_list = sorted(projects.values(), key=lambda p: p["total"], reverse=True)
+    col_totals = {
+        y: sum((p["by_year"].get(y, Decimal(0)) for p in proj_list), Decimal(0)) for y in years
+    }
+    return {
+        "cip": {
+            "years": years,
+            "projects": proj_list,
+            "col_totals": col_totals,
+            "grand_total": sum(col_totals.values(), Decimal(0)),
         }
     }
 
@@ -1151,7 +1251,8 @@ async def budget(request: Request, view: EntityView = Depends(resolve_entity)) -
             budget_actual=budget_actual,
             sections=_budget_quote_sections(entity_id),
             **_gaap_figures_context(line_items),
-            **_proposed_budget_context(client, entity_id),
+            **_proposed_budget_context(client, entity_id, view.entity),
+            **_cip_context(client, entity_id),
             **_dese_section_context(client, entity_id),
             **breakdown,
         ),

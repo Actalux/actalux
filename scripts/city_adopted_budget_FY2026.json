@@ -1,0 +1,192 @@
+{
+  "fiscal_year": "2026",
+  "revenue_by_fund": {
+    "page_label": "33",
+    "items": {
+      "General": 32801229,
+      "Sewer Lateral": 123207,
+      "Special Business District": 544703,
+      "Equipment Replacement": 564085,
+      "Capital Improvement": 6835876,
+      "Construction Bonds": 49595,
+      "Debt Service": 3801901
+    },
+    "total": 44720596
+  },
+  "revenue_by_type": {
+    "page_label": "34",
+    "items": {
+      "Property Tax": 10981805,
+      "Sales & Use Tax*": 12888838,
+      "Utility Tax & Franchise Fees": 5680503,
+      "Intergovernmental": 3320142,
+      "Grants & Donations": 2286473,
+      "Licenses, Permits & Fees": 3830349,
+      "Parks & Recreation": 892855,
+      "Fines": 681798,
+      "Parking": 1871594,
+      "Interest Income": 2004540,
+      "Miscellaneous": 281699
+    },
+    "total": 44720596
+  },
+  "expenditure_by_fund": {
+    "page_label": "33",
+    "items": {
+      "General": 37053411,
+      "Sewer Lateral": 92500,
+      "Equipment Replacement": 4781130,
+      "Capital Improvement": 4733496,
+      "Construction Bonds": 11705579,
+      "Debt Service": 4041575
+    },
+    "total": 62407691
+  },
+  "expenditure_by_department": {
+    "page_label": "34",
+    "items": {
+      "Legislative": 85628,
+      "Administrative Services": 9308675,
+      "Planning & Development": 1308892,
+      "Public Safety": 20441534,
+      "Public Works": 8603037,
+      "Parks & Recreation": 17827437,
+      "Insurance": 790912,
+      "Debt Service": 4041575
+    },
+    "total": 62407691
+  },
+  "reconciles": true,
+  "cip": {
+    "extractable": true,
+    "page_range": "173 (CIP section pp. 163-185)",
+    "projects": [
+      {
+        "name": "Shaw Park Tennis Center Lighting",
+        "by_year": {
+          "2026": 700000,
+          "2027": 0,
+          "2028": 0,
+          "2029": 0,
+          "2030": 0
+        },
+        "total": 700000
+      },
+      {
+        "name": "Central Business District Resurfacing Phase 2",
+        "by_year": {
+          "2026": 1678921,
+          "2027": 0,
+          "2028": 0,
+          "2029": 0,
+          "2030": 0
+        },
+        "total": 1678921
+      },
+      {
+        "name": "Sidewalks, Curbs & Accessibility Improvements",
+        "by_year": {
+          "2026": 120000,
+          "2027": 120000,
+          "2028": 120000,
+          "2029": 120000,
+          "2030": 130000
+        },
+        "total": 610000
+      },
+      {
+        "name": "Fire Training Facility",
+        "by_year": {
+          "2026": 330363,
+          "2027": 0,
+          "2028": 0,
+          "2029": 0,
+          "2030": 0
+        },
+        "total": 330363
+      },
+      {
+        "name": "Oak Knoll Lighting Upgrades",
+        "by_year": {
+          "2026": 685130,
+          "2027": 0,
+          "2028": 0,
+          "2029": 0,
+          "2030": 0
+        },
+        "total": 685130
+      },
+      {
+        "name": "10 S Brentwood Garage 1 & 2 Level Concrete Repairs",
+        "by_year": {
+          "2026": 108337,
+          "2027": 0,
+          "2028": 0,
+          "2029": 0,
+          "2030": 0
+        },
+        "total": 108337
+      },
+      {
+        "name": "Subdivision Monuments",
+        "by_year": {
+          "2026": 240000,
+          "2027": 0,
+          "2028": 0,
+          "2029": 0,
+          "2030": 0
+        },
+        "total": 240000
+      },
+      {
+        "name": "Traffic Signal Maintenance and Replacement",
+        "by_year": {
+          "2026": 50000,
+          "2027": 50000,
+          "2028": 50000,
+          "2029": 50000,
+          "2030": 50000
+        },
+        "total": 250000
+      },
+      {
+        "name": "Street Lightening Replacement - Wydown Forest CIP Portion",
+        "by_year": {
+          "2026": 465327,
+          "2027": 0,
+          "2028": 0,
+          "2029": 0,
+          "2030": 0
+        },
+        "total": 465327
+      },
+      {
+        "name": "MSD OMCI - Minor Storm Sewer Projects (multiple locations)",
+        "by_year": {
+          "2026": 350000,
+          "2027": 0,
+          "2028": 0,
+          "2029": 0,
+          "2030": 0
+        },
+        "total": 350000
+      }
+    ],
+    "note": "Per-project x per-year table 'Funded Capital Projects, Fiscal Years 2026-2030' on printed p.173. Per-project 'total' is DERIVED (sum of the five printed year columns); the source table prints only the year columns plus a column-total row. Year values are the printed figures. The broader CIP section also contains a fund-level sources/uses 5-yr summary (p.164), a by-category chart (p.165), per-project budget call-outs (pp.174-183), and an operating-impact table in thousands (p.184) -- none of those are tabulated here."
+  },
+  "_reconciliation_detail": {
+    "revenue_fund_total_eq_type_total": true,
+    "expenditure_fund_total_eq_dept_total": true,
+    "rev_fund_items_sum_eq_printed_total": true,
+    "rev_type_items_sum_eq_printed_total": true,
+    "exp_fund_items_sum_eq_printed_total": true,
+    "exp_dept_items_sum_eq_printed_total": false
+  },
+  "_item_sum_diffs": {
+    "rev_fund": 0,
+    "rev_type": 0,
+    "exp_fund": 0,
+    "exp_dept": 1
+  },
+  "_reconciliation_note": "Both task-required gates pass: revenue_by_fund total == revenue_by_type total (44,720,596) and expenditure_by_fund total == expenditure_by_department total (62,407,691). The expenditure-by-department line items sum to 62,407,690 -- $1 below the City's printed Total Expenditures of 62,407,691. This $1 is a rounding artifact in the source PDF (expenditure-by-fund items sum exactly), reported as-is, not corrected. Note: 'total' on each table is the printed 'Total Revenue'/'Total Expenditures' line, which EXCLUDES the separate 'Other Financing Sources/Uses' lines shown below it in the source."
+}
