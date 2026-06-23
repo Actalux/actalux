@@ -55,19 +55,38 @@ CIVICPLUS_PORTAL = "civicplus"
 _MOVED_BY_LINE_RE = re.compile(r"(?im)^moved by:")
 
 
+def _is_pc_format(content: str) -> bool:
+    """True when a CivicPlus doc reads in the Plan Commission prose style.
+
+    Council and Plan Commission both publish on CivicPlus but in different prose:
+    council uses "Motion made by <title> ..." / "<title> moved" / "introduced Bill
+    No."; PC uses "<name> made a motion to ...". Dispatch by which lead-in the
+    document actually carries (more PC lead-ins than council lead-ins) so routing
+    does not depend on the database's entity-id assignment.
+    """
+    return votes_parser_civicplus.count_lead_ins_pc(
+        content
+    ) > votes_parser_civicplus.count_lead_ins(content)
+
+
 def _parser_for(doc: dict):
     """(parse_votes, find_citing_chunk) for the document's minutes format."""
-    if doc.get("source_portal") == CIVICPLUS_PORTAL:
-        return votes_parser_civicplus.parse_votes, votes_parser_civicplus.find_citing_chunk
-    return votes_parser.parse_votes, votes_parser.find_citing_chunk
+    if doc.get("source_portal") != CIVICPLUS_PORTAL:
+        return votes_parser.parse_votes, votes_parser.find_citing_chunk
+    if _is_pc_format(doc.get("content") or ""):
+        return votes_parser_civicplus.parse_votes_pc, votes_parser_civicplus.find_citing_chunk_pc
+    return votes_parser_civicplus.parse_votes, votes_parser_civicplus.find_citing_chunk
 
 
 def _lead_in_count(doc: dict) -> int:
     """Audit denominator: motion lead-ins the document carries, per its format."""
     content = doc.get("content") or ""
-    if doc.get("source_portal") == CIVICPLUS_PORTAL:
-        return votes_parser_civicplus.count_lead_ins(content)
-    return len(_MOVED_BY_LINE_RE.findall(content))
+    if doc.get("source_portal") != CIVICPLUS_PORTAL:
+        return len(_MOVED_BY_LINE_RE.findall(content))
+    return max(
+        votes_parser_civicplus.count_lead_ins(content),
+        votes_parser_civicplus.count_lead_ins_pc(content),
+    )
 
 
 def _to_vote(parsed: ParsedVote, doc_id: int, meeting_date: date, chunk: dict) -> Vote:

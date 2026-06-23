@@ -1,11 +1,26 @@
-"""Deterministic parser for City Council / Board of Aldermen votes in CivicPlus minutes.
+"""Deterministic parser for Clayton city-body votes in CivicPlus minutes.
 
-Clayton's city-body minutes (entity 2, ``source_portal='civicplus'``) record votes
-in *prose*, unlike the line-anchored Diligent school-board minutes parsed by
-``votes_parser.py``. The body was the Board of Aldermen through ~2024 and is now the
-City Council, so a voting member is titled Alderman / Alderwoman / Councilmember /
-Mayor / Mayor Pro Tempore / Acting Mayor. Three motion lead-ins and two result
-forms appear across 2015-2026, all parsed here into the shared :class:`ParsedVote`:
+Clayton's city-body minutes (``source_portal='civicplus'``) record votes in *prose*,
+unlike the line-anchored Diligent school-board minutes parsed by ``votes_parser.py``.
+Two bodies publish here in two distinct prose styles, each with its own parse entry
+point but sharing the footer/sentence/citation plumbing below:
+
+* **City Council / Board of Aldermen** (``parse_votes``) — voting members carry a
+  title (Alderman / Alderwoman / Councilmember / Mayor / Mayor Pro Tem[pore] /
+  Acting Mayor). Three motion lead-ins and two result forms, detailed below.
+* **Plan Commission–Architectural Review Board** (``parse_votes_pc``) — members are
+  named without a title across two eras: name-before (~2021-2026) "<Name> made a
+  motion to ... <Name> seconded the motion. The motion carried unanimously [with
+  five votes in favor and one opposed]", and name-after (~2016-2021) "<Name> made a
+  motion to ... The motion was seconded by <Name> and unanimously approved by the
+  Board" (the outcome is appended to the second sentence). No per-member roll calls;
+  counts, when present, are word-numbers ("five votes in favor and one opposed").
+
+``extract_votes.py`` routes a CivicPlus document to whichever parser its lead-ins
+match (council vs. PC), so neither needs the database's entity-id assignment.
+
+City Council — three motion lead-ins and two result forms across 2015-2026, all
+parsed into the shared :class:`ParsedVote`:
 
   Motion lead-ins
     "Motion made by Councilmember Buse to approve the Consent Agenda."
@@ -133,6 +148,68 @@ _RESULT_NORM = {
     "defeated": "failed",
     "did not pass": "failed",
 }
+
+# --- Plan Commission (PC-ARB) prose ----------------------------------------
+# A PC member is named without a title, so the lead-in/second/outcome anchor on the
+# verb. A name is 1-3 capitalized tokens immediately before the verb.
+_PC_NAME = r"[A-Z][A-Za-z.'\-]+(?:\s+[A-Z][A-Za-z.'\-]+){0,2}"
+# "Helen DiFate made a motion to ..." (also "moved to/that", "move to/that").
+_PC_LEAD_RE = re.compile(
+    rf"(?P<name>{_PC_NAME})\s+(?:made\s+a\s+motion|moved|move)\s+(?:to|that)\b"
+)
+# Second, two eras: name-before ("Jim Arsenault seconded the motion") and name-after
+# ("[The motion was] seconded by Jim Arsenault").
+_PC_SECOND_BEFORE_RE = re.compile(rf"(?P<name>{_PC_NAME})\s+seconded(?:\s+the\s+motion)?\b")
+_PC_SECOND_AFTER_RE = re.compile(
+    rf"(?:[Tt]he\s+motion\s+was\s+)?seconded\s+by\s+(?P<name>{_PC_NAME})"
+)
+_PC_STATUS = r"(?P<status>carried|passed|failed|approved|adopted|denied|tabled|withdrawn)"
+# Standalone outcome (name-before era): "[The] motion [was] carried/approved/...".
+# The "motion to <verb>" of the motion text never matches (a "to" sits between).
+_PC_OUTCOME_SENTENCE_RE = re.compile(rf"(?:[Tt]he\s+)?[Mm]otion\s+(?:was\s+)?{_PC_STATUS}\b")
+# Appended outcome (name-after era): "... and [unanimously] approved/carried ...".
+# Only ever applied to the span right after a name-after second, so the loose "and"
+# anchor cannot pick up an unrelated clause.
+_PC_OUTCOME_APPENDED_RE = re.compile(rf"\band\s+(?:unanimously\s+)?{_PC_STATUS}\b")
+_PC_STATUS_NORM = {
+    "carried": "passed",
+    "passed": "passed",
+    "approved": "passed",
+    "adopted": "passed",
+    "failed": "failed",
+    "denied": "failed",  # "the motion was denied" — the motion did not carry
+    "tabled": "tabled",
+    "withdrawn": "withdrawn",
+}
+# "... with four votes in favor and two votes opposed" (word-numbers; also digits).
+_PC_COUNT_RE = re.compile(
+    r"\b(\w+)\s+votes?\s+in\s+favor\s+(?:and|to)\s+(\w+)\s+(?:votes?\s+)?"
+    r"(?:opposed|against|in\s+opposition)",
+    re.I,
+)
+_NUM_WORDS = {
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+}
+
+
+def _num(token: str) -> int | None:
+    """A count word ("four") or digit ("4") -> int, else None (never guessed)."""
+    token = token.strip().lower()
+    if token.isdigit():
+        return int(token)
+    return _NUM_WORDS.get(token)
+
 
 # --- Footer stripping (shared by parsing and chunk matching) -----------------
 _MONTHS = r"January|February|March|April|May|June|July|August|September|October|November|December"
@@ -439,5 +516,156 @@ def find_citing_chunk(anchors: tuple[str, ...], chunks: list[dict]) -> dict | No
 
 
 def count_lead_ins(content: str) -> int:
-    """How many motion lead-ins the document carries (audit denominator)."""
+    """How many City Council motion lead-ins the document carries (audit denominator)."""
     return len(_lead_in_starts(_clean(content)))
+
+
+# --- Plan Commission (PC-ARB) parsing --------------------------------------
+
+
+def _pc_count(clause: str) -> _Counts:
+    """Read a word-number count from a PC outcome clause, else all-``None``.
+
+    "... carried with four votes in favor and two votes opposed" -> (4, 2, None).
+    "... carried unanimously" / "... approved with X opposing" carry no parseable
+    number, so the tally stays ``None`` (the quorum present is not the full board —
+    a count is never inferred from "unanimously" or a named dissent).
+    """
+    m = _PC_COUNT_RE.search(clause)
+    if m:
+        yes, no = _num(m.group(1)), _num(m.group(2))
+        if yes is not None and no is not None:
+            return yes, no, None
+    return None, None, None
+
+
+# Opening-prefix lengths (in words) tried as PC citation fallbacks, longest first.
+# PC motions are often conditional/recommendation motions ("... with the following
+# conditions: 1. ... 2. ...") whose numbered conditions the chunker splits onto the
+# next chunk, so the full motion is in no single chunk. The opening sits in one
+# chunk, but the split point varies per motion, so several lengths are tried; each
+# is used only via the uniqueness-gated fallback in ``find_citing_chunk_pc`` (cite
+# only when the prefix identifies exactly one chunk), so a generic opening shared by
+# two motions never mis-attributes a vote.
+_PC_PREFIX_WORDS = (24, 16, 10)
+
+
+def _pc_anchors(motion: str) -> tuple[str, ...]:
+    """Citation anchors for a PC motion: the full text, then opening/closing windows.
+
+    When the chunker splits a conditional motion, its opening sits in one chunk and
+    its (unique) conditions in the next; trying both ends — each uniqueness-gated —
+    recovers whichever landed wholly in a single chunk.
+    """
+    words = motion.split()
+    anchors = [motion]
+    for n in _PC_PREFIX_WORDS:
+        if len(words) > n:
+            anchors.append(" ".join(words[:n]))  # opening (in the first chunk)
+    for n in _PC_PREFIX_WORDS:
+        if len(words) > n:
+            anchors.append(" ".join(words[-n:]))  # closing conditions (in the next chunk)
+    return tuple(dict.fromkeys(anchors))  # de-dupe, preserve order
+
+
+def find_citing_chunk_pc(anchors: tuple[str, ...], chunks: list[dict]) -> dict | None:
+    """Find the citing chunk for a PC motion: full text, then a *unique* opening.
+
+    The full motion (``anchors[0]``) is unique within a document, so the first chunk
+    that contains it is correct. When it spans a chunk boundary (a conditional motion
+    whose numbered conditions were split off), fall back to the opening prefix — but
+    accept it only when it identifies exactly one chunk, so an opening shared by two
+    motions in the same document yields no (mis-)citation rather than a wrong one.
+    """
+    normalized = [(c, _clean(c.get("content", ""))) for c in chunks]
+    full = _clean(anchors[0]) if anchors else ""
+    if full:
+        for chunk, content in normalized:
+            if full in content:
+                return chunk
+    for anchor in anchors[1:]:
+        na = _clean(anchor)
+        if not na:
+            continue
+        matches = [chunk for chunk, content in normalized if na in content]
+        if len(matches) == 1:
+            return matches[0]
+    return None
+
+
+def _parse_one_pc(flat: str, start: int, next_motion: int) -> ParsedVote | None:
+    """Parse the PC motion whose "<name> made a motion" begins at ``start``."""
+    lead = _PC_LEAD_RE.match(flat, start)
+    moved_by = lead.group("name").strip() if lead else ""
+    window = flat[start : min(next_motion, start + _RESULT_WINDOW)]
+
+    # Second: the earliest of the name-before / name-after forms.
+    before = _PC_SECOND_BEFORE_RE.search(window)
+    after = _PC_SECOND_AFTER_RE.search(window)
+    sec = min((m for m in (before, after) if m), key=lambda m: m.start(), default=None)
+    seconded_by = sec.group("name").strip() if sec else ""
+
+    # Outcome: a standalone "[The] motion [was] <status>" sentence (name-before era),
+    # else an outcome appended to the second ("... and unanimously approved", name-after).
+    status: str | None = None
+    clause = ""
+    sentence = _PC_OUTCOME_SENTENCE_RE.search(window, sec.end() if sec else 0)
+    if sentence:
+        status = _PC_STATUS_NORM[sentence.group("status").lower()]
+        clause = window[sentence.start() : _sentence_end(window, sentence.start())].strip()
+    elif sec is not None:
+        appended = _PC_OUTCOME_APPENDED_RE.search(window, sec.end(), sec.end() + 140)
+        if appended:
+            status = _PC_STATUS_NORM[appended.group("status").lower()]
+            clause = window[sec.start() : _sentence_end(window, appended.end())].strip()
+    if status is None:
+        return None  # no recognizable outcome — skip rather than guess
+
+    cut = sec.start() if sec else (sentence.start() if sentence else len(window))
+    motion = window[:cut].strip().rstrip(".").strip()
+    if len(motion.split()) < 4:
+        return None  # a stray "<name> made a motion" fragment, not a real motion
+
+    yes, no, abstain = _pc_count(clause)
+    source_quote = _clean(f"{motion}. {clause}")
+    return ParsedVote(
+        motion=motion,
+        result=status,
+        result_basis="stated",
+        vote_count_yes=yes,
+        vote_count_no=no,
+        vote_count_abstain=abstain,
+        moved_by=moved_by,
+        seconded_by=seconded_by,
+        members=(),
+        source_quote=source_quote,
+        anchors=_pc_anchors(motion),
+    )
+
+
+def _pc_lead_in_starts(flat: str) -> list[int]:
+    """Sorted, de-duplicated start offsets of every PC motion lead-in in ``flat``."""
+    return sorted({m.start() for m in _PC_LEAD_RE.finditer(flat)})
+
+
+def parse_votes_pc(content: str) -> list[ParsedVote]:
+    """Parse all recognizable Plan Commission (PC-ARB) vote blocks from a document.
+
+    Same shape and guarantees as :func:`parse_votes` (verbatim outcome word, count
+    only when explicitly stated, cite-or-abstain), for the PC prose style across
+    both eras. Documents with no "<name> made a motion" lead-in yield [].
+    """
+    flat = _clean(content)
+    starts = _pc_lead_in_starts(flat)
+    out: list[ParsedVote] = []
+    for i, start in enumerate(starts):
+        next_motion = starts[i + 1] if i + 1 < len(starts) else len(flat)
+        vote = _parse_one_pc(flat, start, next_motion)
+        if vote is not None:
+            out.append(vote)
+    return out
+
+
+def count_lead_ins_pc(content: str) -> int:
+    """How many PC motion lead-ins the document carries (audit denominator)."""
+    return len(_pc_lead_in_starts(_clean(content)))
