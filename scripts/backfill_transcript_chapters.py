@@ -25,7 +25,7 @@ import sys
 import time
 
 from actalux.config import load_config
-from actalux.db import get_client
+from actalux.db import fetch_all_rows, get_client
 from actalux.errors import SummaryError
 from actalux.search.summarize import generate_chapters
 
@@ -74,16 +74,19 @@ def main() -> int:
     # Writer: service key bypasses RLS.
     client = get_client(cfg.supabase_url, cfg.supabase_service_key)
 
-    res = (
-        client.table("documents")
-        .select("id,meeting_title,meeting_date,chapters")
-        .eq("source_portal", "youtube")
-        .eq("document_type", "transcript")
-        .is_("replaces_id", "null")
-        .order("meeting_date", desc=True)
-        .execute()
+    # Page past PostgREST's row cap (keeps newest meetings in scope as the
+    # transcript corpus grows past ~1000 docs).
+    docs = fetch_all_rows(
+        lambda: (
+            client.table("documents")
+            .select("id,meeting_title,meeting_date,chapters")
+            .eq("source_portal", "youtube")
+            .eq("document_type", "transcript")
+            .is_("replaces_id", "null")
+        ),
+        order="meeting_date",
+        desc=True,
     )
-    docs = res.data or []
     todo = [d for d in docs if args.force or not d.get("chapters")]
     if args.limit > 0:
         todo = todo[: args.limit]

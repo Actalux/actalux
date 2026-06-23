@@ -30,7 +30,7 @@ import re
 from pathlib import Path
 
 from actalux.config import load_config
-from actalux.db import get_client, set_chunk_start_seconds
+from actalux.db import fetch_all_rows, get_client, set_chunk_start_seconds
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -89,11 +89,15 @@ def main() -> None:
 
     config = load_config()
     client = get_client(config.supabase_url, config.supabase_service_key)  # writer
-    docs = [
-        d
-        for d in client.table("documents").select("id, source_portal, source_file").execute().data
-        if d.get("source_portal") == "youtube"
-    ]
+    # Page past PostgREST's row cap (the corpus exceeds it), filtering to YouTube
+    # transcripts server-side so only the docs with sidecars are considered.
+    docs = fetch_all_rows(
+        lambda: (
+            client.table("documents")
+            .select("id, source_portal, source_file")
+            .eq("source_portal", "youtube")
+        )
+    )
     logger.info("youtube docs to process: %d", len(docs))
 
     total_aligned = total_chunks = 0

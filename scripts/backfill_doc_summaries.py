@@ -22,7 +22,7 @@ import sys
 import time
 
 from actalux.config import load_config
-from actalux.db import get_client
+from actalux.db import fetch_all_rows, get_client
 from actalux.errors import SummaryError
 from actalux.search.summarize import generate_doc_summary
 
@@ -74,13 +74,13 @@ def main() -> int:
     # Writer: use the service key (bypasses RLS).
     client = get_client(cfg.supabase_url, cfg.supabase_service_key)
 
-    res = (
-        client.table("documents")
-        .select("id,meeting_title,document_type,meeting_date,source_portal,summary")
-        .order("id", desc=False)
-        .execute()
+    # Page past PostgREST's row cap so the newest documents are not silently
+    # dropped from the summary backfill once the corpus exceeds ~1000 docs.
+    docs = fetch_all_rows(
+        lambda: client.table("documents").select(
+            "id,meeting_title,document_type,meeting_date,source_portal,summary"
+        )
     )
-    docs = res.data
     if args.limit > 0:
         docs = docs[: args.limit]
 

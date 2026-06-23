@@ -5,6 +5,7 @@ from datetime import date
 
 from actalux.db import (
     backfill_document_source_ref,
+    fetch_all_rows,
     get_chunk_citation_ids,
     get_chunk_with_context,
     insert_document,
@@ -361,3 +362,56 @@ class TestGetChunkCitationIds:
 
     def test_empty_input(self) -> None:
         assert get_chunk_citation_ids(_Client([]), []) == {}
+
+
+class _PagedBuilder:
+    """A fake PostgREST builder that pages a backing list via .range() like the
+    real server (a single response is capped, so a full read must page)."""
+
+    def __init__(self, rows: list[dict]) -> None:
+        self._rows = rows
+        self._order: str | None = None
+        self._desc = False
+        self._lo = 0
+        self._hi: int | None = None
+
+    def select(self, *_a) -> "_PagedBuilder":
+        return self
+
+    def eq(self, *_a) -> "_PagedBuilder":
+        return self
+
+    def order(self, column: str, desc: bool = False) -> "_PagedBuilder":
+        self._order, self._desc = column, desc
+        return self
+
+    def range(self, lo: int, hi: int) -> "_PagedBuilder":
+        self._lo, self._hi = lo, hi
+        return self
+
+    def execute(self) -> _Result:
+        rows = self._rows
+        if self._order:
+            rows = sorted(rows, key=lambda r: r[self._order], reverse=self._desc)
+        return _Result(rows[self._lo : (self._hi + 1 if self._hi is not None else None)])
+
+
+class TestFetchAllRows:
+    def test_pages_past_the_row_cap_in_order(self) -> None:
+        backing = [{"id": i} for i in range(2300)]  # > 2 pages of 1000
+        out = fetch_all_rows(lambda: _PagedBuilder(backing))
+        assert [r["id"] for r in out] == list(range(2300))  # all rows, no gaps/dupes
+
+    def test_exact_multiple_of_page_size_terminates(self) -> None:
+        # Exactly 2 full pages: must read a 3rd (empty) page to detect the end.
+        backing = [{"id": i} for i in range(2000)]
+        assert len(fetch_all_rows(lambda: _PagedBuilder(backing))) == 2000
+
+    def test_single_short_page(self) -> None:
+        backing = [{"id": i} for i in range(5)]
+        assert len(fetch_all_rows(lambda: _PagedBuilder(backing))) == 5
+
+    def test_respects_desc_order(self) -> None:
+        backing = [{"id": i} for i in range(3)]
+        out = fetch_all_rows(lambda: _PagedBuilder(backing), order="id", desc=True)
+        assert [r["id"] for r in out] == [2, 1, 0]

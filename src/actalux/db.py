@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -33,6 +34,37 @@ def get_client(url: str, key: str) -> Client:
         client = create_client(url, key)
         _clients[cache_key] = client
     return client
+
+
+# PostgREST caps a single response (Supabase default ~1000 rows), so a bare
+# .select().execute() silently truncates once a table grows past that. Page in
+# windows of this size to read every row.
+_PAGE_SIZE = 1000
+
+
+def fetch_all_rows(
+    make_query: Callable[[], Any], *, order: str = "id", desc: bool = False
+) -> list[dict[str, Any]]:
+    """Return every row of a PostgREST query, paging past the server row cap.
+
+    ``make_query`` returns a FRESH query builder each call (e.g.
+    ``lambda: client.table("documents").select("id,summary")``); it is ordered by
+    ``order`` for a stable page sequence and read in ``_PAGE_SIZE`` windows via
+    ``.range()`` until a short page signals the end. Without this, a bare
+    ``.select().execute()`` returns only the first ~1000 rows and silently drops
+    the newest documents once the corpus exceeds that — the failure that left the
+    latest transcripts un-timestamped (see notes 2026-06-23).
+    """
+    rows: list[dict[str, Any]] = []
+    start = 0
+    while True:
+        page = (
+            make_query().order(order, desc=desc).range(start, start + _PAGE_SIZE - 1).execute().data
+        )
+        rows.extend(page)
+        if len(page) < _PAGE_SIZE:
+            return rows
+        start += _PAGE_SIZE
 
 
 # --- Documents ---
