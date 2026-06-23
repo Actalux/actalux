@@ -118,7 +118,9 @@ class TestListBoardMeetings:
     def test_plan_commission_filter_handles_naming_variants(self) -> None:
         # PC/ARB titles vary: "PC/ARB", "PC-ARB", "Plan Commission", older
         # "Planning Commission", and a real typo "Plan Commision". Council and
-        # Board of Adjustment must NOT be swept in.
+        # Board of Adjustment must NOT be swept in. A "Joint Board of Aldermen &
+        # Plan Commission" meeting matches the PC filter but is council-owned, so
+        # the body's exclude_filter must drop it (no double transcription).
         stdout = (
             "p1|06-15-2026 PC/ARB Meeting\n"
             "p2|PC-ARB 06/01/2026\n"
@@ -126,10 +128,15 @@ class TestListBoardMeetings:
             "p4|December 19, 2016 Planning Commission/ARB Meeting\n"  # older naming
             "c1|06-09-2026 City Council Meeting\n"  # council -> dropped
             "b1|06-04-2026 Board of Adjustment\n"  # different body -> dropped
+            "j1|November 11, 2020 Joint Board of Aldermen & Plan Commission/ARB Meeting\n"
         )
         with patch("actalux.ingest.youtube.subprocess.run") as run:
             run.return_value = SimpleNamespace(stdout=stdout, returncode=0)
-            meetings = list_board_meetings(title_filter=PLAN_COMMISSION.title_filter)
+            meetings = list_board_meetings(
+                title_filter=PLAN_COMMISSION.title_filter,
+                exclude_filter=PLAN_COMMISSION.exclude_filter,
+            )
+        # j1 excluded (council-owned joint meeting), council/adjustment dropped.
         assert {m.video_id for m in meetings} == {"p1", "p2", "p3", "p4"}
 
 

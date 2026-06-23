@@ -121,15 +121,18 @@ def list_board_meetings(
     channel: str = CHANNEL,
     *,
     title_filter: re.Pattern[str] = BOARD_MEETING_RE,
+    exclude_filter: re.Pattern[str] | None = None,
     proxy: str | None = None,
 ) -> list[BoardMeeting]:
     """List a channel's meeting videos (newest first), with parsed dates.
 
     ``title_filter`` selects which videos count as this body's meetings — the city
     channel hosts several bodies (City Council, Plan Commission, committees), so the
-    caller passes a body-specific pattern (see ``actalux.ingest.bodies``). Enumerates
-    the /streams (livestreamed meetings) and /videos tabs and dedups by video id —
-    board meetings are livestreams, so /videos alone misses most of them.
+    caller passes a body-specific pattern (see ``actalux.ingest.bodies``).
+    ``exclude_filter`` drops titles owned by another body (e.g. a joint meeting that
+    also matches a sibling body's filter), so the same video isn't claimed twice.
+    Enumerates the /streams (livestreamed meetings) and /videos tabs and dedups by
+    video id — board meetings are livestreams, so /videos alone misses most of them.
 
     Not every channel has every tab: a channel that never livestreams has no
     /streams tab, which yt-dlp reports as an error. A per-tab failure is skipped
@@ -148,6 +151,8 @@ def list_board_meetings(
         for line in lines:
             vid, _, title = line.partition("|")
             if not vid or vid in seen or not title_filter.search(title):
+                continue
+            if exclude_filter and exclude_filter.search(title):
                 continue
             seen[vid] = BoardMeeting(
                 video_id=vid,

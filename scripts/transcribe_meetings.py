@@ -150,7 +150,10 @@ def select_meetings(
             )
         ]
     meetings = list_board_meetings(
-        channel=body.channel, title_filter=body.title_filter, proxy=args.proxy
+        channel=body.channel,
+        title_filter=body.title_filter,
+        exclude_filter=body.exclude_filter,
+        proxy=args.proxy,
     )
     # Undated meetings can't be DB-deduped by date, so discovery would re-transcribe
     # them every run (and Whisper's slight nondeterminism would spawn duplicate

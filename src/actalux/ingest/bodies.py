@@ -28,6 +28,16 @@ class TranscriptionBody:
     channel: str  # YouTube channel URL whose tabs are enumerated
     title_filter: re.Pattern[str]  # video titles that are this body's meetings
     transcribe_prompt: str  # Whisper proper-noun bias (names mis-heard otherwise)
+    # Titles that also match ``title_filter`` but belong to another body that owns
+    # them — dropped from discovery so the same video isn't transcribed twice.
+    exclude_filter: re.Pattern[str] | None = None
+
+
+# City Council titles: the current "City Council" plus the body's OLD name "Board
+# of Aldermen" ("BOA"). Defined once so Plan Commission can reuse it to exclude
+# council-owned joint meetings. (Board of ADJUSTMENT spells its name out and never
+# uses "BOA", so it stays correctly excluded from council.)
+_COUNCIL_TITLE_RE = re.compile(r"city council|board of alderm(?:an|en)|\bboa\b", re.IGNORECASE)
 
 
 SCHOOLS = TranscriptionBody(
@@ -43,11 +53,9 @@ SCHOOLS = TranscriptionBody(
 COUNCIL = TranscriptionBody(
     entity_path="mo/clayton/council",
     channel="https://www.youtube.com/@CityofClayton",
-    # The city channel hosts several bodies; restrict to City Council. "Board of
-    # Aldermen" (abbreviated "BOA") is the body's OLD name — those meetings ARE the
-    # City Council and are included. The Board of ADJUSTMENT is a different body and
-    # always spells its name out (never "BOA"), so it stays correctly excluded.
-    title_filter=re.compile(r"city council|board of alderm(?:an|en)|\bboa\b", re.IGNORECASE),
+    # The city channel hosts several bodies; restrict to City Council (including the
+    # old "Board of Aldermen"/"BOA" naming — see _COUNCIL_TITLE_RE).
+    title_filter=_COUNCIL_TITLE_RE,
     transcribe_prompt=(
         "City of Clayton, Missouri City Council meeting. "
         "Mayor, City Council, alderman, ordinance, resolution, agenda, motion carried."
@@ -59,11 +67,14 @@ PLAN_COMMISSION = TranscriptionBody(
     channel="https://www.youtube.com/@CityofClayton",
     # Plan Commission + Architectural Review Board (one body). Titles vary a lot:
     # "PC/ARB", "PC-ARB", "Plan Commission", older "Planning Commission", and a real
-    # misspelling "Plan Commision". Joint "Board of Aldermen & Plan Commission"
-    # meetings also match the council filter and are owned by council.
+    # misspelling "Plan Commision".
     title_filter=re.compile(
         r"pc[\s/-]*arb|plan(?:ning)?\s+comm|architectural review", re.IGNORECASE
     ),
+    # Joint "Board of Aldermen & Plan Commission/ARB" meetings match this filter too,
+    # but council owns them — exclude council titles so the same video isn't also
+    # transcribed under this body.
+    exclude_filter=_COUNCIL_TITLE_RE,
     transcribe_prompt=(
         "City of Clayton, Missouri Plan Commission and Architectural Review Board meeting. "
         "Plan Commission, Architectural Review Board, rezoning, variance, site plan, "

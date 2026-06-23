@@ -114,5 +114,8 @@ class TestSelectMeetings:
         with patch("scripts.transcribe_meetings.list_board_meetings", return_value=[]) as lbm:
             select_meetings(_args(), tmp_path, set(), COUNCIL)
         lbm.assert_called_once_with(
-            channel=COUNCIL.channel, title_filter=COUNCIL.title_filter, proxy=None
+            channel=COUNCIL.channel,
+            title_filter=COUNCIL.title_filter,
+            exclude_filter=COUNCIL.exclude_filter,
+            proxy=None,
         )
