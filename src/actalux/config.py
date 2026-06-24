@@ -4,6 +4,43 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from types import MappingProxyType
+
+
+@dataclass(frozen=True)
+class ApiTier:
+    """Per-tier limits for an issued API key.
+
+    ``search_per_min`` / ``general_per_min`` are the per-IP, per-minute rate caps
+    for the search endpoint (runs the paid reranker) and the cheap DB endpoints
+    respectively. ``monthly_quota`` caps total calls per calendar month — ``None``
+    means unmetered (no quota gate).
+    """
+
+    search_per_min: int
+    general_per_min: int
+    monthly_quota: int | None
+
+
+# Tier table for the v1 JSON API. The tier name a key carries (column ``tier`` in
+# ``api_keys``, or the special ``admin`` tier granted by the global ACTALUX_API_KEY)
+# selects its limits here. ``anonymous`` is the no-key/free tier; its numbers MUST
+# equal the historical flat ``rate_limit_*`` config (so the open path is unchanged),
+# and ``Config`` reads them straight from those fields below rather than hardcoding
+# them twice. A key whose stored tier is not in this table falls back to
+# ``developer`` at the api.py call site. Read-only mapping so it can't be mutated.
+API_TIERS: MappingProxyType[str, ApiTier] = MappingProxyType(
+    {
+        # No key: identical to today's open path. monthly_quota=None (unmetered).
+        # Numbers are placeholders here; the live anonymous limits come from the
+        # Config.rate_limit_* fields via Config.tier("anonymous").
+        "anonymous": ApiTier(search_per_min=30, general_per_min=60, monthly_quota=None),
+        "developer": ApiTier(search_per_min=60, general_per_min=120, monthly_quota=50_000),
+        "pro": ApiTier(search_per_min=120, general_per_min=300, monthly_quota=500_000),
+        # Admin = the operator's global key; unmetered, highest ceilings.
+        "admin": ApiTier(search_per_min=600, general_per_min=1200, monthly_quota=None),
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -86,6 +123,17 @@ class Config:
     # be locked down at deploy time with no code change.
     api_key: str = field(default_factory=lambda: os.environ.get("ACTALUX_API_KEY", ""))
     rate_limit_api_per_minute: int = 60
+    # Per-holder issued API keys (the keyed-DB path). Off by default so the keyed
+    # path stays fully dormant in prod — a presented non-global key 401s WITHOUT
+    # any DB call until this is turned on (ACTALUX_API_KEYS=on) once keys exist.
+    api_keys_enabled: bool = field(
+        default_factory=lambda: (
+            os.environ.get("ACTALUX_API_KEYS", "").strip().lower() in ("on", "true", "1")
+        )
+    )
+    # When the keyed path IS enabled, a cheap per-IP minute cap on key-auth attempts
+    # gates the api_key_authorize RPC, so a flood of bogus keys can't hammer the DB.
+    rate_limit_auth_attempts_per_minute: int = 20
     # Ask page (the cited chatbot). It is the most expensive public endpoint
     # (condense + retrieve + rerank + generate per turn) and has no API key, so
     # it carries both a per-IP minute limit and a global per-day message cap to
@@ -123,6 +171,24 @@ class Config:
     draft_email_to: str = field(
         default_factory=lambda: os.environ.get("ACTALUX_DRAFT_EMAIL_TO", "")
     )
+
+    def tier(self, name: str) -> ApiTier:
+        """Resolve a tier name to its limits.
+
+        The ``anonymous`` (no-key) tier reads its per-minute caps from this
+        instance's flat ``rate_limit_*`` fields, so the open path keeps the exact
+        numbers it has always used (and stays adjustable by the same env knobs).
+        Every other tier comes from the static ``API_TIERS`` table. An unknown
+        name resolves to ``developer`` — the conservative paid floor — so a stale
+        tier string in the DB can never accidentally grant more than that.
+        """
+        if name == "anonymous":
+            return ApiTier(
+                search_per_min=self.rate_limit_search_per_minute,
+                general_per_min=self.rate_limit_api_per_minute,
+                monthly_quota=None,
+            )
+        return API_TIERS.get(name, API_TIERS["developer"])
 
 
 def load_config() -> Config:

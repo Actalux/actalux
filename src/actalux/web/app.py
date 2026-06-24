@@ -158,7 +158,20 @@ async def _lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="Actalux", version="0.1.0", lifespan=_lifespan)
+API_DESCRIPTION = (
+    "Read-only JSON API over the Actalux archive of Clayton, MO public records. "
+    "Every result is a verbatim passage with a citation and a deep link back to the "
+    "source document or meeting video, mirroring the public site's retrieval — so the "
+    "API never exposes more than the site does. See docs/API.md for the terms of use "
+    "and the versioning & deprecation policy."
+)
+
+app = FastAPI(
+    title="Actalux API",
+    description=API_DESCRIPTION,
+    version="1.0.0",
+    lifespan=_lifespan,
+)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 templates.env.filters["chunk_hash_id"] = chunk_hash_id

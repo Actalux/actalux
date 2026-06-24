@@ -4,13 +4,28 @@ Tests static pages (no DB required) and verifies template rendering.
 """
 
 from contextlib import contextmanager
+from dataclasses import replace
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from actalux.config import load_config
 from actalux.web.app import _pdf_available, _render_citation_links, app, templates
 
 client = TestClient(app, raise_server_exceptions=False)
+
+
+def _open_api_cfg():
+    """Real ``Config`` with the API open at default limits.
+
+    The tier-aware API auth + limiters call ``cfg.tier(...)``, so a config stub
+    must be a genuine ``Config`` (a bare namespace lacks that method). ``conftest``
+    sets placeholder Supabase env, so ``load_config()`` is hermetic.
+    """
+    return replace(
+        load_config(), api_key="", rate_limit_search_per_minute=30, rate_limit_api_per_minute=60
+    )
+
 
 _FAKE_ENTITY = {
     "id": 1,
@@ -971,11 +986,7 @@ class TestApiSourceUrl:
         self, m_docs, m_enrich, m_hybrid, m_rerank, m_embed, m_ent, m_db, m_cfg
     ) -> None:
         """API search: source_url in the hit is the real origin, not a storage URL."""
-        from types import SimpleNamespace
-
-        m_cfg.return_value = SimpleNamespace(
-            api_key="", rate_limit_search_per_minute=30, rate_limit_api_per_minute=60
-        )
+        m_cfg.return_value = _open_api_cfg()
         r = client.get("/api/v1/mo/clayton/schools/search", params={"q": "budget"})
         assert r.status_code == 200
         hit = r.json()["results"][0]
@@ -1021,11 +1032,7 @@ class TestApiSourceUrl:
         self, m_docs, m_enrich, m_hybrid, m_rerank, m_embed, m_ent, m_db, m_cfg
     ) -> None:
         """API search: YouTube video doc returns the watch URL, never the .txt URL."""
-        from types import SimpleNamespace
-
-        m_cfg.return_value = SimpleNamespace(
-            api_key="", rate_limit_search_per_minute=30, rate_limit_api_per_minute=60
-        )
+        m_cfg.return_value = _open_api_cfg()
         r = client.get("/api/v1/mo/clayton/schools/search", params={"q": "board"})
         assert r.status_code == 200
         hit = r.json()["results"][0]

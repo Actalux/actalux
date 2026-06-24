@@ -633,7 +633,9 @@ def normalize_source_ref(source_url: str) -> str:
         return f"https://www.youtube.com/watch?v={video_id}"
     if cp := _civicplus_doc_id(parts):
         key, val = cp
-        return f"{parts.scheme.lower()}://{parts.netloc.lower()}{parts.path.rstrip('/')}?{key}={val}"
+        return (
+            f"{parts.scheme.lower()}://{parts.netloc.lower()}{parts.path.rstrip('/')}?{key}={val}"
+        )
     return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), parts.path.rstrip("/"), "", ""))
 
 
