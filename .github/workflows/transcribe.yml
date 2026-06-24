@@ -47,12 +47,14 @@ on:
         required: false
         default: ""
   schedule:
-    # One body per nightly fire (~21:30–23:30 US Central), staggered so they don't
-    # overlap; each catches new meetings (capped at 5/run, already-ingested skipped).
+    # One body per nightly fire (~1:00–1:40 AM US Central, nominal), staggered so
+    # they don't overlap; each catches new meetings (capped at 5/run, already-
+    # ingested skipped). Times are UTC (no DST shift) and GitHub can delay scheduled
+    # runs, so the actual run may land somewhat later than the nominal time.
     # The cron string maps to a body in the "Resolve target body" step below.
-    - cron: "30 3 * * *" # schools
-    - cron: "0 4 * * *" # council
-    - cron: "30 4 * * *" # plan-commission
+    - cron: "37 6 * * *" # schools          (~1:37 AM US Central)
+    - cron: "7 6 * * *" # council           (~1:07 AM US Central)
+    - cron: "22 6 * * *" # plan-commission  (~1:22 AM US Central)
 
 permissions:
   contents: read
@@ -121,8 +123,8 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "schedule" ]; then
             case "$SCHEDULE" in
-              "0 4 * * *") BODY=council ;;
-              "30 4 * * *") BODY=plan-commission ;;
+              "7 6 * * *") BODY=council ;;
+              "22 6 * * *") BODY=plan-commission ;;
               *) BODY=schools ;;
             esac
           else
