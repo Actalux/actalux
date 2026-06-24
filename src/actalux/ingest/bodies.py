@@ -82,10 +82,26 @@ PLAN_COMMISSION = TranscriptionBody(
     ),
 )
 
+BOARD_OF_ADJUSTMENT = TranscriptionBody(
+    entity_path="mo/clayton/board-of-adjustment",
+    channel="https://www.youtube.com/@CityofClayton",
+    # Zoning variances/appeals body, distinct from Plan Commission/ARB. Its videos
+    # spell the name out ("Board of Adjustment Meeting"); it never abbreviates to
+    # "BOA", so it does not collide with the council filter (_COUNCIL_TITLE_RE),
+    # and the PC/ARB filter does not match it either — no exclude_filter needed.
+    title_filter=re.compile(r"board of adjustment", re.IGNORECASE),
+    transcribe_prompt=(
+        "City of Clayton, Missouri Board of Adjustment meeting. "
+        "Board of Adjustment, zoning variance, appeal, setback, nonconforming use, "
+        "hardship, zoning administrator, agenda, motion carried."
+    ),
+)
+
 BODIES: dict[str, TranscriptionBody] = {
     "schools": SCHOOLS,
     "council": COUNCIL,
     "plan-commission": PLAN_COMMISSION,
+    "board-of-adjustment": BOARD_OF_ADJUSTMENT,
 }
 
 

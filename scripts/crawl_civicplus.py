@@ -58,7 +58,11 @@ _STEALTH = (
 )
 
 # Body short-key -> CivicPlus MeetingTypes category id (from the archive <select>).
-CIVICPLUS_CATEGORY = {"council": "93", "plan-commission": "121"}
+CIVICPLUS_CATEGORY = {
+    "council": "93",
+    "plan-commission": "121",
+    "board-of-adjustment": "89",
+}
 
 # A meeting-page document link.
 _DOC_RE = re.compile(

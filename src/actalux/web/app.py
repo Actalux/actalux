@@ -604,10 +604,18 @@ _PLAN_COMMISSION_NAV = SidebarNav(
     documents=(),
 )
 
+# Board of Adjustment (zoning variances/appeals) — agendas, minutes, transcripts,
+# all surfaced through the meetings list like the other city bodies.
+_BOARD_OF_ADJUSTMENT_NAV = SidebarNav(
+    topics=(NavLink("Board Meetings", "/meetings", "topic-meetings"),),
+    documents=(),
+)
+
 _NAV_BY_TYPE: dict[str, SidebarNav] = {
     "school_district": _SCHOOL_NAV,
     "city_council": _COUNCIL_NAV,
     "plan_commission": _PLAN_COMMISSION_NAV,
+    "board_of_adjustment": _BOARD_OF_ADJUSTMENT_NAV,
 }
 
 # Per-body label for the governing body of a meeting (the "kind" badge on cards).
@@ -615,6 +623,7 @@ _MEETING_KIND = {
     "school_district": "Board of Education",
     "city_council": "City Council",
     "plan_commission": "Plan Commission / ARB",
+    "board_of_adjustment": "Board of Adjustment",
 }
 
 # Per-body-type copy for the place directory landing cards.
@@ -622,6 +631,7 @@ _BODY_KIND = {
     "school_district": "Board of Education",
     "city_council": "City government",
     "plan_commission": "Land use & zoning",
+    "board_of_adjustment": "Zoning appeals & variances",
 }
 _BODY_BLURB = {
     "school_district": (
@@ -630,6 +640,10 @@ _BODY_BLURB = {
     "city_council": "City Council meeting videos and searchable transcripts.",
     "plan_commission": (
         "Plan Commission & Architectural Review Board meeting videos and searchable transcripts."
+    ),
+    "board_of_adjustment": (
+        "Board of Adjustment hearings on zoning variances and appeals — "
+        "meeting videos, searchable transcripts, agendas, and minutes."
     ),
 }
 
@@ -640,6 +654,7 @@ _BODY_NOUN = {
     "school_district": "district",
     "city_council": "city",
     "plan_commission": "commission",
+    "board_of_adjustment": "board",
 }
 
 
