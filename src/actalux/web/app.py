@@ -1763,43 +1763,46 @@ async def chunk_source_pane(request: Request, ref: str, q: str = "") -> HTMLResp
 
 @jurisdiction.get("/methodology", response_class=HTMLResponse)
 async def methodology(request: Request, view: EntityView = Depends(resolve_entity)) -> HTMLResponse:
-    """How the system works — transparency page."""
+    """How the system works — transparency page (body-specific copy)."""
     return templates.TemplateResponse(
         request, "methodology.html", _page(view, active="methodology")
     )
 
 
 @app.get("/methodology", response_class=HTMLResponse)
-async def methodology_redirect(request: Request) -> RedirectResponse:
-    """Legacy flat /methodology -> canonical body."""
-    return _redirect_to_default("/methodology", request)
+async def methodology_apex(request: Request) -> HTMLResponse:
+    """Site-wide /methodology. Renders the generic (no-body) version so the footer
+    link stays at the apex; a body's own /methodology adds body-specific copy."""
+    return templates.TemplateResponse(
+        request, "methodology.html", _page(None, active="methodology")
+    )
 
 
-# Privacy and Terms are site-wide (identical across bodies) but render inside the
-# body shell for navigation continuity, matching the methodology pattern: an
-# entity-scoped canonical page plus a flat alias that 301s to the default body.
-@jurisdiction.get("/privacy", response_class=HTMLResponse)
-async def privacy(request: Request, view: EntityView = Depends(resolve_entity)) -> HTMLResponse:
-    """Privacy policy."""
-    return templates.TemplateResponse(request, "privacy.html", _page(view, active="privacy"))
-
-
+# Privacy and Terms are site-wide (identical across every body), so the apex path
+# is canonical and renders directly; the body-scoped path 301s up to it. (Contrast
+# methodology, which keeps body-specific copy at its body-scoped path.)
 @app.get("/privacy", response_class=HTMLResponse)
-async def privacy_redirect(request: Request) -> RedirectResponse:
-    """Flat /privacy -> canonical body."""
-    return _redirect_to_default("/privacy", request)
+async def privacy(request: Request) -> HTMLResponse:
+    """Privacy policy (site-wide)."""
+    return templates.TemplateResponse(request, "privacy.html", _page(None, active="privacy"))
 
 
-@jurisdiction.get("/terms", response_class=HTMLResponse)
-async def terms(request: Request, view: EntityView = Depends(resolve_entity)) -> HTMLResponse:
-    """Terms of use."""
-    return templates.TemplateResponse(request, "terms.html", _page(view, active="terms"))
+@jurisdiction.get("/privacy", response_class=HTMLResponse)
+async def privacy_scoped() -> RedirectResponse:
+    """Body-scoped /privacy -> the canonical apex page."""
+    return RedirectResponse("/privacy", status_code=301)
 
 
 @app.get("/terms", response_class=HTMLResponse)
-async def terms_redirect(request: Request) -> RedirectResponse:
-    """Flat /terms -> canonical body."""
-    return _redirect_to_default("/terms", request)
+async def terms(request: Request) -> HTMLResponse:
+    """Terms of use (site-wide)."""
+    return templates.TemplateResponse(request, "terms.html", _page(None, active="terms"))
+
+
+@jurisdiction.get("/terms", response_class=HTMLResponse)
+async def terms_scoped() -> RedirectResponse:
+    """Body-scoped /terms -> the canonical apex page."""
+    return RedirectResponse("/terms", status_code=301)
 
 
 @app.post("/report-error", response_class=HTMLResponse)

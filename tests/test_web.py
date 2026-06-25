@@ -111,10 +111,9 @@ class TestStaticPages:
         response = client.get("/mo/clayton/schools/methodology")
         assert "Report an error" in response.text
 
-    @patch("actalux.web.app._get_db")
-    @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
-    def test_privacy_page(self, mock_ent, mock_db) -> None:
-        response = client.get("/mo/clayton/schools/privacy")
+    def test_privacy_page(self) -> None:
+        # Privacy is site-wide and renders at the apex (no body scope, no DB).
+        response = client.get("/privacy")
         assert response.status_code == 200
         assert "Privacy Policy" in response.text
         # The data-practice claims that must stay grounded in app behavior.
@@ -123,10 +122,8 @@ class TestStaticPages:
         # The core reason this page exists: dossier eligibility.
         assert "private individual" in response.text.lower()
 
-    @patch("actalux.web.app._get_db")
-    @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
-    def test_terms_page(self, mock_ent, mock_db) -> None:
-        response = client.get("/mo/clayton/schools/terms")
+    def test_terms_page(self) -> None:
+        response = client.get("/terms")
         assert response.status_code == 200
         assert "Terms of Use" in response.text
         # Actalux is an LLC, never described as a nonprofit/501(c)(3).
@@ -136,10 +133,13 @@ class TestStaticPages:
 
     @patch("actalux.web.app._get_db")
     @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
-    def test_footer_has_privacy_and_terms(self, mock_ent, mock_db) -> None:
+    def test_footer_links_are_apex(self, mock_ent, mock_db) -> None:
+        # Site-wide pages must link to the apex, not the current body, from any page.
         response = client.get("/mo/clayton/schools/methodology")
-        assert "/mo/clayton/schools/privacy" in response.text
-        assert "/mo/clayton/schools/terms" in response.text
+        assert 'href="/privacy"' in response.text
+        assert 'href="/terms"' in response.text
+        assert 'href="/methodology"' in response.text
+        assert "/mo/clayton/schools/privacy" not in response.text
 
 
 class TestSearchEndpoint:
@@ -176,20 +176,21 @@ class TestJurisdictionRouting:
         assert r.status_code == 301
         assert r.headers["location"] == "/mo/clayton/schools/budget"
 
-    def test_legacy_methodology_redirects(self) -> None:
+    def test_apex_methodology_renders(self) -> None:
+        # /methodology is site-wide: it renders the generic page, not a redirect.
         r = client.get("/methodology", follow_redirects=False)
-        assert r.status_code == 301
-        assert r.headers["location"] == "/mo/clayton/schools/methodology"
+        assert r.status_code == 200
+        assert "How Actalux works" in r.text
 
-    def test_legacy_privacy_redirects(self) -> None:
-        r = client.get("/privacy", follow_redirects=False)
+    def test_scoped_privacy_redirects_to_apex(self) -> None:
+        r = client.get("/mo/clayton/schools/privacy", follow_redirects=False)
         assert r.status_code == 301
-        assert r.headers["location"] == "/mo/clayton/schools/privacy"
+        assert r.headers["location"] == "/privacy"
 
-    def test_legacy_terms_redirects(self) -> None:
-        r = client.get("/terms", follow_redirects=False)
+    def test_scoped_terms_redirects_to_apex(self) -> None:
+        r = client.get("/mo/clayton/council/terms", follow_redirects=False)
         assert r.status_code == 301
-        assert r.headers["location"] == "/mo/clayton/schools/terms"
+        assert r.headers["location"] == "/terms"
 
     def test_legacy_topic_budget_redirects(self) -> None:
         r = client.get("/topic/budget", follow_redirects=False)
