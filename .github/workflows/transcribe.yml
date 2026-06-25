@@ -52,9 +52,10 @@ on:
     # ingested skipped). Times are UTC (no DST shift) and GitHub can delay scheduled
     # runs, so the actual run may land somewhat later than the nominal time.
     # The cron string maps to a body in the "Resolve target body" step below.
-    - cron: "37 6 * * *" # schools          (~1:37 AM US Central)
-    - cron: "7 6 * * *" # council           (~1:07 AM US Central)
-    - cron: "22 6 * * *" # plan-commission  (~1:22 AM US Central)
+    - cron: "37 6 * * *" # schools           (~1:37 AM US Central)
+    - cron: "7 6 * * *" # council            (~1:07 AM US Central)
+    - cron: "22 6 * * *" # plan-commission   (~1:22 AM US Central)
+    - cron: "52 6 * * *" # board-of-adjustment (~1:52 AM US Central)
 
 permissions:
   contents: read
@@ -125,6 +126,7 @@ jobs:
             case "$SCHEDULE" in
               "7 6 * * *") BODY=council ;;
               "22 6 * * *") BODY=plan-commission ;;
+              "52 6 * * *") BODY=board-of-adjustment ;;
               *) BODY=schools ;;
             esac
           else

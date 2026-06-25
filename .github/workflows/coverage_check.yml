@@ -1,0 +1,43 @@
+name: coverage-check
+
+# Daily minutes-coverage audit across all bodies. Flags recent meetings that have
+# an agenda/transcript but no minutes yet (minutes post ~one cycle late), and
+# upserts a single GitHub issue — created when gaps appear, updated in place, and
+# closed automatically once they clear. Runs after the daily CivicPlus crawl so it
+# reflects the freshest ingest.
+#
+# Required repository secrets: SUPABASE_URL / SUPABASE_KEY / SUPABASE_SERVICE_KEY
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 8 * * *" # ~3:30 AM US Central, after the 07:xx UTC crawls
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: coverage-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ACTALUX_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      ACTALUX_SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      ACTALUX_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up uv + Python 3.11
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+          enable-cache: true
+      - name: Install dependencies
+        run: uv sync --no-dev
+      - name: Check minutes coverage + upsert issue
+        run: uv run python scripts/check_minutes_coverage.py

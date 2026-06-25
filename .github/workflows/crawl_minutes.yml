@@ -3,7 +3,9 @@ name: crawl-minutes
 # Crawl Clayton CivicPlus (MeetingsManager) agendas + minutes for a city body and
 # ingest them. claytonmo.gov is behind Akamai, so this uses Playwright with REAL
 # Google Chrome (bundled Chromium is hard-blocked). Separate from transcribe.yml
-# (YouTube/Whisper) on purpose. Dispatch-only — no schedule yet.
+# (YouTube/Whisper) on purpose. Runs daily on a schedule (also dispatchable) so new
+# agendas and, especially, minutes (which post ~one meeting cycle late) are picked
+# up within a day of publishing.
 #
 # Required repository secrets:
 #   SUPABASE_URL / SUPABASE_KEY / SUPABASE_SERVICE_KEY / SUPABASE_PAT  (ingest)
@@ -15,7 +17,7 @@ on:
       body:
         description: "Which city body"
         type: choice
-        options: [council, plan-commission]
+        options: [council, plan-commission, board-of-adjustment]
         default: council
       limit:
         description: "Max meetings to process"
@@ -34,11 +36,13 @@ on:
         type: boolean
         default: true
   schedule:
-    # Weekly (Mon), one body per fire — keeps council + Plan Commission minutes
-    # and agenda dockets current. The cron maps to a body in "Resolve crawl
-    # params"; newest-first crawl with a modest cap, already-ingested deduped.
-    - cron: "0 6 * * 1" # council
-    - cron: "30 6 * * 1" # plan-commission
+    # Daily, one body per fire (staggered, ~2 AM US Central), so every city body's
+    # new agendas + minutes are picked up within a day. Newest-first with a modest
+    # cap; already-ingested docs are deduped, so most days are no-ops. The cron maps
+    # to a body in "Resolve crawl params". GitHub may delay scheduled runs.
+    - cron: "0 7 * * *" # council
+    - cron: "20 7 * * *" # plan-commission
+    - cron: "40 7 * * *" # board-of-adjustment
 
 permissions:
   contents: read
@@ -92,10 +96,11 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "schedule" ]; then
             case "$SCHEDULE" in
-              "30 6 * * 1") BODY=plan-commission ;;
+              "20 7 * * *") BODY=plan-commission ;;
+              "40 7 * * *") BODY=board-of-adjustment ;;
               *) BODY=council ;;
             esac
-            LIMIT=25            # newest-first; already-ingested are deduped
+            LIMIT=6             # daily incremental: newest-first, already-ingested deduped
             SINCE=""
             MINUTES_ONLY=false  # capture agenda dockets too, not just minutes
           else
