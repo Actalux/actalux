@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% from "partials/_member_record.html" import member_record %}
+{% block title %}{{ member.canonical_name }} — voting record{% endblock %}
+{% block content %}
+
+{% set meta = member.metadata or {} %}
+
+<section class="pane-header">
+  <h2>Member voting record</h2>
+  <span class="meta">{{ entity.display_name if entity else '' }}</span>
+</section>
+
+<div style="padding: var(--s-6) var(--s-6) var(--s-8);">
+  <article class="doc-page">
+    <h1>{{ member.canonical_name }}</h1>
+    <p style="font-family: var(--mono); font-size: 11px; color: var(--muted); margin-bottom: var(--s-5);">
+      {{ meta.role or 'Member' }}{% if meta.ward %} · Ward {{ meta.ward }}{% endif %}
+      · {{ member.start_date or 'term start unrecorded' }} – {{ member.end_date or 'present' }}
+      · <a href="{{ base }}/members" style="color: var(--accent);">All members</a>
+    </p>
+
+    {# Summary: each figure is a count of cited edges, nothing more. #}
+    <div style="display: flex; flex-wrap: wrap; gap: var(--s-2); margin-bottom: var(--s-5); font-family: var(--mono); font-size: 12px;">
+      <span class="badge">Aye {{ counts.get('voted_aye_on', 0) }}</span>
+      <span class="badge">No {{ counts.get('voted_no_on', 0) }}</span>
+      <span class="badge">Abstain {{ counts.get('voted_abstain_on', 0) }}</span>
+      <span class="badge">Moved {{ counts.get('moved', 0) }}</span>
+      <span class="badge">Seconded {{ counts.get('seconded', 0) }}</span>
+    </div>
+
+    <p style="font-size: 13px; color: var(--muted); margin-bottom: var(--s-5);">
+      Every entry is drawn verbatim from the official minutes and links to its
+      source passage. These are the records we have gathered — not a claim of a
+      complete record.
+    </p>
+
+    <section class="original-block" style="margin-bottom: var(--s-6);">
+      <div class="section-head">Voting record</div>
+      {% if votes %}
+        {% for r in votes %}{{ member_record(r) }}{% endfor %}
+      {% else %}
+        <p class="doc-para" style="color: var(--muted);">No per-member roll-call votes are recorded for this member in the minutes we have.</p>
+      {% endif %}
+    </section>
+
+    {% if motions %}
+    <details class="cited-disclosure">
+      <summary class="block-label">Motions moved &amp; seconded ({{ motions|length }})</summary>
+      {% for r in motions %}{{ member_record(r) }}{% endfor %}
+    </details>
+    {% endif %}
+  </article>
+</div>
+
+{% endblock %}

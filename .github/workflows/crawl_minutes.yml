@@ -148,6 +148,20 @@ jobs:
             echo "::warning::no documents ingested; skipping vote re-extraction"
           fi
 
+      # Sync the curated roster and rebuild the member-vote graph from the freshly
+      # re-extracted votes (idempotent full rebuild across schools + council + stale
+      # prune). Runs after any city-body crawl: council re-versions land here, and
+      # the rebuild is a cheap no-op when only PC/BoA changed. See connections-graph §4.
+      - name: Sync roster + project member votes
+        if: ${{ github.event_name == 'schedule' || inputs.ingest }}
+        run: |
+          if [ -f data/documents/civicplus_manifest.json ]; then
+            uv run python scripts/seed_roster.py --apply
+            uv run python scripts/project_member_votes.py --apply
+          else
+            echo "::notice::no documents ingested; skipping member-vote projection"
+          fi
+
       - name: Generate document summaries
         if: ${{ github.event_name == 'schedule' || inputs.ingest }}
         run: uv run python scripts/backfill_doc_summaries.py

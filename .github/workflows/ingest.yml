@@ -124,6 +124,16 @@ jobs:
       - name: Re-extract votes
         run: uv run python scripts/extract_votes.py --apply --entity-path mo/clayton/schools
 
+      # The roster (source of truth: scripts/roster/mo_clayton.json) drives the
+      # member-vote graph. Sync it, then rebuild member->vote edges from the freshly
+      # re-extracted votes (idempotent full rebuild across schools + council, with a
+      # stale-edge prune) so a re-versioned doc's member votes never drop from the
+      # dossiers/API. See connections-graph §4.
+      - name: Sync roster + project member votes
+        run: |
+          uv run python scripts/seed_roster.py --apply
+          uv run python scripts/project_member_votes.py --apply
+
       # Draft a cited "what changed this run" post and (if SMTP is configured)
       # email it for human review. Soft-fails: a drafting/email hiccup must not
       # fail the run or undo the ingest above. Never publishes.
