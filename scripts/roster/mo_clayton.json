@@ -1,0 +1,235 @@
+{
+  "_README": "Curated roster — ground truth for resolving vote-roll names to subjects (connections-graph Phase 1). Source of truth: this file. Apply with scripts/seed_roster.py (idempotent upsert). Rosters CHANGE (April elections); edit here and re-run the seeder. Each member: canonical_name (display), aliases (raw forms seen in roll calls — the seeder normalizes them; council is last-name-only so the surname is the load-bearing alias), term window with basis (cited = a verbatim minutes date; observed = derived from roll-call appearance only; null = unknown/open), and source (citation trail, stored in subjects.metadata). All entries are public officials -> publishable.",
+  "place": "mo/clayton",
+  "bodies": {
+    "council": [
+      {
+        "canonical_name": "Ira Berkowitz",
+        "aliases": ["Berkowitz"],
+        "role": "Alderman",
+        "ward": 2,
+        "term_start": "2015-05-12", "term_start_basis": "observed",
+        "term_end": "2024-04-23", "term_end_basis": "cited",
+        "source": "doc 826 (succeeded by Yorg); doc 1493 (full name); doc 1501 (Ward 2). One person (Ira Stuart Berkowitz); 'Ira' canonical."
+      },
+      {
+        "canonical_name": "Bridget McAndrew",
+        "aliases": ["McAndrew"],
+        "role": "Mayor",
+        "ward": 2,
+        "term_start": "2018-05-08", "term_start_basis": "observed",
+        "term_end": null, "term_end_basis": null,
+        "source": "doc 825 (full name; Mayor Pro Tem 2024); doc 799 (gavel, became Mayor Apr 2025); doc 1085 (current Mayor). Roles: Alderwoman (Ward 2) -> Mayor Pro Tem -> Mayor."
+      },
+      {
+        "canonical_name": "Michelle Harris",
+        "aliases": ["Harris"],
+        "role": "Mayor",
+        "ward": 1,
+        "term_start": "2015-02-10", "term_start_basis": "observed",
+        "term_end": "2025-04-22", "term_end_basis": "cited",
+        "source": "doc 1512 (full name); doc 1016 (sworn Mayor 2019-04-23); doc 799 (last day Apr 2025). Roles: Alderman (Ward 1, soft) -> Mayor. Ward 1 not in a clean roster line."
+      },
+      {
+        "canonical_name": "Richard Lintz",
+        "aliases": ["Lintz", "Linz"],
+        "role": "Alderman",
+        "ward": null,
+        "term_start": "2015-01-13", "term_start_basis": "observed",
+        "term_end": "2022-12-13", "term_end_basis": "observed",
+        "source": "doc 1512 (full name); doc 998 (re-sworn 2020-06-23). Ward not found. 'Linz' = recurring OCR drop of the 't' (9 roll-call occurrences)."
+      },
+      {
+        "canonical_name": "Susan Buse",
+        "aliases": ["Buse"],
+        "role": "Councilmember",
+        "ward": 2,
+        "term_start": "2020-06-23", "term_start_basis": "cited",
+        "term_end": null, "term_end_basis": null,
+        "source": "doc 998 (sworn 2020-06-23); doc 1085 (current, Ward 2). Alderwoman -> Councilmember (body rename ~Nov 2025)."
+      },
+      {
+        "canonical_name": "Joanne Boulton",
+        "aliases": ["Boulton"],
+        "role": "Alderman",
+        "ward": null,
+        "term_start": "2015-01-13", "term_start_basis": "observed",
+        "term_end": "2020-12-22", "term_end_basis": "observed",
+        "source": "doc 1512 (full name). Ward not found."
+      },
+      {
+        "canonical_name": "Gary Feder",
+        "aliases": ["Feder"],
+        "role": "Councilmember",
+        "ward": 3,
+        "term_start": "2021-08-10", "term_start_basis": "cited",
+        "term_end": null, "term_end_basis": null,
+        "source": "doc 971 (won Aug 2021 special election, Ward 3); doc 1085 (current, Ward 3). Alderman -> Councilmember. Transcripts sometimes 'Fader'."
+      },
+      {
+        "canonical_name": "Mark Winings",
+        "aliases": ["Winings"],
+        "role": "Alderman",
+        "ward": null,
+        "term_start": "2015-01-13", "term_start_basis": "observed",
+        "term_end": "2020-06-23", "term_end_basis": "observed",
+        "source": "doc 1512 (full name). Also served as Mayor Pro Tempore. Ward not found."
+      },
+      {
+        "canonical_name": "Becky Patel",
+        "aliases": ["Patel"],
+        "role": "Councilmember",
+        "ward": 1,
+        "term_start": "2021-05-11", "term_start_basis": "observed",
+        "term_end": null, "term_end_basis": null,
+        "source": "doc 896 (full name); doc 1085 (current, Ward 1). NOT Dr. Nisha Patel (Superintendent). Alderwoman -> Councilmember."
+      },
+      {
+        "canonical_name": "Harold J. Sanger",
+        "aliases": ["Sanger"],
+        "role": "Mayor",
+        "ward": null,
+        "term_start": "2015-02-10", "term_start_basis": "observed",
+        "term_end": "2019-04-23", "term_end_basis": "cited",
+        "source": "doc 1016 (handed gavel to Harris 2019-04-23; full name 'Harold J. Sanger')."
+      },
+      {
+        "canonical_name": "Alex Berger III",
+        "aliases": ["Berger"],
+        "role": "Alderman",
+        "ward": null,
+        "term_start": "2015-01-13", "term_start_basis": "observed",
+        "term_end": "2018-04-24", "term_end_basis": "observed",
+        "source": "doc 1512 (full name, incl. suffix III). Ward not found."
+      },
+      {
+        "canonical_name": "Rick Hummell",
+        "aliases": ["Hummell"],
+        "role": "Councilmember",
+        "ward": null,
+        "term_start": "2023-06-13", "term_start_basis": "observed",
+        "term_end": "2026-04-28", "term_end_basis": "observed",
+        "source": "doc 896 (full name 'Rick Hummell'); doc 793 (thanked for service, left Apr 2026). Alderman -> Councilmember. Ward not found. Transcripts 'Hummel'."
+      },
+      {
+        "canonical_name": "Jeff Yorg",
+        "aliases": ["Yorg"],
+        "role": "Councilmember",
+        "ward": 2,
+        "term_start": "2024-05-14", "term_start_basis": "cited",
+        "term_end": null, "term_end_basis": null,
+        "source": "doc 825 (welcomed as newest member, May 2024); doc 826 (succeeded Berkowitz); doc 1085 (current, Ward 2). Transcripts 'York'. Alderman -> Councilmember."
+      },
+      {
+        "canonical_name": "Cynthia Garnholz",
+        "aliases": ["Garnholz", "Garhnolz"],
+        "role": "Alderman",
+        "ward": 2,
+        "term_start": "2015-01-13", "term_start_basis": "observed",
+        "term_end": "2017-04-18", "term_end_basis": "observed",
+        "source": "doc 1512 (full name); doc 1501 (Ward 2); doc 1483 (Mayor Pro Tempore). 'Garhnolz' = OCR variant (3 roll-call occurrences)."
+      },
+      {
+        "canonical_name": "Kami Waldman",
+        "aliases": ["Waldman"],
+        "role": "Councilmember",
+        "ward": 3,
+        "term_start": "2025-08-26", "term_start_basis": "observed",
+        "term_end": null, "term_end_basis": null,
+        "source": "doc 896 (full name); doc 1085 (current, Ward 3). Spans the Alderman->Councilmember rename. No cited swear-in found."
+      },
+      {
+        "canonical_name": "Dan Sokol",
+        "aliases": ["Sokol"],
+        "role": "Alderman",
+        "ward": null,
+        "term_start": "2020-06-23", "term_start_basis": "cited",
+        "term_end": "2020-12-22", "term_end_basis": "observed",
+        "source": "doc 998 (sworn 2020-06-23, full name). Short tenure. Ward not found."
+      },
+      {
+        "canonical_name": "Betsy Meyland-Smith",
+        "aliases": ["Meyland-Smith"],
+        "role": "Councilmember",
+        "ward": 1,
+        "term_start": "2026-04-28", "term_start_basis": "cited",
+        "term_end": null, "term_end_basis": null,
+        "source": "doc 854 (full name, May 2026); doc 1085 (current, Ward 1); doc 772 (Apr 2026 swearing-in). Newest member; only ever a Councilmember."
+      }
+    ],
+    "schools": [
+      {
+        "canonical_name": "Ben Beinfeld",
+        "aliases": ["Ben Beinfeld", "Benjamin Beinfeld"],
+        "role": "Director",
+        "term_start": "2024-11-20", "term_start_basis": "cited",
+        "term_end": null, "term_end_basis": null,
+        "source": "doc 25 (oath 2024-11-20, appointed to fill Gary Pierson vacancy)."
+      },
+      {
+        "canonical_name": "Jason Growe",
+        "aliases": ["Jason Growe"],
+        "role": "President",
+        "term_start": "2022-04-20", "term_start_basis": "cited",
+        "term_end": null, "term_end_basis": null,
+        "source": "doc 182 (oath 2022-04-20); doc 438 (re-sworn 2026-2029, elected Board President 2026). Director; President from 2026."
+      },
+      {
+        "canonical_name": "Kim Hurst",
+        "aliases": ["Kim Hurst", "Kimberly Hurst", "lVls.Kim Hurst"],
+        "role": "Director",
+        "term_start": "2020-06-10", "term_start_basis": "cited",
+        "term_end": "2026-03-11", "term_end_basis": "cited",
+        "source": "doc 743 (sworn 2020-06-10); doc 443 (last meeting 2026-03-11, left at Apr 2026 election). VP 2024. 'lVls.Kim Hurst' = OCR variant (1 occurrence)."
+      },
+      {
+        "canonical_name": "Leo Human",
+        "aliases": ["Leo Human"],
+        "role": "Director",
+        "term_start": "2024-04-10", "term_start_basis": "cited",
+        "term_end": null, "term_end_basis": null,
+        "source": "doc 7 (oath 2024-04-10)."
+      },
+      {
+        "canonical_name": "Pamela Lyss-Lerman",
+        "aliases": ["Pamela Lyss-Lerman", "Pam Lyss-Lerman"],
+        "role": "Secretary",
+        "term_start": "2024-04-10", "term_start_basis": "cited",
+        "term_end": null, "term_end_basis": null,
+        "source": "doc 7 (oath 2024-04-10, sworn as 'Pam Lyss-Lerman'); doc 438 (Secretary 2026). Appears as both Dr. and Mrs."
+      },
+      {
+        "canonical_name": "Stacy Siwak",
+        "aliases": ["Stacy Siwak"],
+        "role": "Director",
+        "term_start": null, "term_start_basis": null,
+        "term_end": "2026-03-11", "term_end_basis": "cited",
+        "source": "doc 760 ('joined the board in 2019' — no precise oath date); doc 443 (last meeting 2026-03-11, left Apr 2026). President 2024. Term start unknown (joined 2019)."
+      },
+      {
+        "canonical_name": "Chris Win",
+        "aliases": ["Chris Win"],
+        "role": "Vice President",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "doc 438 (VP 2026; read 2026 election results as outgoing Secretary). Served by 2022; no cited oath date. Secretary 2024."
+      },
+      {
+        "canonical_name": "Erin Linnenbringer",
+        "aliases": ["Erin Linnenbringer"],
+        "role": "Director",
+        "term_start": "2026-04-15", "term_start_basis": "cited",
+        "term_end": null, "term_end_basis": null,
+        "source": "doc 438 (oath 2026-04-15, term 2026-2029); doc 609 (election win). New member Apr 2026."
+      },
+      {
+        "canonical_name": "Meade Greenberg",
+        "aliases": ["Meade Greenberg"],
+        "role": "Director",
+        "term_start": "2026-04-15", "term_start_basis": "cited",
+        "term_end": null, "term_end_basis": null,
+        "source": "doc 438 (oath 2026-04-15, term 2026-2029); doc 609 (election win). New member Apr 2026."
+      }
+    ]
+  }
+}
