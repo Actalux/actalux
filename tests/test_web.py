@@ -111,6 +111,36 @@ class TestStaticPages:
         response = client.get("/mo/clayton/schools/methodology")
         assert "Report an error" in response.text
 
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
+    def test_privacy_page(self, mock_ent, mock_db) -> None:
+        response = client.get("/mo/clayton/schools/privacy")
+        assert response.status_code == 200
+        assert "Privacy Policy" in response.text
+        # The data-practice claims that must stay grounded in app behavior.
+        assert "no cookies" in response.text.lower()
+        assert "OpenAI" in response.text
+        # The core reason this page exists: dossier eligibility.
+        assert "private individual" in response.text.lower()
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
+    def test_terms_page(self, mock_ent, mock_db) -> None:
+        response = client.get("/mo/clayton/schools/terms")
+        assert response.status_code == 200
+        assert "Terms of Use" in response.text
+        # Actalux is an LLC, never described as a nonprofit/501(c)(3).
+        assert "limited liability company" in response.text.lower()
+        assert "not a nonprofit or 501(c)(3)" in response.text
+        assert "Missouri" in response.text
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
+    def test_footer_has_privacy_and_terms(self, mock_ent, mock_db) -> None:
+        response = client.get("/mo/clayton/schools/methodology")
+        assert "/mo/clayton/schools/privacy" in response.text
+        assert "/mo/clayton/schools/terms" in response.text
+
 
 class TestSearchEndpoint:
     """Search endpoint behavior (mocked DB)."""
@@ -150,6 +180,16 @@ class TestJurisdictionRouting:
         r = client.get("/methodology", follow_redirects=False)
         assert r.status_code == 301
         assert r.headers["location"] == "/mo/clayton/schools/methodology"
+
+    def test_legacy_privacy_redirects(self) -> None:
+        r = client.get("/privacy", follow_redirects=False)
+        assert r.status_code == 301
+        assert r.headers["location"] == "/mo/clayton/schools/privacy"
+
+    def test_legacy_terms_redirects(self) -> None:
+        r = client.get("/terms", follow_redirects=False)
+        assert r.status_code == 301
+        assert r.headers["location"] == "/mo/clayton/schools/terms"
 
     def test_legacy_topic_budget_redirects(self) -> None:
         r = client.get("/topic/budget", follow_redirects=False)

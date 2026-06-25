@@ -1775,6 +1775,33 @@ async def methodology_redirect(request: Request) -> RedirectResponse:
     return _redirect_to_default("/methodology", request)
 
 
+# Privacy and Terms are site-wide (identical across bodies) but render inside the
+# body shell for navigation continuity, matching the methodology pattern: an
+# entity-scoped canonical page plus a flat alias that 301s to the default body.
+@jurisdiction.get("/privacy", response_class=HTMLResponse)
+async def privacy(request: Request, view: EntityView = Depends(resolve_entity)) -> HTMLResponse:
+    """Privacy policy."""
+    return templates.TemplateResponse(request, "privacy.html", _page(view, active="privacy"))
+
+
+@app.get("/privacy", response_class=HTMLResponse)
+async def privacy_redirect(request: Request) -> RedirectResponse:
+    """Flat /privacy -> canonical body."""
+    return _redirect_to_default("/privacy", request)
+
+
+@jurisdiction.get("/terms", response_class=HTMLResponse)
+async def terms(request: Request, view: EntityView = Depends(resolve_entity)) -> HTMLResponse:
+    """Terms of use."""
+    return templates.TemplateResponse(request, "terms.html", _page(view, active="terms"))
+
+
+@app.get("/terms", response_class=HTMLResponse)
+async def terms_redirect(request: Request) -> RedirectResponse:
+    """Flat /terms -> canonical body."""
+    return _redirect_to_default("/terms", request)
+
+
 @app.post("/report-error", response_class=HTMLResponse)
 async def report_error(
     request: Request,

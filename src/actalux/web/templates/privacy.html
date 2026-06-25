@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Privacy{% endblock %}
+{% block content %}
+
+<section class="pane-header">
+  <h2>Privacy</h2>
+  <span class="meta">How Actalux handles your information</span>
+</section>
+
+<article class="prose">
+  <h1>Privacy Policy</h1>
+  <p style="font-family: var(--mono); font-size: 11px; color: var(--muted);">Last updated: June 25, 2026</p>
+
+  <p>Actalux is operated by Actalux LLC. You can read and search the archive without an account. This policy explains the limited information involved when you use the site.</p>
+
+  <h2>No accounts, no ads, no trackers</h2>
+  <p>You do not create an account or sign in to read or search Actalux. We run no advertising, no analytics, and no third-party tracking scripts. We do not sell or share personal data.</p>
+
+  <h2>Cookies and local storage</h2>
+  <p>Actalux sets no cookies. Your browser stores a small amount of data locally — which navigation sections you have expanded — so the site remembers your layout between visits. That data stays in your browser and is never sent to us.</p>
+
+  <h2>When you search or ask a question</h2>
+  <p>Search queries and questions to "Ask the archive" are sent to our server to retrieve matching passages from the records. We may record queries in our server logs to monitor and improve search quality. "Ask the archive" — and the summary shown above search results — additionally sends your query, together with the public-record passages retrieved for it, to a third-party AI provider (currently OpenAI) that generates the cited answer. Please do not enter personal or sensitive information into the search or question box.</p>
+
+  <h2>Server logs</h2>
+  <p>Our hosting and database providers (Fly.io and Supabase) process the standard technical information needed to serve the site — such as your IP address and request details — in their normal server logs. We use this only to operate and secure the service.</p>
+
+  <h2>Resources loaded by the page</h2>
+  <p>To display, each page loads web fonts from Google Fonts and a small JavaScript library (htmx) from a public CDN (unpkg). Requesting those files reveals your IP address to those providers, as it would on any site that loads external resources. They are used only to render the page.</p>
+
+  <h2>Reporting a correction</h2>
+  <p>If you report a correction and include an email address, we store that address only to follow up on your report. Corrections you file through GitHub are public — do not include personal information there.</p>
+
+  <h2>Whose information appears in the archive</h2>
+  <p>Actalux publishes public records as the public bodies produced them. We build a standing profile — such as a member's cited voting record — only for people acting in a public capacity (the elected and appointed officials of the bodies we cover) and for organizations (firms and institutions). We do not compile an aggregated profile of a private individual.</p>
+  <ul>
+    <li>For the school district, we publish board and administration policy only — not individual personnel, teachers, or students.</li>
+    <li>For city bodies, the public record appears as the body published it, including the officials, applicants, and hearing participants named in the official minutes. A private individual may appear where the official record names them, but we do not compile that into a dossier.</li>
+    <li>In all cases, an automated check blocks any record containing sensitive personal data such as Social Security numbers or dates of birth before it can enter the archive.</li>
+  </ul>
+  <p>To request a correction or raise a concern about how you appear in a record, use the "Report an error" link on any page or email <a href="mailto:admin@actalux.org">admin@actalux.org</a>.</p>
+
+  <h2>Changes</h2>
+  <p>We may update this policy; any material change will be reflected on this page with a new date above.</p>
+
+  <h2>Contact</h2>
+  <p>Questions about privacy: <a href="mailto:admin@actalux.org">admin@actalux.org</a>.</p>
+</article>
+
+{% endblock %}
