@@ -69,3 +69,19 @@ def assign_citation_ids(doc_key: str, contents: list[str]) -> list[str]:
         seen[norm] = ordinal + 1
         out.append(compute_citation_id(doc_key, content, ordinal))
     return out
+
+
+def compute_vote_ref(citation_id: str, ordinal_within_chunk: int) -> str:
+    """Stable, content-addressed id for one vote, for graph edges to reference.
+
+    A vote is anchored to its citing chunk's ``citation_id`` (itself stable across
+    re-ingest, see ``compute_citation_id``) plus its appearance order among the
+    votes that resolve to the same ``citation_id`` within the document — so two
+    motions sharing one chunk earn distinct refs. The SERIAL ``votes.id`` cannot
+    serve this role: ``extract_votes`` delete/reinserts vote rows every run, which
+    reassigns it. ``citation_id`` must be non-empty; the caller refuses a vote
+    whose chunk lacks one rather than collide every such vote onto ``sha256(":N")``.
+    """
+    if not citation_id:
+        raise ValueError("compute_vote_ref requires a non-empty citation_id")
+    return hashlib.sha256(f"{citation_id}:{ordinal_within_chunk}".encode()).hexdigest()

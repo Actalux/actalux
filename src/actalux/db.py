@@ -1093,6 +1093,8 @@ def _vote_row(vote: Vote) -> dict[str, Any]:
         row["chunk_id"] = vote.chunk_id
     if vote.citation_id:
         row["citation_id"] = vote.citation_id
+    if vote.vote_ref:
+        row["vote_ref"] = vote.vote_ref
     return row
 
 

@@ -104,6 +104,11 @@ class Vote:
     details: dict | None = None  # mover/seconder + per-member votes when recorded
     chunk_id: int | None = None
     citation_id: str = ""
+    # Durable, content-addressed vote identity (ingest.hashing.compute_vote_ref):
+    # sha256(citation_id + ordinal-within-chunk). Graph edges reference
+    # (document_id, vote_ref) instead of the SERIAL id, which extract_votes
+    # reassigns on every re-run. None only for rows written before migrate_028.
+    vote_ref: str | None = None
     source_quote: str = ""
     id: int | None = None
 

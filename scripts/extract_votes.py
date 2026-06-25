@@ -44,6 +44,7 @@ from actalux.db import (  # noqa: E402
     insert_votes,
 )
 from actalux.ingest import votes_parser, votes_parser_civicplus  # noqa: E402
+from actalux.ingest.hashing import compute_vote_ref  # noqa: E402
 from actalux.ingest.votes_parser import ParsedVote, build_details  # noqa: E402
 from actalux.models import Vote  # noqa: E402
 
@@ -91,8 +92,12 @@ def _lead_in_count(doc: dict) -> int:
     )
 
 
-def _to_vote(parsed: ParsedVote, doc_id: int, meeting_date: date, chunk: dict) -> Vote:
-    """Build a Vote citing ``chunk`` (which is verified to contain the anchor)."""
+def _to_vote(
+    parsed: ParsedVote, doc_id: int, meeting_date: date, chunk: dict, vote_ref: str
+) -> Vote:
+    """Build a Vote citing ``chunk`` (verified to contain the anchor) with its
+    durable ``vote_ref``. The caller has verified ``chunk['citation_id']`` is
+    non-empty (vote_ref is derived from it)."""
     return Vote(
         document_id=doc_id,
         meeting_date=meeting_date,
@@ -104,18 +109,28 @@ def _to_vote(parsed: ParsedVote, doc_id: int, meeting_date: date, chunk: dict) -
         vote_count_abstain=parsed.vote_count_abstain,
         details=build_details(parsed),
         chunk_id=chunk["id"],
-        citation_id=chunk.get("citation_id") or "",
+        citation_id=chunk["citation_id"],
+        vote_ref=vote_ref,
         source_quote=parsed.source_quote,
     )
 
 
 def _build_votes(doc: dict, chunks: list[dict]) -> tuple[list[Vote], int]:
-    """Parse a document into citeable Vote records. Returns (votes, skipped_uncited)."""
+    """Parse a document into citeable Vote records. Returns (votes, skipped_uncited).
+
+    Each vote gets a durable ``vote_ref`` from its citing chunk's ``citation_id``
+    and its appearance order among the votes resolving to that same citation_id (so
+    two motions sharing one chunk earn distinct refs). A citing chunk with no
+    ``citation_id`` is a hard error, not a skip: substituting "" would collide every
+    such vote onto one ref and the UNIQUE(document_id, vote_ref) index would drop
+    all but the first — silent vote loss. Run backfill_citation_ids.py first.
+    """
     parse_votes, find_citing_chunk = _parser_for(doc)
     parsed = parse_votes(doc.get("content") or "")
     meeting_date = date.fromisoformat(doc["meeting_date"])
     votes: list[Vote] = []
     skipped = 0
+    ordinal_by_citation: dict[str, int] = {}
     for pv in parsed:
         chunk = find_citing_chunk(pv.anchors, chunks)
         if chunk is None:
@@ -126,7 +141,17 @@ def _build_votes(doc: dict, chunks: list[dict]) -> tuple[list[Vote], int]:
                 pv.motion,
             )
             continue
-        votes.append(_to_vote(pv, doc["id"], meeting_date, chunk))
+        citation_id = chunk.get("citation_id")
+        if not citation_id:
+            raise SystemExit(
+                f"doc {doc['id']}: citing chunk {chunk['id']} has no citation_id; "
+                "run backfill_citation_ids.py --apply before extracting votes "
+                "(vote_ref needs a non-empty citation_id — see connections-graph §4.2)."
+            )
+        ordinal = ordinal_by_citation.get(citation_id, 0)
+        ordinal_by_citation[citation_id] = ordinal + 1
+        vote_ref = compute_vote_ref(citation_id, ordinal)
+        votes.append(_to_vote(pv, doc["id"], meeting_date, chunk, vote_ref))
     return votes, skipped
 
 
