@@ -17,6 +17,7 @@ import logging
 import re
 import threading
 import time
+from collections import Counter
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import date
@@ -54,6 +55,7 @@ from actalux.db import (
     resolve_source_anchor,
 )
 from actalux.errors import SearchError, SummaryError
+from actalux.graph.store import body_members, member_by_slug, member_records
 from actalux.ingest.embedder import load_model
 from actalux.models import Correction, chunk_hash_id
 from actalux.search.answer import assemble_evidence, enrich_results
@@ -575,6 +577,7 @@ class SidebarNav:
 _SCHOOL_NAV = SidebarNav(
     topics=(
         NavLink("Board Meetings", "/meetings", "topic-meetings"),
+        NavLink("Members & votes", "/members", "topic-members"),
         NavLink("Budget & Spending", "/budget", "topic-budget"),
         NavLink("Facilities Master Plan", "/facilities-plan", "topic-facilities"),
     ),
@@ -593,6 +596,7 @@ _SCHOOL_NAV = SidebarNav(
 _COUNCIL_NAV = SidebarNav(
     topics=(
         NavLink("Council Meetings", "/meetings", "topic-meetings"),
+        NavLink("Members & votes", "/members", "topic-members"),
         NavLink("Budget & Spending", "/budget", "topic-budget"),
     ),
     documents=(),
@@ -856,6 +860,51 @@ def meetings_list(request: Request, view: EntityView = Depends(resolve_entity)) 
         request,
         "meetings.html",
         _page(view, meetings=meetings, active="topic-meetings"),
+    )
+
+
+_MEMBER_VOTE_TYPES = ("voted_aye_on", "voted_no_on", "voted_abstain_on")
+_MEMBER_ROLE_TYPES = ("moved", "seconded")
+
+
+@jurisdiction.get("/members", response_class=HTMLResponse)
+def members_list(request: Request, view: EntityView = Depends(resolve_entity)) -> HTMLResponse:
+    """Members & votes: the body's roster, each linking to a cited voting record."""
+    members = body_members(_get_db(), view.entity["id"])
+    members.sort(key=lambda m: m["canonical_name"])
+    return templates.TemplateResponse(
+        request, "members.html", _page(view, members=members, active="topic-members")
+    )
+
+
+@jurisdiction.get("/member/{slug}", response_class=HTMLResponse)
+def member_detail(
+    request: Request, slug: str, view: EntityView = Depends(resolve_entity)
+) -> HTMLResponse:
+    """One member's complete cited voting record (votes, then motions moved/seconded).
+
+    Each entry cites the verbatim minutes passage and links to it in native form;
+    a slug that is not a publishable member of this body 404s.
+    """
+    client = _get_db()
+    member = member_by_slug(client, view.entity["place_id"], slug, view.entity["id"])
+    if not member:
+        raise HTTPException(status_code=404, detail="Unknown member")
+    rows = member_records(client, member["id"], view.entity["id"])
+    rows.sort(key=lambda r: r.get("meeting_date") or "", reverse=True)
+    votes = [r for r in rows if r["edge_type"] in _MEMBER_VOTE_TYPES]
+    motions = [r for r in rows if r["edge_type"] in _MEMBER_ROLE_TYPES]
+    return templates.TemplateResponse(
+        request,
+        "member.html",
+        _page(
+            view,
+            member=member,
+            votes=votes,
+            motions=motions,
+            counts=Counter(r["edge_type"] for r in rows),
+            active="topic-members",
+        ),
     )
 
 

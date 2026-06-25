@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Members &amp; votes{% endblock %}
+{% block content %}
+
+<section class="pane-header">
+  <h2>Members &amp; votes</h2>
+  <span class="meta">{{ entity.display_name if entity else '' }}</span>
+</section>
+
+<div style="padding: var(--s-6) var(--s-6) var(--s-8);">
+  <article class="doc-page">
+    <h1>Members</h1>
+    <p class="lede" style="margin-bottom: var(--s-5);">
+      Each member's voting record is drawn verbatim from the official minutes.
+      Select a member for their cited record of votes, motions, and seconds.
+    </p>
+
+    {% if members %}
+    {% for m in members %}
+    {% set meta = m.metadata or {} %}
+    <a class="result-card" href="{{ base }}/member/{{ m.slug }}">
+      <div class="card-head">
+        <h3 class="doc-title">{{ m.canonical_name }}</h3>
+        <div class="card-meta">
+          <span class="kind">{{ meta.role or 'Member' }}</span>
+          {% if meta.ward %}<span>Ward {{ meta.ward }}</span>{% endif %}
+          <span class="date">{{ m.start_date or '—' }} – {{ m.end_date or 'present' }}</span>
+        </div>
+      </div>
+    </a>
+    {% endfor %}
+    {% else %}
+    <p class="doc-para" style="color: var(--muted);">No members are recorded for this body yet.</p>
+    {% endif %}
+  </article>
+</div>
+
+{% endblock %}

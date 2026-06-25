@@ -1221,3 +1221,54 @@ class TestAskLatencyPhaseA:
         # A load failure must not propagate — the model just loads lazily later.
         with patch("actalux.web.app.load_model", side_effect=RuntimeError("boom")):
             _warm_embedder()
+
+
+_MEMBER_ENTITY = {**_FAKE_COUNCIL, "place_id": 10}
+_MEMBER = {
+    "id": 5,
+    "slug": "susan-buse",
+    "canonical_name": "Susan Buse",
+    "metadata": {"role": "Councilmember", "ward": 2},
+    "start_date": "2020-06-23",
+    "end_date": None,
+}
+_MEMBER_ROW = {
+    "edge_type": "voted_aye_on",
+    "document_id": 195,
+    "meeting_date": "2023-02-01",
+    "meeting_title": "February 1, 2023 — Meeting Minutes",
+    "motion": "Approve the agenda as posted.",
+    "result": "passed",
+    "citation_id": "a3f91c08",
+}
+
+
+class TestMemberPages:
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity_by_path", return_value=_MEMBER_ENTITY)
+    @patch("actalux.web.app.body_members", return_value=[_MEMBER])
+    def test_members_directory_renders(self, m_mem, m_ent, m_db) -> None:
+        r = client.get("/mo/clayton/council/members")
+        assert r.status_code == 200
+        assert "Susan Buse" in r.text
+        assert "/mo/clayton/council/member/susan-buse" in r.text
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity_by_path", return_value=_MEMBER_ENTITY)
+    @patch("actalux.web.app.member_by_slug", return_value=_MEMBER)
+    @patch("actalux.web.app.member_records", return_value=[_MEMBER_ROW])
+    def test_member_dossier_renders_cited(self, m_rec, m_by, m_ent, m_db) -> None:
+        r = client.get("/mo/clayton/council/member/susan-buse")
+        assert r.status_code == 200
+        assert "Susan Buse" in r.text
+        assert "Ward 2" in r.text
+        # the verbatim motion and a citation that resolves to the original
+        assert "Approve the agenda as posted." in r.text
+        assert "/chunk/a3f91c08/source" in r.text
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity_by_path", return_value=_MEMBER_ENTITY)
+    @patch("actalux.web.app.member_by_slug", return_value=None)
+    def test_member_unknown_404(self, m_by, m_ent, m_db) -> None:
+        r = client.get("/mo/clayton/council/member/nobody")
+        assert r.status_code == 404
