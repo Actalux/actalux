@@ -18,6 +18,7 @@ Run (prefix each with `doppler run --project mac --config dev --`):
   uv run python scripts/extract_votes.py                 # dry run, all minutes
   uv run python scripts/extract_votes.py --doc 438       # dry run, one document
   uv run python scripts/extract_votes.py --apply         # write all minutes
+  uv run python scripts/extract_votes.py --entity-path mo/clayton/council --apply  # one body
 """
 
 from __future__ import annotations
@@ -34,12 +35,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from actalux.config import load_config  # noqa: E402
 from actalux.db import (  # noqa: E402
     delete_votes,
+    fetch_all_rows,
     get_client,
     get_document,
     get_document_chunks,
     get_document_vote_ids,
+    get_entity_by_path,
     insert_votes,
-    list_documents,
 )
 from actalux.ingest import votes_parser, votes_parser_civicplus  # noqa: E402
 from actalux.ingest.votes_parser import ParsedVote, build_details  # noqa: E402
@@ -186,6 +188,11 @@ def main() -> int:
     parser.add_argument(
         "--entity", type=int, help="scope to one public body (entities.id, e.g. 2 = council)"
     )
+    parser.add_argument(
+        "--entity-path",
+        help="scope to one body by path 'state/place/body' (e.g. mo/clayton/council); "
+        "resolved to entities.id so CI/workflows need not hardcode the numeric id",
+    )
     parser.add_argument("--apply", action="store_true", help="write to the DB (default: dry run)")
     args = parser.parse_args()
 
@@ -195,23 +202,47 @@ def main() -> int:
         raise SystemExit("ACTALUX_SUPABASE_SERVICE_KEY is required to --apply.")
     client = get_client(config.supabase_url, key)
 
+    # --entity-path resolves a 'state/place/body' slug to entities.id (same lookup
+    # ingest.py uses), so the (re)ingest workflows can scope by body without baking
+    # in a serial id. It folds into the same entity-scoped query as --entity.
+    entity_id = args.entity
+    if args.entity_path:
+        parts = args.entity_path.strip("/").split("/")
+        if len(parts) != 3:
+            raise SystemExit(f"--entity-path must be 'state/place/body', got {args.entity_path!r}")
+        entity = get_entity_by_path(client, *parts)
+        if not entity:
+            raise SystemExit(
+                f"Unknown entity {args.entity_path!r}; seed it (see migrate_012) first."
+            )
+        entity_id = entity["id"]
+
     if args.doc:
         doc_ids = args.doc
-    elif args.portal or args.entity is not None:
-        query = (
-            client.table("documents")
-            .select("id")
-            .eq("document_type", MINUTES_TYPE)
-            .is_("replaces_id", "null")
-        )
-        if args.portal:
-            query = query.eq("source_portal", args.portal)
-        if args.entity is not None:
-            query = query.eq("entity_id", args.entity)
-        rows = query.order("meeting_date", desc=True).execute().data or []
-        doc_ids = [r["id"] for r in rows]
     else:
-        doc_ids = [d["id"] for d in list_documents(client, document_type=MINUTES_TYPE)]
+        # Current minutes, optionally scoped to one portal/body. Page past the
+        # PostgREST row cap via fetch_all_rows: a bare query returns only the first
+        # ~1000 rows and list_documents caps at 500, so an exhaustive vote
+        # re-extraction would silently skip the oldest minutes once the corpus
+        # grows (610 current minutes already exceed 500) — the same silent vote
+        # loss this script exists to prevent.
+        def _current_minutes_query():
+            q = (
+                client.table("documents")
+                .select("id")
+                .eq("document_type", MINUTES_TYPE)
+                .is_("replaces_id", "null")
+            )
+            if args.portal:
+                q = q.eq("source_portal", args.portal)
+            if entity_id is not None:
+                q = q.eq("entity_id", entity_id)
+            return q
+
+        # order by 'id' (default): a unique key gives stable page boundaries
+        # (meeting_date has ties). Processing order doesn't matter — docs are
+        # independent.
+        doc_ids = [r["id"] for r in fetch_all_rows(_current_minutes_query)]
 
     total_votes = 0
     total_skipped = 0
