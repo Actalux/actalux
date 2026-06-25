@@ -112,6 +112,87 @@ def replace_document_graph(
         client.table("subject_resolution_queue").insert(queue).execute()
 
 
+def body_members(client: Client, entity_id: int) -> list[dict[str, Any]]:
+    """Publishable members of a body with their term window + role/ward metadata.
+
+    Joins memberships to subjects in Python (small, and avoids PostgREST embedded-
+    filter quirks). Drops any membership whose subject is not publishable.
+    """
+    memberships = (
+        client.table("memberships")
+        .select("subject_id,role,start_date,end_date")
+        .eq("entity_id", entity_id)
+        .execute()
+        .data
+    )
+    subject_ids = [m["subject_id"] for m in memberships]
+    if not subject_ids:
+        return []
+    subjects = (
+        client.table("subjects")
+        .select("id,slug,canonical_name,metadata")
+        .in_("id", subject_ids)
+        .eq("publishable", True)
+        .execute()
+        .data
+    )
+    by_id = {s["id"]: s for s in subjects}
+    members: list[dict[str, Any]] = []
+    for m in memberships:
+        subject = by_id.get(m["subject_id"])
+        if subject is None:
+            continue
+        members.append({**subject, "start_date": m["start_date"], "end_date": m["end_date"]})
+    return members
+
+
+def member_by_slug(client: Client, place_id: int, slug: str, entity_id: int) -> dict | None:
+    """One publishable member of a body by slug, with its term window, or None."""
+    rows = (
+        client.table("subjects")
+        .select("id,slug,canonical_name,metadata")
+        .eq("place_id", place_id)
+        .eq("slug", slug)
+        .eq("type", "person")
+        .eq("publishable", True)
+        .limit(1)
+        .execute()
+        .data
+    )
+    if not rows:
+        return None
+    subject = rows[0]
+    membership = (
+        client.table("memberships")
+        .select("role,start_date,end_date")
+        .eq("subject_id", subject["id"])
+        .eq("entity_id", entity_id)
+        .limit(1)
+        .execute()
+        .data
+    )
+    if not membership:
+        return None  # publishable subject, but not a member of THIS body
+    return {**subject, **membership[0]}
+
+
+def member_records(client: Client, subject_id: int, entity_id: int) -> list[dict[str, Any]]:
+    """A member's full cited voting record (via the member_vote_records view).
+
+    Paged past the row cap (a long-serving member can exceed 1000 edges across
+    voted/moved/seconded), ordered by the view's edge_id for stable paging.
+    """
+    return fetch_all_rows(
+        lambda: (
+            client.table("member_vote_records")
+            .select("*")
+            .eq("subject_id", subject_id)
+            .eq("entity_id", entity_id)
+        ),
+        order="edge_id",
+    )
+
+
 def prune_stale_graph(client: Client, current_doc_ids: set[int]) -> int:
     """Delete edges/queue rows that reference a document no longer current.
 
