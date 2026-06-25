@@ -499,3 +499,77 @@ class TestTiers:
         db = MagicMock()
         r = self._search(_KEYED_CFG, db, headers={"Authorization": "Bearer globaladmin"})
         assert r.status_code == 200
+
+
+# Entity with place_id (the member endpoints resolve a subject by place_id).
+_MEMBER_ENTITY = {**_FAKE_ENTITY, "place_id": 10}
+_MEMBER = {
+    "id": 5,
+    "slug": "susan-buse",
+    "canonical_name": "Susan Buse",
+    "metadata": {"role": "Councilmember", "ward": 2},
+    "start_date": "2020-06-23",
+    "end_date": None,
+}
+_MEMBER_VIEW_ROW = {
+    "edge_type": "voted_aye_on",
+    "document_id": 195,
+    "meeting_date": "2023-02-01",
+    "meeting_title": "February 1, 2023 — Meeting Minutes",
+    "document_type": "minutes",
+    "motion": "Approve the agenda as posted.",
+    "result": "passed",
+    "result_basis": "stated",
+    "vote_count_yes": 6,
+    "vote_count_no": 0,
+    "vote_count_abstain": 0,
+    "source_quote": "Motion carried 6-0.",
+    "citation_id": "a3f91c08",
+    "video_id": "",
+    "source_url": "https://example.org/min.pdf",
+    "source_portal": "diligent",
+    "source_file": "min.pdf",
+}
+
+
+class TestMembers:
+    @patch("actalux.web.api.get_config", return_value=_OPEN_CFG)
+    @patch("actalux.web.api.get_db")
+    @patch("actalux.web.api.get_entity_by_path", return_value=_MEMBER_ENTITY)
+    @patch("actalux.web.api.body_members", return_value=[_MEMBER])
+    def test_members_returns_roster(self, m_mem, m_ent, m_db, m_cfg) -> None:
+        r = client.get(f"{BASE}/members")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["count"] == 1
+        summary = body["members"][0]
+        assert summary["name"] == "Susan Buse"
+        assert summary["role"] == "Councilmember"
+        assert summary["ward"] == 2
+        assert summary["term_end"] is None
+
+    @patch("actalux.web.api.get_config", return_value=_OPEN_CFG)
+    @patch("actalux.web.api.get_db")
+    @patch("actalux.web.api.get_entity_by_path", return_value=_MEMBER_ENTITY)
+    @patch("actalux.web.api.member_by_slug", return_value=_MEMBER)
+    @patch("actalux.web.api.member_records", return_value=[_MEMBER_VIEW_ROW])
+    def test_member_returns_cited_record(self, m_rec, m_by, m_ent, m_db, m_cfg) -> None:
+        r = client.get(f"{BASE}/members/susan-buse")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["name"] == "Susan Buse"
+        assert body["counts"] == {"voted_aye_on": 1}
+        rec = body["record"][0]
+        assert rec["edge_type"] == "voted_aye_on"
+        assert rec["motion"] == "Approve the agenda as posted."
+        # the citation routes on the stable citation_id, deep-linking to the passage
+        assert rec["html_url"] == "/chunk/a3f91c08/source"
+        assert "#qa3f91c08" in rec["citation"]
+
+    @patch("actalux.web.api.get_config", return_value=_OPEN_CFG)
+    @patch("actalux.web.api.get_db")
+    @patch("actalux.web.api.get_entity_by_path", return_value=_MEMBER_ENTITY)
+    @patch("actalux.web.api.member_by_slug", return_value=None)
+    def test_member_unknown_404(self, m_by, m_ent, m_db, m_cfg) -> None:
+        r = client.get(f"{BASE}/members/nobody")
+        assert r.status_code == 404

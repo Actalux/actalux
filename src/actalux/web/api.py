@@ -9,6 +9,9 @@ Surface (all entity-scoped, mirroring the site's /{state}/{place}/{body} paths):
   GET /api/v1/{state}/{place}/{body}/search          ranked verbatim passages
   GET /api/v1/{state}/{place}/{body}/meetings/{date} one meeting's documents
   GET /api/v1/{state}/{place}/{body}/recent          recent meetings feed
+  GET /api/v1/{state}/{place}/{body}/votes           structured cited vote records
+  GET /api/v1/{state}/{place}/{body}/members         the body's roster
+  GET /api/v1/{state}/{place}/{body}/members/{slug}  a member's cited voting record
 
 Auth is key-optional and tier-aware. With no key presented a request runs as the
 ``anonymous`` tier (today's open path: open access at the historical rate limits,
@@ -26,6 +29,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import time
+from collections import Counter
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -39,6 +43,7 @@ from actalux.db import (
     list_recent_meeting_documents,
 )
 from actalux.errors import SearchError
+from actalux.graph.store import body_members, member_by_slug, member_records
 from actalux.models import chunk_hash_id
 from actalux.search.answer import enrich_results
 from actalux.search.hybrid import SearchFilters, hybrid_search
@@ -139,6 +144,50 @@ class VotesResponse(BaseModel):
     since: str | None
     count: int
     votes: list[VoteRecord]
+
+
+class MemberVote(BaseModel):
+    edge_type: str  # voted_aye_on | voted_no_on | voted_abstain_on | moved | seconded
+    document_id: int
+    meeting_date: str | None
+    title: str
+    motion: str
+    result: str
+    result_basis: str
+    vote_count_yes: int | None
+    vote_count_no: int | None
+    vote_count_abstain: int | None
+    source_quote: str  # the verbatim motion / tally / result text the edge cites
+    citation: str
+    source_url: str | None  # original artifact (PDF or YouTube); may be null
+    html_url: str  # site-relative deep link to the cited passage in context
+
+
+class MemberSummary(BaseModel):
+    slug: str
+    name: str
+    role: str | None
+    ward: int | None
+    term_start: str | None
+    term_end: str | None  # null = currently seated
+
+
+class MembersResponse(BaseModel):
+    entity: str
+    count: int
+    members: list[MemberSummary]
+
+
+class MemberRecord(BaseModel):
+    entity: str
+    slug: str
+    name: str
+    role: str | None
+    ward: int | None
+    term_start: str | None
+    term_end: str | None
+    counts: dict[str, int]  # edges by type: voted_aye_on / .../ moved / seconded
+    record: list[MemberVote]
 
 
 # --- Auth --------------------------------------------------------------------
@@ -526,4 +575,99 @@ def api_votes(
     records = [_build_vote_record(r, docs.get(r["document_id"], {})) for r in rows]
     return VotesResponse(
         entity=_entity_path(entity), since=iso_since, count=len(records), votes=records
+    )
+
+
+def _member_doc(row: dict) -> dict:
+    """A document-shaped dict from a member_vote_records row, for the shared
+    display_title / _source_url builders (the view flattens the document fields)."""
+    return {
+        "id": row["document_id"],
+        "meeting_title": row.get("meeting_title"),
+        "meeting_date": row.get("meeting_date"),
+        "document_type": "minutes",
+        "source_portal": row.get("source_portal"),
+        "video_id": row.get("video_id"),
+        "source_url": row.get("source_url"),
+        "source_file": row.get("source_file"),
+    }
+
+
+def _build_member_vote(row: dict) -> MemberVote:
+    """One cited record from a member_vote_records row (citation routes on citation_id)."""
+    doc = _member_doc(row)
+    title = display_title(doc)
+    cite_ref = row.get("citation_id")
+    hash_id = chunk_hash_id(cite_ref)
+    return MemberVote(
+        edge_type=row["edge_type"],
+        document_id=row["document_id"],
+        meeting_date=row.get("meeting_date") or None,
+        title=title,
+        motion=row.get("motion") or "",
+        result=row.get("result") or "",
+        result_basis=row.get("result_basis") or "stated",
+        vote_count_yes=row.get("vote_count_yes"),
+        vote_count_no=row.get("vote_count_no"),
+        vote_count_abstain=row.get("vote_count_abstain"),
+        source_quote=row.get("source_quote") or "",
+        citation=f"{title} [{hash_id}]",
+        source_url=_source_url(doc),
+        html_url=f"/chunk/{cite_ref}/source" if cite_ref else "",
+    )
+
+
+def _member_summary(member: dict) -> MemberSummary:
+    meta = member.get("metadata") or {}
+    return MemberSummary(
+        slug=member["slug"],
+        name=member["canonical_name"],
+        role=meta.get("role"),
+        ward=meta.get("ward"),
+        term_start=member.get("start_date"),
+        term_end=member.get("end_date"),
+    )
+
+
+@api_router.get(
+    "/{state}/{place}/{body}/members",
+    response_model=MembersResponse,
+    summary="The body's roster (publishable members)",
+    dependencies=[Depends(rate_limit_general)],
+)
+def api_members(entity: dict = Depends(resolve_api_entity)) -> MembersResponse:
+    """The body's roster: publishable members with role, ward, and term window."""
+    members = body_members(get_db(), entity["id"])
+    summaries = sorted((_member_summary(m) for m in members), key=lambda s: s.name)
+    return MembersResponse(entity=_entity_path(entity), count=len(summaries), members=summaries)
+
+
+@api_router.get(
+    "/{state}/{place}/{body}/members/{slug}",
+    response_model=MemberRecord,
+    summary="A member's complete cited voting record",
+    dependencies=[Depends(rate_limit_general)],
+)
+def api_member(slug: str, entity: dict = Depends(resolve_api_entity)) -> MemberRecord:
+    """One member's complete cited voting record (aye/no/abstain + moved/seconded).
+
+    Every entry cites the verbatim minutes passage it was read from. 404 if the slug
+    is not a publishable member of this body.
+    """
+    client = get_db()
+    member = member_by_slug(client, entity["place_id"], slug, entity["id"])
+    if not member:
+        raise HTTPException(status_code=404, detail="Unknown member")
+    rows = member_records(client, member["id"], entity["id"])
+    meta = member.get("metadata") or {}
+    return MemberRecord(
+        entity=_entity_path(entity),
+        slug=member["slug"],
+        name=member["canonical_name"],
+        role=meta.get("role"),
+        ward=meta.get("ward"),
+        term_start=member.get("start_date"),
+        term_end=member.get("end_date"),
+        counts=dict(Counter(r["edge_type"] for r in rows)),
+        record=[_build_member_vote(r) for r in rows],
     )
