@@ -134,6 +134,20 @@ jobs:
             echo "::warning::no documents crawled; nothing to ingest"
           fi
 
+      # Minutes carry the votes. Re-ingesting a minutes doc creates a new version,
+      # but vote extraction is a separate pass — without this step a re-versioned
+      # doc's votes silently drop from the feed (get_entity_votes filters
+      # replaces_id IS NULL) until extraction is re-run by hand. Re-extract the
+      # body we just crawled (idempotent: insert-before-delete per document).
+      - name: Re-extract votes
+        if: ${{ github.event_name == 'schedule' || inputs.ingest }}
+        run: |
+          if [ -f data/documents/civicplus_manifest.json ]; then
+            uv run python scripts/extract_votes.py --apply --entity-path "mo/clayton/$BODY"
+          else
+            echo "::warning::no documents ingested; skipping vote re-extraction"
+          fi
+
       - name: Generate document summaries
         if: ${{ github.event_name == 'schedule' || inputs.ingest }}
         run: uv run python scripts/backfill_doc_summaries.py

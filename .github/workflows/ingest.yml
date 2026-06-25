@@ -116,6 +116,14 @@ jobs:
             exit 1
           fi
 
+      # School-board minutes (Diligent) carry the votes. Re-ingesting a minutes doc
+      # creates a new version, but vote extraction is a separate pass — without this
+      # a re-versioned doc's votes silently drop from the feed (get_entity_votes
+      # filters replaces_id IS NULL) until extraction is re-run by hand. Idempotent
+      # (insert-before-delete per document); scoped to the school board.
+      - name: Re-extract votes
+        run: uv run python scripts/extract_votes.py --apply --entity-path mo/clayton/schools
+
       # Draft a cited "what changed this run" post and (if SMTP is configured)
       # email it for human review. Soft-fails: a drafting/email hiccup must not
       # fail the run or undo the ingest above. Never publishes.
