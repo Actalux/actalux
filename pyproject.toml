@@ -19,6 +19,7 @@ dependencies = [
     "anthropic==0.93.0",
     "openai>=1.50",
     "yt-dlp>=2025.1",
+    "rapidfuzz>=3.0",
 ]
 
 [project.optional-dependencies]

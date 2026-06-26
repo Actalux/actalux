@@ -27,6 +27,10 @@ data/
 # Eval reports are regenerated (queries.json + judgments.json are committed)
 eval/results/
 
+# Discovery proposals are a regenerable review artifact (run discover_corrections.py);
+# the curated corrections file is the committed source of truth.
+scripts/corrections/proposals_*.json
+
 # Tools
 .serena/
 .gstack/

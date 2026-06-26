@@ -181,6 +181,21 @@ jobs:
           uv run python scripts/backfill_doc_summaries.py
           uv run python scripts/backfill_transcript_chapters.py
 
+      # Discover proper-name misspellings in the meetings just transcribed by aligning
+      # each ASR transcript to that meeting's agenda/minutes + the officials lexicon, and
+      # apply the high-confidence ones (provenance='auto') so search recall and the
+      # downstream newsletter pick up the new spellings. Scoped to the run's manifest;
+      # canonicals are never invented; idempotent (dedups against existing corrections).
+      - name: Discover + apply name corrections
+        if: ${{ github.event_name == 'schedule' || inputs.ingest }}
+        run: |
+          if [ -f data/documents/youtube_manifest.json ]; then
+            uv run python scripts/discover_corrections.py \
+              --manifest data/documents/youtube_manifest.json --apply
+          else
+            echo "::warning::no transcripts produced; skipping name-correction discovery"
+          fi
+
       - name: Upload transcripts (artifact)
         if: always()
         uses: actions/upload-artifact@v4

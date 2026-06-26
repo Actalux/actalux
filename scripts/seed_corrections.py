@@ -59,7 +59,10 @@ def build_rows(place_id: int, corrections: list[dict]) -> list[dict]:
             "mangled": mangled,
             "canonical": c["canonical"],
             "category": c.get("category"),
-            "provenance": c.get("provenance"),
+            # Default to 'asr' so curated rows are never NULL: the re-seed below deletes
+            # everything except machine-discovered ('auto') rows, which relies on every
+            # curated row carrying a non-'auto' provenance.
+            "provenance": c.get("provenance") or "asr",
             "active": True,
         }
     return list(by_mangled.values())
