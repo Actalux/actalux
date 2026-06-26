@@ -602,16 +602,23 @@ _COUNCIL_NAV = SidebarNav(
     documents=(),
 )
 
-# Plan Commission / ARB (land use) — likewise transcripts-only for now.
+# Plan Commission / ARB (land use). Members & votes carries who moved/seconded each
+# motion (these minutes record no per-member roll call), plus the meetings list.
 _PLAN_COMMISSION_NAV = SidebarNav(
-    topics=(NavLink("Commission Meetings", "/meetings", "topic-meetings"),),
+    topics=(
+        NavLink("Commission Meetings", "/meetings", "topic-meetings"),
+        NavLink("Members & votes", "/members", "topic-members"),
+    ),
     documents=(),
 )
 
 # Board of Adjustment (zoning variances/appeals) — agendas, minutes, transcripts,
-# all surfaced through the meetings list like the other city bodies.
+# all surfaced through the meetings list, plus members & motions moved/seconded.
 _BOARD_OF_ADJUSTMENT_NAV = SidebarNav(
-    topics=(NavLink("Board Meetings", "/meetings", "topic-meetings"),),
+    topics=(
+        NavLink("Board Meetings", "/meetings", "topic-meetings"),
+        NavLink("Members & votes", "/members", "topic-members"),
+    ),
     documents=(),
 )
 
@@ -894,6 +901,11 @@ def member_detail(
     rows.sort(key=lambda r: r.get("meeting_date") or "", reverse=True)
     votes = [r for r in rows if r["edge_type"] in _MEMBER_VOTE_TYPES]
     motions = [r for r in rows if r["edge_type"] in _MEMBER_ROLE_TYPES]
+    # For an appointed board with no published term dates (PC/BoA), show the span of
+    # the member's cited record instead of a fabricated term — the dossier never
+    # asserts a "term" we cannot source.
+    dates = sorted(r["meeting_date"] for r in rows if r.get("meeting_date"))
+    record_span = (dates[0], dates[-1]) if dates else None
     return templates.TemplateResponse(
         request,
         "member.html",
@@ -902,6 +914,7 @@ def member_detail(
             member=member,
             votes=votes,
             motions=motions,
+            record_span=record_span,
             counts=Counter(r["edge_type"] for r in rows),
             active="topic-members",
         ),

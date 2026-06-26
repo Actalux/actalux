@@ -230,6 +230,314 @@
         "term_end": null, "term_end_basis": null,
         "source": "doc 438 (oath 2026-04-15, term 2026-2029); doc 609 (election win). New member Apr 2026."
       }
+    ],
+    "plan-commission": [
+      {
+        "canonical_name": "Ron Reim",
+        "aliases": ["Rom Reim", "Rein Reim"],
+        "role": "Commissioner",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "PC minutes (moved/seconded ~189 motions, 2015-2018). 'Rom Reim'/'Rein Reim' = OCR (1 each). No public appointment-date record; window shown from the cited record."
+      },
+      {
+        "canonical_name": "Helen DiFate",
+        "aliases": ["Helen Di Fate", "Halen DiFate"],
+        "role": "Commissioner",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "PC minutes (~168 motions, 2022-2026). 'Helen Di Fate'/'Halen DiFate' = OCR."
+      },
+      {
+        "canonical_name": "Bob Denlow",
+        "aliases": [],
+        "role": "Commissioner",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "PC minutes (~119 motions, 2022-2025). 'Word. Bob Denlow' prefix garbles go to the review queue, not guessed."
+      },
+      {
+        "canonical_name": "Scott Wilson",
+        "aliases": [],
+        "role": "Commissioner",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "PC minutes (~81 motions, 2016-2018)."
+      },
+      {
+        "canonical_name": "Josh Corson",
+        "aliases": [],
+        "role": "Commissioner",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "PC minutes (~80 motions, 2015-2017)."
+      },
+      {
+        "canonical_name": "Carolyn Gaidis",
+        "aliases": ["Carolin Gaidis"],
+        "role": "Commissioner",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "PC minutes (~78 motions, 2018-2024). 'Carolin Gaidis' = OCR."
+      },
+      {
+        "canonical_name": "Craig Owens",
+        "aliases": [],
+        "role": "Commissioner",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "PC minutes (~72 motions, 2015-2018)."
+      },
+      {
+        "canonical_name": "William Liebermann",
+        "aliases": ["William Lieberman", "Will Liebermann"],
+        "role": "Commissioner",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "PC minutes (~67 motions, 2016-2018). Distinct person from Jim Liberman (2015) per operator confirmation."
+      },
+      {
+        "canonical_name": "Jim Liberman",
+        "aliases": [],
+        "role": "Commissioner",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "PC minutes (~15 motions, Jan-May 2015). Distinct person from William Liebermann (2016-2018) per operator confirmation."
+      },
+      {
+        "canonical_name": "Jim Arsenault",
+        "aliases": [],
+        "role": "Commissioner",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "PC minutes (~34 motions, 2025-2026)."
+      },
+      {
+        "canonical_name": "Brian Maguire",
+        "aliases": ["Brian Magure"],
+        "role": "Commissioner",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "PC minutes (~23 motions, 2017-2018). 'Brian Magure' = OCR."
+      },
+      {
+        "canonical_name": "Pepe Finn",
+        "aliases": [],
+        "role": "Commissioner",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "PC minutes (~18 motions, 2015-2016)."
+      },
+      {
+        "canonical_name": "Sally Cohn",
+        "aliases": [],
+        "role": "Commissioner",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "PC minutes (~9 motions, 2015)."
+      },
+      {
+        "canonical_name": "Sherry Eisenberg",
+        "aliases": [],
+        "role": "Commissioner",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "PC minutes (~7 motions, 2015-2016)."
+      },
+      {
+        "canonical_name": "Steve Lichtenfeld",
+        "aliases": ["Lichtenfeld"],
+        "role": "Commissioner",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "PC minutes (chaired; appears as 'Chairman Lichtenfeld'). Bare surname 'Lichtenfeld' is unique to him on the PC."
+      },
+      {
+        "canonical_name": "Chris Brennan",
+        "aliases": [],
+        "role": "Commissioner",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "PC minutes (~3 motions, 2026)."
+      },
+      {
+        "canonical_name": "David Gipson",
+        "aliases": [],
+        "role": "Commissioner",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "PC minutes (1 motion, 2024). Single appearance; included per operator."
+      },
+      {
+        "canonical_name": "Bridget McAndrew",
+        "aliases": [],
+        "role": "Commissioner",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "Also serves on the Plan Commission (~81 motions, 2023-2025). Same person as the council member."
+      },
+      {
+        "canonical_name": "Susan Buse",
+        "aliases": [],
+        "role": "Commissioner",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "Also serves on the Plan Commission (~43 motions, 2025-2026). Same person as the council member."
+      },
+      {
+        "canonical_name": "Joanne Boulton",
+        "aliases": [],
+        "role": "Commissioner",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "Also served on the Plan Commission (~36 motions, 2016-2018). Same person as the council member."
+      },
+      {
+        "canonical_name": "Mark Winings",
+        "aliases": [],
+        "role": "Commissioner",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "Also served on the Plan Commission (~36 motions, 2015-2016). Same person as the council member."
+      },
+      {
+        "canonical_name": "Kami Waldman",
+        "aliases": [],
+        "role": "Commissioner",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "Also serves on the Plan Commission (~15 motions, 2024-2025). Same person as the council member."
+      },
+      {
+        "canonical_name": "Richard Lintz",
+        "aliases": ["Rich Lintz"],
+        "role": "Commissioner",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "1 PC motion (2021), as 'Rich Lintz'. Single appearance; included per operator. Same person as the council member."
+      },
+      {
+        "canonical_name": "Ira Berkowitz",
+        "aliases": [],
+        "role": "Commissioner",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "1 PC motion (2021). Single appearance; included per operator. Same person as the council member."
+      }
+    ],
+    "board-of-adjustment": [
+      {
+        "canonical_name": "Liza Streett",
+        "aliases": [],
+        "role": "Board member",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "BoA minutes (~33 motions, 2015-2026). No public appointment-date record; window shown from the cited record."
+      },
+      {
+        "canonical_name": "Rick Bliss",
+        "aliases": [],
+        "role": "Board member",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "BoA minutes (~18 motions, 2015-2023)."
+      },
+      {
+        "canonical_name": "Bryce Woollen",
+        "aliases": [],
+        "role": "Board member",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "BoA minutes (~14 motions, 2023-2025)."
+      },
+      {
+        "canonical_name": "Mary DeBenedetti",
+        "aliases": ["Mary Debenedetti"],
+        "role": "Board member",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "BoA minutes (~7 motions, 2015-2022). 'Mary Debenedetti' = OCR casing."
+      },
+      {
+        "canonical_name": "Anne Bishop",
+        "aliases": [],
+        "role": "Board member",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "BoA minutes (~6 motions, 2015-2017)."
+      },
+      {
+        "canonical_name": "Mel Disney",
+        "aliases": [],
+        "role": "Board member",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "BoA minutes (~5 motions, 2015-2017)."
+      },
+      {
+        "canonical_name": "Lee Hanson",
+        "aliases": [],
+        "role": "Board member",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "BoA minutes (~3 motions, 2024-2026)."
+      },
+      {
+        "canonical_name": "Nicki Herrington",
+        "aliases": [],
+        "role": "Board member",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "BoA minutes (~3 motions, 2016-2017)."
+      },
+      {
+        "canonical_name": "Abby Goldstein",
+        "aliases": ["Abby Goldstien"],
+        "role": "Board member",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "BoA minutes (~2 motions, 2023-2024). 'Abby Goldstien' = OCR."
+      },
+      {
+        "canonical_name": "Anne Martin",
+        "aliases": [],
+        "role": "Board member",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "BoA minutes (~2 motions, 2015)."
+      },
+      {
+        "canonical_name": "Ray Tait",
+        "aliases": [],
+        "role": "Board member",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "BoA minutes (1 motion, 2016). Single appearance; included per operator."
+      },
+      {
+        "canonical_name": "Jason Lehtman",
+        "aliases": [],
+        "role": "Board member",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "BoA minutes (1 motion, 2022). Single appearance; included per operator."
+      },
+      {
+        "canonical_name": "Robert Denlow",
+        "aliases": [],
+        "role": "Board member",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "BoA minutes (1 motion, 2017). Single appearance; included per operator. Possibly the same person as the Plan Commission's Bob Denlow — kept separate pending confirmation."
+      },
+      {
+        "canonical_name": "Richard Lintz",
+        "aliases": ["Rich Lintz"],
+        "role": "Board member",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "1 BoA motion (2024), as 'Rich Lintz'. Single appearance; included per operator. Same person as the council member."
+      }
     ]
   }
 }

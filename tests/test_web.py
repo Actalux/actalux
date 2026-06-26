@@ -1283,6 +1283,34 @@ _MEMBER_ROW = {
     "citation_id": "a3f91c08",
 }
 
+# A motion-only body (Plan Commission): no per-member roll calls, no term dates.
+_PC_ENTITY = {
+    "id": 3,
+    "body_slug": "plan-commission",
+    "type": "plan_commission",
+    "display_name": "Clayton Plan Commission",
+    "place_id": 10,
+    "place": {"state": "mo", "slug": "clayton", "display_name": "Clayton"},
+}
+_PC_MEMBER = {
+    "id": 31,
+    "slug": "ron-reim",
+    "canonical_name": "Ron Reim",
+    "metadata": {"role": "Commissioner", "ward": None},
+    "role": "Commissioner",
+    "start_date": None,
+    "end_date": None,
+}
+_PC_MOTION_ROW = {
+    "edge_type": "moved",
+    "document_id": 300,
+    "meeting_date": "2017-05-15",
+    "meeting_title": "May 15, 2017 — Plan Commission Minutes",
+    "motion": "Recommend approval of the conditional use permit.",
+    "result": "carried",
+    "citation_id": "pc12ab34",
+}
+
 
 class TestMemberPages:
     @patch("actalux.web.app._get_db")
@@ -1313,3 +1341,22 @@ class TestMemberPages:
     def test_member_unknown_404(self, m_by, m_ent, m_db) -> None:
         r = client.get("/mo/clayton/council/member/nobody")
         assert r.status_code == 404
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity_by_path", return_value=_PC_ENTITY)
+    @patch("actalux.web.app.member_by_slug", return_value=_PC_MEMBER)
+    @patch("actalux.web.app.member_records", return_value=[_PC_MOTION_ROW])
+    def test_motion_only_member_dossier(self, m_rec, m_by, m_ent, m_db) -> None:
+        # PC/BoA record no per-member roll call: motions are the record, shown
+        # directly (not in an empty "Voting record" section), with no vote badges
+        # and the cited-record span in place of a fabricated term.
+        r = client.get("/mo/clayton/plan-commission/member/ron-reim")
+        assert r.status_code == 200
+        assert "Ron Reim" in r.text
+        assert "Commissioner" in r.text
+        assert "Motions moved" in r.text
+        assert "Recommend approval of the conditional use permit." in r.text
+        assert "/chunk/pc12ab34/source" in r.text
+        assert "Voting record" not in r.text
+        assert "Aye " not in r.text  # no roll-call badges
+        assert "in the record 2017" in r.text

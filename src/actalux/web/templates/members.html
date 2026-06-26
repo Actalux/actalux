@@ -22,9 +22,9 @@
       <div class="card-head">
         <h3 class="doc-title">{{ m.canonical_name }}</h3>
         <div class="card-meta">
-          <span class="kind">{{ meta.role or 'Member' }}</span>
+          <span class="kind">{{ m.role or meta.role or 'Member' }}</span>
           {% if meta.ward %}<span>Ward {{ meta.ward }}</span>{% endif %}
-          <span class="date">{{ m.start_date or '—' }} – {{ m.end_date or 'present' }}</span>
+          {% if m.start_date or m.end_date %}<span class="date">{{ m.start_date or '—' }} – {{ m.end_date or 'present' }}</span>{% endif %}
         </div>
       </div>
     </a>

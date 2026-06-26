@@ -142,7 +142,11 @@ def body_members(client: Client, entity_id: int) -> list[dict[str, Any]]:
         subject = by_id.get(m["subject_id"])
         if subject is None:
             continue
-        members.append({**subject, "start_date": m["start_date"], "end_date": m["end_date"]})
+        # role from the membership (per body) — a cross-body member's role differs
+        # between, say, council and the Plan Commission.
+        members.append(
+            {**subject, "role": m["role"], "start_date": m["start_date"], "end_date": m["end_date"]}
+        )
     return members
 
 

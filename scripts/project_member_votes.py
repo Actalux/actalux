@@ -42,11 +42,12 @@ from actalux.graph.store import (  # noqa: E402
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-# Bodies that record per-member roll calls (the only ones that yield voted_* edges).
-# PC + BoA minutes record only mover/seconder + an aggregate outcome (no roll call),
-# so they are out of Phase 1 — see connections-graph §9 / project memory.
+# Bodies the projector covers. Schools + council record per-member roll calls
+# (voted_* edges) plus mover/seconder; the Plan Commission and Board of Adjustment
+# record only mover/seconder + an aggregate outcome (no roll call), so they yield
+# moved/seconded edges only. derive_document_edges handles both shapes uniformly.
 PLACE = ("mo", "clayton")
-BODIES = ("schools", "council")
+BODIES = ("schools", "council", "plan-commission", "board-of-adjustment")
 
 
 def _resolve_scope(client) -> tuple[int, dict[int, str]]:
