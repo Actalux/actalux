@@ -649,3 +649,57 @@ class TestMatters:
     def test_matter_unknown_404(self, m_by, m_ent, m_db, m_cfg) -> None:
         r = client.get(f"{BASE}/matters/bill-9999")
         assert r.status_code == 404
+
+
+_PLACE_ROW = {"id": 10, "state": "mo", "slug": "clayton"}
+_LEXICON_ENTRY = {
+    "slug": "susan-buse",
+    "canonical_name": "Susan Buse",
+    "kind": "person",
+    "role": "Council Member",
+    "current": True,
+    # cross-body: one entry, both memberships (the reason the lexicon is place-scoped)
+    "bodies": [
+        {"body_slug": "council", "role": "Council Member", "start_date": None, "end_date": None},
+        {
+            "body_slug": "plan-commission",
+            "role": "Commissioner",
+            "start_date": None,
+            "end_date": None,
+        },
+    ],
+    "aliases": [
+        {"raw": "Buse", "normalized": "buse", "source": "roster"},
+        {"raw": "Susan Buse", "normalized": "susan buse", "source": "roster"},
+    ],
+}
+
+_PLACE_BASE = "/api/v1/mo/clayton"
+
+
+class TestLexicon:
+    @patch("actalux.web.api.get_config", return_value=_OPEN_CFG)
+    @patch("actalux.web.api.get_db")
+    @patch("actalux.web.api.get_place_by_path", return_value=_PLACE_ROW)
+    @patch("actalux.web.api.place_lexicon", return_value=[_LEXICON_ENTRY])
+    def test_lexicon_returns_place_entries(self, m_lex, m_place, m_db, m_cfg) -> None:
+        r = client.get(f"{_PLACE_BASE}/lexicon")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["place"] == "mo/clayton"
+        assert body["count"] == 1
+        entry = body["entries"][0]
+        assert entry["canonical_name"] == "Susan Buse"
+        assert entry["current"] is True
+        # the cross-body member surfaces both memberships in one entry
+        assert {b["body_slug"] for b in entry["bodies"]} == {"council", "plan-commission"}
+        # each variant carries its provenance
+        assert {a["source"] for a in entry["aliases"]} == {"roster"}
+        assert {a["raw"] for a in entry["aliases"]} == {"Buse", "Susan Buse"}
+
+    @patch("actalux.web.api.get_config", return_value=_OPEN_CFG)
+    @patch("actalux.web.api.get_db")
+    @patch("actalux.web.api.get_place_by_path", return_value=None)
+    def test_lexicon_unknown_place_404(self, m_place, m_db, m_cfg) -> None:
+        r = client.get(f"{_PLACE_BASE}/lexicon")
+        assert r.status_code == 404

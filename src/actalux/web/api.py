@@ -5,13 +5,15 @@ the archive as grounding. Everything here is read-only over already-public
 records and mirrors the HTML site's retrieval, so the API can never expose more
 than the site does.
 
-Surface (all entity-scoped, mirroring the site's /{state}/{place}/{body} paths):
+Surface (mostly entity-scoped, mirroring the site's /{state}/{place}/{body} paths;
+the lexicon is place-scoped because a person can sit on more than one body):
   GET /api/v1/{state}/{place}/{body}/search          ranked verbatim passages
   GET /api/v1/{state}/{place}/{body}/meetings/{date} one meeting's documents
   GET /api/v1/{state}/{place}/{body}/recent          recent meetings feed
   GET /api/v1/{state}/{place}/{body}/votes           structured cited vote records
   GET /api/v1/{state}/{place}/{body}/members         the body's roster
   GET /api/v1/{state}/{place}/{body}/members/{slug}  a member's cited voting record
+  GET /api/v1/{state}/{place}/lexicon                canonical official names + variants
 
 Auth is key-optional and tier-aware. With no key presented a request runs as the
 ``anonymous`` tier (today's open path: open access at the historical rate limits,
@@ -40,6 +42,7 @@ from actalux.db import (
     get_entity_by_path,
     get_entity_votes,
     get_meeting_documents,
+    get_place_by_path,
     list_recent_meeting_documents,
 )
 from actalux.errors import SearchError
@@ -50,6 +53,7 @@ from actalux.graph.store import (
     matter_records,
     member_by_slug,
     member_records,
+    place_lexicon,
 )
 from actalux.models import chunk_hash_id
 from actalux.search.answer import enrich_results
@@ -240,6 +244,35 @@ class MatterRecord(BaseModel):
     timeline: list[MatterAction]  # cited council actions, oldest first
 
 
+class LexiconBody(BaseModel):
+    body_slug: str
+    role: str | None
+    start_date: str | None
+    end_date: str | None  # null = still seated on this body
+
+
+class LexiconAlias(BaseModel):
+    raw: str | None  # the variant as printed in the record (may be an OCR form)
+    normalized: str  # the resolver's normalized key
+    source: str | None  # provenance: roster | ocr | asr | reviewed
+
+
+class LexiconEntry(BaseModel):
+    slug: str
+    canonical_name: str
+    kind: str  # 'person' (orgs/places arrive with connections-graph Phase 3)
+    role: str | None
+    current: bool  # still seated on at least one body
+    bodies: list[LexiconBody]
+    aliases: list[LexiconAlias]
+
+
+class LexiconResponse(BaseModel):
+    place: str  # 'mo/clayton'
+    count: int
+    entries: list[LexiconEntry]
+
+
 # --- Auth --------------------------------------------------------------------
 
 
@@ -404,6 +437,14 @@ def resolve_api_entity(state: str, place: str, body: str) -> dict:
     if not entity:
         raise HTTPException(status_code=404, detail="Unknown jurisdiction")
     return entity
+
+
+def resolve_api_place(state: str, place: str) -> dict:
+    """Resolve a place (state + slug) for the place-scoped lexicon, or 404 (as JSON)."""
+    row = get_place_by_path(get_db(), state, place)
+    if not row:
+        raise HTTPException(status_code=404, detail="Unknown jurisdiction")
+    return row
 
 
 def _entity_path(entity: dict) -> str:
@@ -801,4 +842,36 @@ def api_member(slug: str, entity: dict = Depends(resolve_api_entity)) -> MemberR
         term_end=member.get("end_date"),
         counts=dict(Counter(r["edge_type"] for r in rows)),
         record=[_build_member_vote(r) for r in rows],
+    )
+
+
+@api_router.get(
+    "/{state}/{place}/lexicon",
+    response_model=LexiconResponse,
+    summary="Canonical proper-name lexicon for a place (officials + name variants)",
+    dependencies=[Depends(rate_limit_general)],
+)
+def api_lexicon(place_row: dict = Depends(resolve_api_place)) -> LexiconResponse:
+    """Every public official in the place: canonical name, name variants, memberships.
+
+    The authority a downstream product uses to spell official names consistently, so
+    they are maintained in one place. Place-scoped (not body-scoped): a person on two
+    bodies is one entry carrying both memberships. Each variant reports its provenance
+    (``source``). Only publishable subjects appear (the same gate as the dossiers).
+    """
+    entries = place_lexicon(get_db(), place_row["id"])
+    items = [
+        LexiconEntry(
+            slug=e["slug"],
+            canonical_name=e["canonical_name"],
+            kind=e["kind"],
+            role=e["role"],
+            current=e["current"],
+            bodies=[LexiconBody(**b) for b in e["bodies"]],
+            aliases=[LexiconAlias(**a) for a in e["aliases"]],
+        )
+        for e in entries
+    ]
+    return LexiconResponse(
+        place=f"{place_row['state']}/{place_row['slug']}", count=len(items), entries=items
     )

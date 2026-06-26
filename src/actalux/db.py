@@ -156,6 +156,24 @@ def get_entity_by_path(
     return entity
 
 
+def get_place_by_path(client: Client, state: str, place_slug: str) -> dict[str, Any] | None:
+    """Resolve a place from its URL parts, e.g. ('mo','clayton'), or None.
+
+    The place-level seam (the lexicon spans every body in a place, so a person on
+    two bodies is one entry) — distinct from get_entity_by_path, which resolves a
+    single body.
+    """
+    places = (
+        client.table("places")
+        .select("*")
+        .eq("state", state)
+        .eq("slug", place_slug)
+        .limit(1)
+        .execute()
+    )
+    return places.data[0] if places.data else None
+
+
 def get_entity(client: Client, entity_id: int) -> dict[str, Any] | None:
     """Fetch one public body by id with its place embedded under ``place``."""
     result = (

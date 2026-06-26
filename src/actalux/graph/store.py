@@ -200,6 +200,88 @@ def member_records(client: Client, subject_id: int, entity_id: int) -> list[dict
     )
 
 
+def place_lexicon(client: Client, place_id: int) -> list[dict[str, Any]]:
+    """Every publishable person in a place with its name variants and memberships.
+
+    The place-level roll-up behind GET /api/v1/{state}/{place}/lexicon: a person on
+    two bodies is ONE entry carrying both memberships, so a downstream consumer
+    maintains canonical official spellings in one place. Reads only publishable
+    subjects through the anon RLS path (migration 032 opened aliases for them).
+    Mirrors load_roster's fetch-all-then-group (single place, small tables).
+    """
+    subjects = fetch_all_rows(
+        lambda: (
+            client.table("subjects")
+            .select("id,slug,canonical_name,metadata")
+            .eq("place_id", place_id)
+            .eq("type", "person")
+            .eq("publishable", True)
+        )
+    )
+    if not subjects:
+        return []
+    subject_ids = {s["id"] for s in subjects}
+
+    aliases = fetch_all_rows(
+        lambda: client.table("subject_aliases").select(
+            "subject_id,raw_alias,normalized_alias,source"
+        )
+    )
+    memberships = fetch_all_rows(
+        lambda: client.table("memberships").select("subject_id,entity_id,role,start_date,end_date")
+    )
+    entities = client.table("entities").select("id,body_slug").eq("place_id", place_id).execute()
+    body_by_eid = {e["id"]: e["body_slug"] for e in entities.data}
+
+    by_aliases: dict[int, list[dict]] = {sid: [] for sid in subject_ids}
+    for a in aliases:
+        if a["subject_id"] in by_aliases:
+            by_aliases[a["subject_id"]].append(a)
+    by_memberships: dict[int, list[dict]] = {sid: [] for sid in subject_ids}
+    for m in memberships:
+        if m["subject_id"] in by_memberships and m["entity_id"] in body_by_eid:
+            by_memberships[m["subject_id"]].append(m)
+
+    lexicon: list[dict[str, Any]] = []
+    for s in subjects:
+        mships = by_memberships[s["id"]]
+        bodies = sorted(
+            (
+                {
+                    "body_slug": body_by_eid[m["entity_id"]],
+                    "role": m["role"],
+                    "start_date": m["start_date"],
+                    "end_date": m["end_date"],
+                }
+                for m in mships
+            ),
+            key=lambda b: b["body_slug"],
+        )
+        lexicon.append(
+            {
+                "slug": s["slug"],
+                "canonical_name": s["canonical_name"],
+                "kind": "person",
+                "role": (s.get("metadata") or {}).get("role"),
+                # still seated on at least one body (a NULL end_date = open term)
+                "current": any(m["end_date"] is None for m in mships),
+                "bodies": bodies,
+                "aliases": sorted(
+                    (
+                        {
+                            "raw": a["raw_alias"],
+                            "normalized": a["normalized_alias"],
+                            "source": a["source"],
+                        }
+                        for a in by_aliases[s["id"]]
+                    ),
+                    key=lambda a: a["raw"] or a["normalized"] or "",
+                ),
+            }
+        )
+    return sorted(lexicon, key=lambda e: e["canonical_name"])
+
+
 def upsert_matters(client: Client, place_id: int, matters: dict[str, Any]) -> dict[str, int]:
     """Idempotently upsert matter subjects; return slug -> subject_id.
 

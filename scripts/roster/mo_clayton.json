@@ -112,13 +112,14 @@
         "source": "doc 896 (full name 'Rick Hummell'); doc 793 (thanked for service, left Apr 2026). Alderman -> Councilmember. Ward not found. Transcripts 'Hummel'."
       },
       {
-        "canonical_name": "Jeff Yorg",
-        "aliases": ["Yorg"],
+        "canonical_name": "Jeffery Yorg",
+        "slug": "jeff-yorg",
+        "aliases": ["Yorg", "Jeff Yorg"],
         "role": "Councilmember",
         "ward": 2,
         "term_start": "2024-05-14", "term_start_basis": "cited",
         "term_end": null, "term_end_basis": null,
-        "source": "doc 825 (welcomed as newest member, May 2024); doc 826 (succeeded Berkowitz); doc 1085 (current, Ward 2). Transcripts 'York'. Alderman -> Councilmember."
+        "source": "doc 825 (welcomed as newest member, May 2024); doc 826 (succeeded Berkowitz); doc 1085 (current, Ward 2). Canonical 'Jeffery Yorg' per the city's published 2026 roster (operator-confirmed); minutes/agendas say 'Jeff Yorg' (kept as alias), transcripts 'York'. slug pinned to keep the existing subject (and its edges). Alderman -> Councilmember."
       },
       {
         "canonical_name": "Cynthia Garnholz",
@@ -423,6 +424,30 @@
         "term_start": null, "term_start_basis": null,
         "term_end": null, "term_end_basis": null,
         "source": "1 PC motion (2021). Single appearance; included per operator. Same person as the council member."
+      },
+      {
+        "canonical_name": "Blair Kweskin",
+        "aliases": ["Kweskin"],
+        "role": "Commissioner",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "City's published 2026 PC-ARB roster (operator-confirmed). Current member; no moved/seconded motion in the cited record yet (so no dossier entries until one appears)."
+      },
+      {
+        "canonical_name": "Jeff Morrisey",
+        "aliases": ["Morrisey"],
+        "role": "Commissioner",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "City's published 2026 PC-ARB roster (operator-confirmed). Current member; no moved/seconded motion in the cited record yet."
+      },
+      {
+        "canonical_name": "Darren Van't Hof",
+        "aliases": ["Van't Hof"],
+        "role": "Commissioner",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "City's published 2026 PC-ARB roster (operator-confirmed). Current member; no moved/seconded motion in the cited record yet."
       }
     ],
     "board-of-adjustment": [
@@ -537,6 +562,14 @@
         "term_start": null, "term_start_basis": null,
         "term_end": null, "term_end_basis": null,
         "source": "1 BoA motion (2024), as 'Rich Lintz'. Single appearance; included per operator. Same person as the council member."
+      },
+      {
+        "canonical_name": "Anna Etzkorn",
+        "aliases": ["Etzkorn"],
+        "role": "Board member",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "City's published 2026 Board of Adjustment roster (operator-confirmed). Current member; no moved/seconded motion in the cited record yet (so no dossier entries until one appears)."
       }
     ]
   }
