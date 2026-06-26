@@ -9,6 +9,7 @@ HTML app (which would create a cycle, since the app includes the API router).
 from __future__ import annotations
 
 import logging
+import re
 
 from actalux.config import Config, load_config
 from actalux.db import get_client
@@ -68,6 +69,90 @@ def expand_and_embed(query: str) -> list[tuple[str, list[float]]]:
     except Exception:
         logger.warning("query expansion failed; using single-query retrieval", exc_info=True)
         return []
+
+
+# Name-corrections, cached per place for the process lifetime: they change only on
+# re-seed, so a redeploy picks up new rows (same cadence as the embedding model).
+_corrections_cache: dict[int, list[tuple[str, str]]] = {}
+
+
+def _load_corrections(place_id: int) -> list[tuple[str, str]]:
+    """(mangled, canonical) pairs for a place from name_corrections, cached."""
+    if place_id not in _corrections_cache:
+        rows = (
+            get_db()
+            .table("name_corrections")
+            .select("mangled,canonical")
+            .eq("place_id", place_id)
+            .eq("active", True)
+            .execute()
+            .data
+        )
+        _corrections_cache[place_id] = [(r["mangled"], r["canonical"]) for r in rows]
+    return _corrections_cache[place_id]
+
+
+def _reset_corrections_cache() -> None:
+    """Clear the corrections cache. For tests only."""
+    _corrections_cache.clear()
+
+
+def apply_corrections(query: str, pairs: list[tuple[str, str]], *, cap: int = 8) -> list[str]:
+    """Alternate query phrasings from name-corrections, BOTH directions.
+
+    A query carrying a known mangling also searches the canonical spelling, and a
+    query carrying the canonical also searches the mangling — so the corpus is
+    reached whichever spelling it used (ASR transcripts vs. OCR minutes). Matching is
+    word-boundaried + case-insensitive; the STORED text is never touched, only the
+    query is widened. Pure (the substitution core, unit-testable without a DB).
+    """
+    variants: list[str] = []
+    seen = {query.lower()}
+    for mangled, canonical in pairs:
+        for src, dst in ((mangled, canonical), (canonical, mangled)):
+            pattern = re.compile(rf"\b{re.escape(src)}\b", re.IGNORECASE)
+            if pattern.search(query):
+                variant = pattern.sub(dst, query)
+                if variant.lower() not in seen:
+                    seen.add(variant.lower())
+                    variants.append(variant)
+                    if len(variants) >= cap:
+                        return variants
+    return variants
+
+
+def correction_variants(query: str, place_id: int | None) -> list[str]:
+    """Name-correction query variants for a place; [] if off or on any failure.
+
+    Jurisdiction-scoped (a mangling in one town can be a real name in another), so it
+    needs the place. Best-effort, like the LLM expansion: a load/parse failure
+    degrades to plain retrieval rather than breaking a working search.
+    """
+    if place_id is None:
+        return []
+    try:
+        return apply_corrections(query, _load_corrections(place_id))
+    except Exception:
+        logger.warning("name-corrections expansion failed; skipping", exc_info=True)
+        return []
+
+
+def search_expansions(query: str, place_id: int | None = None) -> list[tuple[str, list[float]]]:
+    """All query-expansion variants — LLM rephrasings + name-corrections — embedded.
+
+    The single entry point the search call sites use: it fuses the (gated, best-
+    effort) LLM variants with the place's name-correction variants and returns
+    ``(phrasing, embedding)`` pairs to search alongside the original query. Each is
+    independent and best-effort, so either contributing nothing just narrows recall.
+    """
+    llm = expand_and_embed(query)
+    corr_texts = correction_variants(query, place_id)
+    if not corr_texts:
+        return llm
+    llm_texts = {text for text, _ in llm}
+    fresh = [t for t in corr_texts if t not in llm_texts]
+    corr = list(zip(fresh, embed_queries(fresh))) if fresh else []
+    return llm + corr
 
 
 def build_reranker() -> Reranker | None:

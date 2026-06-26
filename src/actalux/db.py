@@ -174,6 +174,23 @@ def get_place_by_path(client: Client, state: str, place_slug: str) -> dict[str, 
     return places.data[0] if places.data else None
 
 
+def get_name_corrections(client: Client, place_id: int) -> list[dict[str, Any]]:
+    """Active name-corrections (mangling -> canonical) for a place.
+
+    The place-scoped spelling lexicon served by the corrections endpoint and consumed
+    by the downstream newsletter. Place-scoped because the same string can be a
+    mangling in one town and a real name in another.
+    """
+    return fetch_all_rows(
+        lambda: (
+            client.table("name_corrections")
+            .select("mangled,canonical,category,provenance")
+            .eq("place_id", place_id)
+            .eq("active", True)
+        )
+    )
+
+
 def get_entity(client: Client, entity_id: int) -> dict[str, Any] | None:
     """Fetch one public body by id with its place embedded under ``place``."""
     result = (

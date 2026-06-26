@@ -1,0 +1,773 @@
+{
+  "place": "mo/clayton",
+  "corrections": [
+    {
+      "mangled": "aaron linenbringer",
+      "canonical": "Erin Linnenbringer",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "adsec field",
+      "canonical": "Adzick Field",
+      "category": "facility",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "adzek field",
+      "canonical": "Adzick Field",
+      "category": "facility",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "adzik",
+      "canonical": "Adzick Field",
+      "category": "facility",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "ana crain",
+      "canonical": "Anna Krane",
+      "category": "staff",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "ana crane",
+      "canonical": "Anna Krane",
+      "category": "staff",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "anna crane",
+      "canonical": "Anna Krane",
+      "category": "staff",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "aztec field",
+      "canonical": "Adzick Field",
+      "category": "facility",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "beamiston",
+      "canonical": "Bemiston Avenue",
+      "category": "place",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "beamson",
+      "canonical": "Bemiston Avenue",
+      "category": "place",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "beamston",
+      "canonical": "Bemiston Avenue",
+      "category": "place",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "beemiston",
+      "canonical": "Bemiston Avenue",
+      "category": "place",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "beemstin",
+      "canonical": "Bemiston Avenue",
+      "category": "place",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "blair queskin",
+      "canonical": "Blair Kweskin",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "blair queston",
+      "canonical": "Blair Kweskin",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "bonham",
+      "canonical": "Bonhomme",
+      "category": "other",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "brian mccormick",
+      "canonical": "Brian McCormac",
+      "category": "other",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "bryce woolen",
+      "canonical": "Bryce Woollen",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "burn and jones",
+      "canonical": "Byrne & Jones Sports Construction",
+      "category": "business",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "burns and jones",
+      "canonical": "Byrne & Jones Sports Construction",
+      "category": "business",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "byrne and jones",
+      "canonical": "Byrne & Jones Sports Construction",
+      "category": "business",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "chip mish",
+      "canonical": "Chip Misch",
+      "category": "other",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "chsct",
+      "canonical": "Clayton High School CTE addition",
+      "category": "facility",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "clark weskin",
+      "canonical": "Blair Kweskin",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "cte edition",
+      "canonical": "Clayton High School CTE addition",
+      "category": "facility",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "derigney",
+      "canonical": "Lauran DeRigne",
+      "category": "staff",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "dilger",
+      "canonical": "Karen Dilber",
+      "category": "staff",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "donovan group",
+      "canonical": "Donavan Group",
+      "category": "other",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "ellen defate",
+      "canonical": "Helen DiFate",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "ellen defay",
+      "canonical": "Helen DiFate",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "ellen defayette",
+      "canonical": "Helen DiFate",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "erin linenbringer",
+      "canonical": "Erin Linnenbringer",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "fader",
+      "canonical": "Gary Feder",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "fon fon",
+      "canonical": "Fontbonne",
+      "category": "other",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "fonbon",
+      "canonical": "Fontbonne",
+      "category": "other",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "fonfine",
+      "canonical": "Fontbonne",
+      "category": "other",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "fonpon",
+      "canonical": "Fontbonne",
+      "category": "other",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "font bond",
+      "canonical": "Fontbonne",
+      "category": "other",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "garganego",
+      "canonical": "Milena Garganigo",
+      "category": "staff",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "gata-miller",
+      "canonical": "Sarah Gottemoeller",
+      "category": "staff",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "gave field",
+      "canonical": "Gay Field",
+      "category": "facility",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "gayfield",
+      "canonical": "Gay Field",
+      "category": "facility",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "gibson",
+      "canonical": "David Gipson",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "gina tartt",
+      "canonical": "Gina Tarte",
+      "category": "staff",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "glen ridge",
+      "canonical": "Glenridge",
+      "category": "school",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "godemiller",
+      "canonical": "Sarah Gottemoeller",
+      "category": "staff",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "helen defate",
+      "canonical": "Helen DiFate",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "helen defayette",
+      "canonical": "Helen DiFate",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "helsher",
+      "canonical": "Dr. Paul Hoelscher",
+      "category": "staff",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "hilscher",
+      "canonical": "Dr. Paul Hoelscher",
+      "category": "staff",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "honor crane",
+      "canonical": "Anna Krane",
+      "category": "staff",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "hummel",
+      "canonical": "Rick Hummell",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "ian mckay",
+      "canonical": "Ian Mackey",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "jason brode",
+      "canonical": "Jason Growe",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "jason groh",
+      "canonical": "Jason Growe",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "jason layman",
+      "canonical": "Jason Lehtman",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "jeff morrissey",
+      "canonical": "Jeff Morrisey",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "jeff morsey",
+      "canonical": "Jeff Morrisey",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "jim arceneaux",
+      "canonical": "Jim Arsenault",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "jim marcino",
+      "canonical": "Jim Arsenault",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "jim marseneau",
+      "canonical": "Jim Arsenault",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "jim marsnow",
+      "canonical": "Jim Arsenault",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "la meridian",
+      "canonical": "Le Méridien",
+      "category": "place",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "leo heuman",
+      "canonical": "Leo Human",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "leo heumann",
+      "canonical": "Leo Human",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "lindenbringer",
+      "canonical": "Erin Linnenbringer",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "liss lerman",
+      "canonical": "Pamela Lyss-Lerman",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "liza street",
+      "canonical": "Liza Streett",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "lori miller",
+      "canonical": "Dr. Lori Mueller",
+      "category": "other",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "maitland-smith",
+      "canonical": "Betsy Meyland-Smith",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "malin smith",
+      "canonical": "Betsy Meyland-Smith",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "malin-smith",
+      "canonical": "Betsy Meyland-Smith",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "malinson",
+      "canonical": "Betsy Meyland-Smith",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "matt malachar",
+      "canonical": "Matt Malick",
+      "category": "staff",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "matt malek",
+      "canonical": "Matt Malick",
+      "category": "staff",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "matt malik",
+      "canonical": "Matt Malick",
+      "category": "staff",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "matt norwood",
+      "canonical": "Matt Norrid",
+      "category": "staff",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "maven smith",
+      "canonical": "Betsy Meyland-Smith",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "maven-smith",
+      "canonical": "Betsy Meyland-Smith",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "may lombardo",
+      "canonical": "Nathan Mai-Lombardo",
+      "category": "commenter",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "melissa pillow",
+      "canonical": "Melissa Pillot",
+      "category": "other",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "merrimack",
+      "canonical": "Meramec",
+      "category": "other",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "meyland smith",
+      "canonical": "Betsy Meyland-Smith",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "midown",
+      "canonical": "Wydown",
+      "category": "other",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "milenia garganigo",
+      "canonical": "Milena Garganigo",
+      "category": "staff",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "milombardo",
+      "canonical": "Nathan Mai-Lombardo",
+      "category": "commenter",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "moscow sports",
+      "canonical": "Musco Sports Lighting",
+      "category": "business",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "murdoch",
+      "canonical": "Dr. Tarita Murdock",
+      "category": "staff",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "nancy georgian",
+      "canonical": "Nancy Georgen",
+      "category": "other",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "oak mill",
+      "canonical": "Oak Knoll Park",
+      "category": "place",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "oakville park",
+      "canonical": "Oak Knoll Park",
+      "category": "place",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "oats associates",
+      "canonical": "Oates Associates",
+      "category": "business",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "olivet",
+      "canonical": "Olivette",
+      "category": "place",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "pam bliss lerman",
+      "canonical": "Pamela Lyss-Lerman",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "rata tussie",
+      "canonical": "Retta Tussey",
+      "category": "other",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "reda jane",
+      "canonical": "Retta Jane",
+      "category": "business",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "redditt jane",
+      "canonical": "Retta Jane",
+      "category": "business",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "rick belis",
+      "canonical": "Rick Bliss",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "ryan hall",
+      "canonical": "Ryan Helle",
+      "category": "staff",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "sabatical",
+      "canonical": "Sababa Jewish Arts & Culture Festival",
+      "category": "business",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "san benito",
+      "canonical": "San Bonita Avenue",
+      "category": "place",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "sartorius",
+      "canonical": "Nina Satorius",
+      "category": "other",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "sebastian bolden",
+      "canonical": "Sabastian Bolden",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "sharon doherty",
+      "canonical": "Sharon Dougherty",
+      "category": "other",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "shell park",
+      "canonical": "Shaw Park",
+      "category": "place",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "sotorius",
+      "canonical": "Nina Satorius",
+      "category": "other",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "stacy seawalk",
+      "canonical": "Stacy Siwak",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "steve lichterfeld",
+      "canonical": "Steve Lichtenfeld",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "sumner ahern",
+      "canonical": "Sumner Ahearn",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "traymar",
+      "canonical": "TraMar Contracting",
+      "category": "other",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "tremar",
+      "canonical": "TraMar Contracting",
+      "category": "other",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "vant hof",
+      "canonical": "Darren Van't Hof",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "vernon jones",
+      "canonical": "Byrne & Jones Sports Construction",
+      "category": "business",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "waymiller",
+      "canonical": "Barry-Wehmiller",
+      "category": "other",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "webster grills",
+      "canonical": "Webster Groves",
+      "category": "place",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "webster grows",
+      "canonical": "Webster Groves",
+      "category": "place",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "weyland smith",
+      "canonical": "Betsy Meyland-Smith",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "weyland-smith",
+      "canonical": "Betsy Meyland-Smith",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "whiteown",
+      "canonical": "Wydown",
+      "category": "other",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "widown",
+      "canonical": "Wydown",
+      "category": "other",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "wybound",
+      "canonical": "Wydown",
+      "category": "other",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "wydon",
+      "canonical": "Wydown",
+      "category": "other",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "y-dom",
+      "canonical": "Wydown",
+      "category": "other",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "y-down",
+      "canonical": "Wydown",
+      "category": "other",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "yord",
+      "canonical": "Jeffery Yorg",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "yorden",
+      "canonical": "Jeffery Yorg",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "york",
+      "canonical": "Jeffery Yorg",
+      "category": "person",
+      "provenance": "asr"
+    },
+    {
+      "mangled": "zenzia",
+      "canonical": "Zensia Coffee",
+      "category": "business",
+      "provenance": "asr"
+    }
+  ]
+}

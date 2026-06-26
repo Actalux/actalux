@@ -107,9 +107,9 @@ from actalux.web.display import (
 from actalux.web.retrieval import (
     build_reranker,
     embed_query,
-    expand_and_embed,
     get_config,
     get_db,
+    search_expansions,
 )
 from actalux.web.storage import stored_file_exists, stored_file_url
 from actalux.web.text_snippets import (
@@ -374,7 +374,7 @@ TOPIC_CACHE_TTL = 3600  # seconds
 _get_config = get_config
 _get_db = get_db
 _embed_query = embed_query
-_expand_and_embed = expand_and_embed
+_search_expansions = search_expansions
 _reranker = build_reranker
 
 
@@ -483,7 +483,7 @@ def _run_search(
             query_embedding,
             filters,
             reranker=_reranker(),
-            expansions=_expand_and_embed(q),
+            expansions=_search_expansions(q, view.entity.get("place_id")),
         )
     except SearchError:
         logger.exception("Search failed for query: %s", q)
@@ -1923,7 +1923,7 @@ async def summarize(
             filters=filters,
             reranker=_reranker(),
             max_results=10,
-            expansions=_expand_and_embed(q),
+            expansions=_search_expansions(q, view.entity.get("place_id")),
         )
         logger.info("summarize route=%s for query: %s", route, q)
         summary = generate_summary(q, enriched, cfg.openai_api_key, cfg.summary_model)
@@ -2210,7 +2210,7 @@ def ask_post(
             filters=filters,
             reranker=_reranker(),
             max_results=10,
-            expansions=_expand_and_embed(standalone),
+            expansions=_search_expansions(standalone, view.entity.get("place_id")),
         )
         logger.info("ask route=%s for: %s", route, standalone)
         summary = generate_summary(standalone, enriched, cfg.openai_api_key, cfg.summary_model)
@@ -2321,7 +2321,7 @@ def ask_stream(
                 filters=filters,
                 reranker=_reranker(),
                 max_results=10,
-                expansions=_expand_and_embed(standalone),
+                expansions=_search_expansions(standalone, view.entity.get("place_id")),
             )
             logger.info("ask-stream route=%s for: %s", route, standalone)
             summary: Summary | None = None

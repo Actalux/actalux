@@ -399,7 +399,7 @@ class TestTiers:
             patch("actalux.web.api.get_entity_by_path", return_value=_FAKE_ENTITY),
             patch("actalux.web.api.embed_query", return_value=[0.0]),
             patch("actalux.web.api.build_reranker", return_value=None),
-            patch("actalux.web.api.expand_and_embed", return_value=[]),
+            patch("actalux.web.api.search_expansions", return_value=[]),
             patch("actalux.web.api.hybrid_search", return_value=[]),
             patch("actalux.web.api.enrich_results", return_value=_ENRICHED),
             patch("actalux.web.api.get_documents", return_value=_DOCS),
@@ -702,4 +702,34 @@ class TestLexicon:
     @patch("actalux.web.api.get_place_by_path", return_value=None)
     def test_lexicon_unknown_place_404(self, m_place, m_db, m_cfg) -> None:
         r = client.get(f"{_PLACE_BASE}/lexicon")
+        assert r.status_code == 404
+
+
+_CORRECTION_ROWS = [
+    {"mangled": "york", "canonical": "Jeffery Yorg", "category": "person", "provenance": "asr"},
+    {"mangled": "merrimack", "canonical": "Meramec", "category": "street", "provenance": "asr"},
+]
+
+
+class TestCorrections:
+    @patch("actalux.web.api.get_config", return_value=_OPEN_CFG)
+    @patch("actalux.web.api.get_db")
+    @patch("actalux.web.api.get_place_by_path", return_value=_PLACE_ROW)
+    @patch("actalux.web.api.get_name_corrections", return_value=_CORRECTION_ROWS)
+    def test_corrections_returns_place_lexicon(self, m_corr, m_place, m_db, m_cfg) -> None:
+        r = client.get(f"{_PLACE_BASE}/corrections")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["place"] == "mo/clayton"
+        assert body["count"] == 2
+        m = {c["mangled"]: c["canonical"] for c in body["corrections"]}
+        assert m["york"] == "Jeffery Yorg"
+        assert m["merrimack"] == "Meramec"
+        assert body["corrections"][0]["provenance"] == "asr"
+
+    @patch("actalux.web.api.get_config", return_value=_OPEN_CFG)
+    @patch("actalux.web.api.get_db")
+    @patch("actalux.web.api.get_place_by_path", return_value=None)
+    def test_corrections_unknown_place_404(self, m_place, m_db, m_cfg) -> None:
+        r = client.get(f"{_PLACE_BASE}/corrections")
         assert r.status_code == 404

@@ -67,3 +67,75 @@ class TestExpandAndEmbed:
     def test_degrades_to_empty_on_failure(self) -> None:
         with patch.object(retrieval, "get_config", side_effect=RuntimeError("no env")):
             assert retrieval.expand_and_embed("q") == []
+
+
+_PAIRS = [("york", "Jeffery Yorg"), ("merrimack", "Meramec")]
+
+
+class TestApplyCorrections:
+    def test_mangling_expands_to_canonical(self) -> None:
+        # a query carrying the ASR mangling also searches the canonical spelling
+        assert retrieval.apply_corrections("York voted aye", _PAIRS) == ["Jeffery Yorg voted aye"]
+
+    def test_canonical_expands_to_mangling(self) -> None:
+        # and the reverse: the canonical also reaches chunks that carry the mangling
+        assert retrieval.apply_corrections("Jeffery Yorg motion", _PAIRS) == ["york motion"]
+
+    def test_case_insensitive(self) -> None:
+        assert retrieval.apply_corrections("MERRIMACK Ave", _PAIRS) == ["Meramec Ave"]
+
+    def test_word_boundaried_no_substring_false_match(self) -> None:
+        # 'york' must not fire inside 'Yorktown'
+        assert retrieval.apply_corrections("Yorktown Road", _PAIRS) == []
+
+    def test_no_match_returns_empty(self) -> None:
+        assert retrieval.apply_corrections("school budget", _PAIRS) == []
+
+    def test_respects_cap(self) -> None:
+        pairs = [(f"m{i}", f"C{i}") for i in range(20)]
+        query = " ".join(f"m{i}" for i in range(20))
+        assert len(retrieval.apply_corrections(query, pairs, cap=5)) == 5
+
+
+class TestCorrectionVariants:
+    def test_none_place_returns_empty(self) -> None:
+        assert retrieval.correction_variants("York", None) == []
+
+    def test_uses_loaded_corrections(self) -> None:
+        with patch.object(retrieval, "_load_corrections", return_value=_PAIRS):
+            assert retrieval.correction_variants("York", 10) == ["Jeffery Yorg"]
+
+    def test_degrades_to_empty_on_failure(self) -> None:
+        with patch.object(retrieval, "_load_corrections", side_effect=RuntimeError("db")):
+            assert retrieval.correction_variants("York", 10) == []
+
+
+class TestSearchExpansions:
+    def test_combines_llm_and_corrections(self) -> None:
+        with (
+            patch.object(retrieval, "expand_and_embed", return_value=[("Prop O", [0.9])]),
+            patch.object(retrieval, "correction_variants", return_value=["Jeffery Yorg"]),
+            patch.object(retrieval, "embed_queries", return_value=[[0.5]]),
+        ):
+            out = retrieval.search_expansions("York", 10)
+        assert out == [("Prop O", [0.9]), ("Jeffery Yorg", [0.5])]
+
+    def test_no_corrections_returns_llm_only(self) -> None:
+        with (
+            patch.object(retrieval, "expand_and_embed", return_value=[("Prop O", [0.9])]),
+            patch.object(retrieval, "correction_variants", return_value=[]),
+            patch.object(retrieval, "embed_queries") as emb,
+        ):
+            out = retrieval.search_expansions("q", 10)
+        assert out == [("Prop O", [0.9])]
+        emb.assert_not_called()
+
+    def test_dedupes_correction_against_llm_variant(self) -> None:
+        with (
+            patch.object(retrieval, "expand_and_embed", return_value=[("Meramec", [0.9])]),
+            patch.object(retrieval, "correction_variants", return_value=["Meramec"]),
+            patch.object(retrieval, "embed_queries") as emb,
+        ):
+            out = retrieval.search_expansions("merrimack", 10)
+        assert out == [("Meramec", [0.9])]  # the duplicate correction text is dropped
+        emb.assert_not_called()

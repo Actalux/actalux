@@ -14,6 +14,7 @@ the lexicon is place-scoped because a person can sit on more than one body):
   GET /api/v1/{state}/{place}/{body}/members         the body's roster
   GET /api/v1/{state}/{place}/{body}/members/{slug}  a member's cited voting record
   GET /api/v1/{state}/{place}/lexicon                canonical official names + variants
+  GET /api/v1/{state}/{place}/corrections            proper-noun spelling corrections
 
 Auth is key-optional and tier-aware. With no key presented a request runs as the
 ``anonymous`` tier (today's open path: open access at the historical rate limits,
@@ -42,6 +43,7 @@ from actalux.db import (
     get_entity_by_path,
     get_entity_votes,
     get_meeting_documents,
+    get_name_corrections,
     get_place_by_path,
     list_recent_meeting_documents,
 )
@@ -62,9 +64,9 @@ from actalux.web.display import display_title
 from actalux.web.retrieval import (
     build_reranker,
     embed_query,
-    expand_and_embed,
     get_config,
     get_db,
+    search_expansions,
 )
 from actalux.web.text_snippets import normalize_whitespace
 
@@ -271,6 +273,19 @@ class LexiconResponse(BaseModel):
     place: str  # 'mo/clayton'
     count: int
     entries: list[LexiconEntry]
+
+
+class CorrectionEntry(BaseModel):
+    mangled: str  # the wrong form (match case-insensitively, word-boundaried)
+    canonical: str  # the correct spelling
+    category: str | None  # person | staff | street | business | school | place | org | other
+    provenance: str | None  # asr | ocr | reviewed
+
+
+class CorrectionsResponse(BaseModel):
+    place: str  # 'mo/clayton'
+    count: int
+    corrections: list[CorrectionEntry]
 
 
 # --- Auth --------------------------------------------------------------------
@@ -590,7 +605,7 @@ def api_search(
             filters,
             max_results=limit,
             reranker=build_reranker(),
-            expansions=expand_and_embed(q),
+            expansions=search_expansions(q, entity.get("place_id")),
         )
     except SearchError:
         results = []
@@ -874,4 +889,35 @@ def api_lexicon(place_row: dict = Depends(resolve_api_place)) -> LexiconResponse
     ]
     return LexiconResponse(
         place=f"{place_row['state']}/{place_row['slug']}", count=len(items), entries=items
+    )
+
+
+@api_router.get(
+    "/{state}/{place}/corrections",
+    response_model=CorrectionsResponse,
+    summary="Proper-noun spelling corrections for a place (mangling -> canonical)",
+    dependencies=[Depends(rate_limit_general)],
+)
+def api_corrections(place_row: dict = Depends(resolve_api_place)) -> CorrectionsResponse:
+    """The place's name-correction lexicon: known manglings and their canonical form.
+
+    The single home for proper-noun spelling fixes (officials, staff, streets,
+    businesses, schools), so a downstream product maintains them in one place rather
+    than its own list. Place-scoped: a mangling valid in one town can be a real name
+    in another. Each row carries its category and provenance (asr/ocr/reviewed).
+    """
+    rows = get_name_corrections(get_db(), place_row["id"])
+    corrections = [
+        CorrectionEntry(
+            mangled=r["mangled"],
+            canonical=r["canonical"],
+            category=r.get("category"),
+            provenance=r.get("provenance"),
+        )
+        for r in sorted(rows, key=lambda r: r["mangled"])
+    ]
+    return CorrectionsResponse(
+        place=f"{place_row['state']}/{place_row['slug']}",
+        count=len(corrections),
+        corrections=corrections,
     )

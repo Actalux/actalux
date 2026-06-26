@@ -2,6 +2,15 @@
 
 Citation-first searchable archive of Clayton, MO school district public records. Independent and nonpartisan. Operated by Actalux LLC; running as an LLC for the foreseeable future (a 501(c)(3) nonprofit is not planned). Do not describe Actalux as a nonprofit or 501(c)(3) in any user-facing copy.
 
+## Scale across municipalities (cardinal rule)
+
+Clayton is the first jurisdiction, not the only one. **Everything must be built to scale across many municipalities** — no feature, table, crawler, or piece of data may be Clayton-specific in a way that blocks adding another town.
+
+- **Jurisdiction-scope all data.** Anything town-specific carries a `place_id` (or resolves through `state`/`place`); routes are `/{state}/{place}/...` and `/{state}/{place}/{body}/...`. Never hardcode `clayton`/`mo` in schema, queries, search, or business logic — resolve the place from the request/config.
+- **Per-place config, not constants.** Town-specific inputs (rosters, corrections, portal IDs, channels) live in per-place files like `scripts/roster/<state>_<place>.json`, keyed and loaded by place — never inlined.
+- **Watch for cross-jurisdiction collisions.** The same string can be correct in one town and a mangling in another (e.g. a name-correction `merrimack → Meramec` valid in Clayton must not apply to a town that has a real "Merrimack"). Scope every lookup to its place.
+- When a change *can't* be made jurisdiction-agnostic, stop and surface the tradeoff rather than hardcoding.
+
 ## Content policy
 
 Universal (all bodies):
