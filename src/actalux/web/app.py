@@ -55,7 +55,14 @@ from actalux.db import (
     resolve_source_anchor,
 )
 from actalux.errors import SearchError, SummaryError
-from actalux.graph.store import body_members, member_by_slug, member_records
+from actalux.graph.store import (
+    body_matters,
+    body_members,
+    matter_by_slug,
+    matter_records,
+    member_by_slug,
+    member_records,
+)
 from actalux.ingest.embedder import load_model
 from actalux.models import Correction, chunk_hash_id
 from actalux.search.answer import assemble_evidence, enrich_results
@@ -597,6 +604,7 @@ _COUNCIL_NAV = SidebarNav(
     topics=(
         NavLink("Council Meetings", "/meetings", "topic-meetings"),
         NavLink("Members & votes", "/members", "topic-members"),
+        NavLink("Bills & resolutions", "/matters", "topic-matters"),
         NavLink("Budget & Spending", "/budget", "topic-budget"),
     ),
     documents=(),
@@ -918,6 +926,39 @@ def member_detail(
             counts=Counter(r["edge_type"] for r in rows),
             active="topic-members",
         ),
+    )
+
+
+@jurisdiction.get("/matters", response_class=HTMLResponse)
+def matters_list(request: Request, view: EntityView = Depends(resolve_entity)) -> HTMLResponse:
+    """Bills & resolutions: the body's matters, each linking to its cited timeline."""
+    matters = body_matters(_get_db(), view.entity["id"])
+    return templates.TemplateResponse(
+        request, "matters.html", _page(view, matters=matters, active="topic-matters")
+    )
+
+
+@jurisdiction.get("/matter/{slug}", response_class=HTMLResponse)
+def matter_detail(
+    request: Request, slug: str, view: EntityView = Depends(resolve_entity)
+) -> HTMLResponse:
+    """One matter's complete cited timeline (every council action on the bill/resolution).
+
+    Actions are shown oldest-first so the thread reads introduce -> ... -> outcome; a
+    slug that is not a publishable matter of this place 404s.
+    """
+    client = _get_db()
+    matter = matter_by_slug(client, view.entity["place_id"], slug)
+    if not matter:
+        raise HTTPException(status_code=404, detail="Unknown matter")
+    rows = matter_records(client, matter["id"], view.entity["id"])
+    if not rows:
+        raise HTTPException(status_code=404, detail="Unknown matter")
+    rows.sort(key=lambda r: r.get("meeting_date") or "")
+    return templates.TemplateResponse(
+        request,
+        "matter.html",
+        _page(view, matter=matter, actions=rows, active="topic-matters"),
     )
 
 

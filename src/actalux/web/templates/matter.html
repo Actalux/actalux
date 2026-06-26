@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% from "partials/_matter_record.html" import matter_record %}
+{% block title %}{{ matter.canonical_name }}{% endblock %}
+{% block content %}
+
+{% set meta = matter.metadata or {} %}
+
+<section class="pane-header">
+  <h2>{{ 'Bill' if meta.kind == 'bill' else 'Resolution' if meta.kind == 'resolution' else 'Matter' }}</h2>
+  <span class="meta">{{ entity.display_name if entity else '' }}</span>
+</section>
+
+<div style="padding: var(--s-6) var(--s-6) var(--s-8);">
+  <article class="doc-page">
+    <h1>{{ matter.canonical_name }}</h1>
+    {% if meta.title %}<p class="lede" style="margin-bottom: var(--s-4);">{{ meta.title }}</p>{% endif %}
+    <p style="font-family: var(--mono); font-size: 11px; color: var(--muted); margin-bottom: var(--s-5);">
+      {{ actions|length }} cited action{{ 's' if actions|length != 1 }}
+      · <a href="{{ base }}/matters" style="color: var(--accent);">All bills &amp; resolutions</a>
+    </p>
+
+    <p style="font-size: 13px; color: var(--muted); margin-bottom: var(--s-5);">
+      Every action is drawn verbatim from the council minutes and links to its source
+      passage. These are the records we have gathered — not a claim of a complete record.
+    </p>
+
+    <section class="original-block" style="margin-bottom: var(--s-6);">
+      <div class="section-head">Timeline</div>
+      {% for r in actions %}{{ matter_record(r) }}{% endfor %}
+    </section>
+  </article>
+</div>
+
+{% endblock %}

@@ -573,3 +573,79 @@ class TestMembers:
     def test_member_unknown_404(self, m_by, m_ent, m_db, m_cfg) -> None:
         r = client.get(f"{BASE}/members/nobody")
         assert r.status_code == 404
+
+
+_MATTER = {
+    "id": 200,
+    "slug": "bill-7156",
+    "canonical_name": "Bill No. 7156",
+    "metadata": {"kind": "bill", "number": "7156", "title": "an Ordinance Amending Chapter 405"},
+}
+_MATTER_SUMMARY = {
+    "subject_id": 200,
+    "slug": "bill-7156",
+    "canonical_name": "Bill No. 7156",
+    "metadata": {"kind": "bill", "number": "7156", "title": "an Ordinance Amending Chapter 405"},
+    "actions": 3,
+    "latest_date": "2024-05-14",
+}
+_MATTER_VIEW_ROW = {
+    "document_id": 195,
+    "meeting_date": "2024-05-14",
+    "meeting_title": "May 14, 2024 — Meeting Minutes",
+    "document_type": "minutes",
+    "motion": "Motion to pass Bill No. 7156, an Ordinance Amending Chapter 405.",
+    "result": "passed",
+    "result_basis": "stated",
+    "vote_count_yes": 6,
+    "vote_count_no": 1,
+    "vote_count_abstain": 0,
+    "source_quote": "Motion carried 6-1.",
+    "citation_id": "b7156aa0",
+    "video_id": "",
+    "source_url": "https://example.org/min.pdf",
+    "source_portal": "civicplus",
+    "source_file": "min.pdf",
+}
+
+
+class TestMatters:
+    @patch("actalux.web.api.get_config", return_value=_OPEN_CFG)
+    @patch("actalux.web.api.get_db")
+    @patch("actalux.web.api.get_entity_by_path", return_value=_MEMBER_ENTITY)
+    @patch("actalux.web.api.body_matters", return_value=[_MATTER_SUMMARY])
+    def test_matters_returns_list(self, m_mat, m_ent, m_db, m_cfg) -> None:
+        r = client.get(f"{BASE}/matters")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["count"] == 1
+        m = body["matters"][0]
+        assert m["name"] == "Bill No. 7156"
+        assert m["kind"] == "bill"
+        assert m["actions"] == 3
+        assert m["latest_date"] == "2024-05-14"
+
+    @patch("actalux.web.api.get_config", return_value=_OPEN_CFG)
+    @patch("actalux.web.api.get_db")
+    @patch("actalux.web.api.get_entity_by_path", return_value=_MEMBER_ENTITY)
+    @patch("actalux.web.api.matter_by_slug", return_value=_MATTER)
+    @patch("actalux.web.api.matter_records", return_value=[_MATTER_VIEW_ROW])
+    def test_matter_returns_cited_timeline(self, m_rec, m_by, m_ent, m_db, m_cfg) -> None:
+        r = client.get(f"{BASE}/matters/bill-7156")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["name"] == "Bill No. 7156"
+        assert body["number"] == "7156"
+        assert body["actions"] == 1
+        action = body["timeline"][0]
+        assert "Bill No. 7156" in action["motion"]
+        assert action["result"] == "passed"
+        assert action["html_url"] == "/chunk/b7156aa0/source"
+
+    @patch("actalux.web.api.get_config", return_value=_OPEN_CFG)
+    @patch("actalux.web.api.get_db")
+    @patch("actalux.web.api.get_entity_by_path", return_value=_MEMBER_ENTITY)
+    @patch("actalux.web.api.matter_by_slug", return_value=None)
+    def test_matter_unknown_404(self, m_by, m_ent, m_db, m_cfg) -> None:
+        r = client.get(f"{BASE}/matters/bill-9999")
+        assert r.status_code == 404

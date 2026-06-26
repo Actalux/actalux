@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Bills &amp; resolutions{% endblock %}
+{% block content %}
+
+<section class="pane-header">
+  <h2>Bills &amp; resolutions</h2>
+  <span class="meta">{{ entity.display_name if entity else '' }}</span>
+</section>
+
+<div style="padding: var(--s-6) var(--s-6) var(--s-8);">
+  <article class="doc-page">
+    <h1>Bills &amp; resolutions</h1>
+    <p class="lede" style="margin-bottom: var(--s-5);">
+      Every bill and resolution the council acted on, drawn from the minutes. Select one
+      for its cited timeline of council actions. These are the records we have gathered —
+      not a claim of a complete record.
+    </p>
+
+    {% if matters %}
+    {% for m in matters %}
+    {% set meta = m.metadata or {} %}
+    <a class="result-card" href="{{ base }}/matter/{{ m.slug }}">
+      <div class="card-head">
+        <h3 class="doc-title">{{ m.canonical_name }}{% if meta.title %} &mdash; {{ meta.title|truncate(110) }}{% endif %}</h3>
+        <div class="card-meta">
+          <span class="kind">{{ 'Bill' if meta.kind == 'bill' else 'Resolution' if meta.kind == 'resolution' else 'Matter' }}</span>
+          <span>{{ m.actions }} action{{ 's' if m.actions != 1 }}</span>
+          {% if m.latest_date %}<span class="date">latest {{ m.latest_date }}</span>{% endif %}
+        </div>
+      </div>
+    </a>
+    {% endfor %}
+    {% else %}
+    <p class="doc-para" style="color: var(--muted);">No bills or resolutions are recorded for this body yet.</p>
+    {% endif %}
+  </article>
+</div>
+
+{% endblock %}

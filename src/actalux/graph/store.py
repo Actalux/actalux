@@ -19,8 +19,11 @@ from actalux.db import fetch_all_rows
 from actalux.graph.resolve import Membership, Roster, RosterSubject
 
 # A document's votes carry everything an edge needs except the body it belongs to,
-# which lives on the document; the projector attaches entity_id from there.
-_VOTE_FIELDS = "id,document_id,vote_ref,citation_id,source_quote,chunk_id,details,meeting_date"
+# which lives on the document; the projector attaches entity_id from there. ``motion``
+# is the verbatim text the matter projector reads bill/resolution numbers from.
+_VOTE_FIELDS = (
+    "id,document_id,vote_ref,citation_id,source_quote,chunk_id,details,meeting_date,motion"
+)
 
 
 def _to_date(value: str | None) -> date | None:
@@ -189,6 +192,94 @@ def member_records(client: Client, subject_id: int, entity_id: int) -> list[dict
     return fetch_all_rows(
         lambda: (
             client.table("member_vote_records")
+            .select("*")
+            .eq("subject_id", subject_id)
+            .eq("entity_id", entity_id)
+        ),
+        order="edge_id",
+    )
+
+
+def upsert_matters(client: Client, place_id: int, matters: dict[str, Any]) -> dict[str, int]:
+    """Idempotently upsert matter subjects; return slug -> subject_id.
+
+    ``matters`` maps slug -> MatterRef. A matter is publishable on its own (the
+    minting trigger gates only persons), so it is written publishable in one upsert.
+    Batched: a single upsert returns every row's id.
+    """
+    if not matters:
+        return {}
+    rows = [
+        {
+            "type": "matter",
+            "subject_role": "matter",
+            "canonical_name": ref.canonical,
+            "slug": slug,
+            "place_id": place_id,
+            "minting_basis": "regex_number",
+            "publishable": True,
+            "metadata": {"kind": ref.kind, "number": ref.number, "title": ref.title},
+        }
+        for slug, ref in matters.items()
+    ]
+    result = client.table("subjects").upsert(rows, on_conflict="place_id,type,slug").execute()
+    return {r["slug"]: r["id"] for r in result.data}
+
+
+def body_matters(client: Client, entity_id: int) -> list[dict[str, Any]]:
+    """Matters acted on by a body, each with its action count + latest date.
+
+    Reads the matter_vote_records view (anon/RLS path) and rolls up per matter, so
+    only matters with at least one cited council action appear. Sorted newest first.
+    """
+    rows = fetch_all_rows(
+        lambda: (
+            client.table("matter_vote_records")
+            .select("subject_id,subject_slug,subject_name,subject_metadata,meeting_date")
+            .eq("entity_id", entity_id)
+        ),
+        order="edge_id",
+    )
+    by_id: dict[int, dict[str, Any]] = {}
+    for r in rows:
+        m = by_id.get(r["subject_id"])
+        if m is None:
+            by_id[r["subject_id"]] = {
+                "subject_id": r["subject_id"],
+                "slug": r["subject_slug"],
+                "canonical_name": r["subject_name"],
+                "metadata": r["subject_metadata"] or {},
+                "actions": 1,
+                "latest_date": r["meeting_date"],
+            }
+        else:
+            m["actions"] += 1
+            if (r["meeting_date"] or "") > (m["latest_date"] or ""):
+                m["latest_date"] = r["meeting_date"]
+    return sorted(by_id.values(), key=lambda m: m["latest_date"] or "", reverse=True)
+
+
+def matter_by_slug(client: Client, place_id: int, slug: str) -> dict | None:
+    """One publishable matter subject by slug, or None."""
+    rows = (
+        client.table("subjects")
+        .select("id,slug,canonical_name,metadata")
+        .eq("place_id", place_id)
+        .eq("slug", slug)
+        .eq("type", "matter")
+        .eq("publishable", True)
+        .limit(1)
+        .execute()
+        .data
+    )
+    return rows[0] if rows else None
+
+
+def matter_records(client: Client, subject_id: int, entity_id: int) -> list[dict[str, Any]]:
+    """A matter's full cited timeline (via the matter_vote_records view), paged."""
+    return fetch_all_rows(
+        lambda: (
+            client.table("matter_vote_records")
             .select("*")
             .eq("subject_id", subject_id)
             .eq("entity_id", entity_id)

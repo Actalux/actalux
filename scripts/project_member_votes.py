@@ -1,11 +1,16 @@
-"""Project member votes into graph edges (connections-graph Phase 1).
+"""Project member votes and council matters into graph edges (connections-graph §4).
 
-For each current minutes document of the bodies that record per-member roll calls
-(schools + council), this resolves every roll-call name + mover/seconder against
-the curated roster and writes the citation-backed edges (voted_aye_on / voted_no_on
-/ voted_abstain_on / moved / seconded). Names the roster cannot resolve go to the
-subject_resolution_queue rather than being guessed. Deterministic and verbatim —
-every edge carries the vote's durable identity + citation, nothing is invented.
+For each current minutes document, this resolves every roll-call name + mover/seconder
+against the curated roster and writes the citation-backed person edges (voted_aye_on /
+voted_no_on / voted_abstain_on / moved / seconded). Names the roster cannot resolve go
+to the subject_resolution_queue rather than being guessed.
+
+For council, it also mints a matter subject per bill/resolution number found in the
+motion text (Phase 2) and writes a 'considered' edge from each matter to the vote that
+acted on it — so a matter's whole timeline is one cited read. Both edge kinds are
+written together per document (one delete-then-insert), so the two projections never
+clobber each other. Deterministic and verbatim — every edge carries the vote's durable
+identity + citation, nothing is invented.
 
 Idempotent: a document's edges are rebuilt (delete-then-insert) each run, and a
 full run prunes edges left on superseded documents (§4.5). Cheap enough to run
@@ -30,6 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from actalux.config import load_config  # noqa: E402
 from actalux.db import get_client, get_entity_by_path  # noqa: E402
+from actalux.graph.matters import collect_matters, derive_matter_edges  # noqa: E402
 from actalux.graph.project import derive_document_edges  # noqa: E402
 from actalux.graph.store import (  # noqa: E402
     current_minutes,
@@ -37,6 +43,7 @@ from actalux.graph.store import (  # noqa: E402
     load_roster,
     prune_stale_graph,
     replace_document_graph,
+    upsert_matters,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -85,14 +92,41 @@ def main() -> int:
     else:
         docs = current_minutes(client, list(entities))
 
+    # Matter pre-pass (council only): scan council motions for bill/resolution numbers
+    # and mint a matter subject per number, so per-doc derivation can attach matter
+    # edges. Council votes are cached here to avoid a second read in the loop below.
+    council_eid = next((eid for eid, body in entities.items() if body == "council"), None)
+    council_votes: dict[int, list] = {}
+    matter_ids: dict[str, int] = {}
+    if council_eid is not None:
+        for doc in docs:
+            if doc["entity_id"] == council_eid:
+                council_votes[doc["id"]] = document_votes(client, doc["id"], council_eid)
+        matters = collect_matters([v for vs in council_votes.values() for v in vs])
+        if args.apply:
+            matter_ids = upsert_matters(client, place_id, matters)
+        else:  # dry run: synthetic ids so matter edges still derive for the count
+            matter_ids = {slug: -(i + 1) for i, slug in enumerate(matters)}
+        logger.info(
+            "Matters: %d council bills/resolutions (%s).",
+            len(matters),
+            "upserted" if args.apply else "dry run",
+        )
+
     edge_types: Counter[str] = Counter()
     total_edges = total_queue = 0
     current_doc_ids: set[int] = set()
     for doc in docs:
         doc_id = doc["id"]
         current_doc_ids.add(doc_id)
-        votes = document_votes(client, doc_id, doc["entity_id"])
+        votes = (
+            council_votes[doc_id]
+            if doc_id in council_votes
+            else document_votes(client, doc_id, doc["entity_id"])
+        )
         edges, queue = derive_document_edges(votes, roster)
+        if doc["entity_id"] == council_eid and matter_ids:
+            edges = edges + derive_matter_edges(votes, matter_ids)
         if not edges and not queue:
             continue
         for e in edges:

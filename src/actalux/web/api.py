@@ -43,7 +43,14 @@ from actalux.db import (
     list_recent_meeting_documents,
 )
 from actalux.errors import SearchError
-from actalux.graph.store import body_members, member_by_slug, member_records
+from actalux.graph.store import (
+    body_matters,
+    body_members,
+    matter_by_slug,
+    matter_records,
+    member_by_slug,
+    member_records,
+)
 from actalux.models import chunk_hash_id
 from actalux.search.answer import enrich_results
 from actalux.search.hybrid import SearchFilters, hybrid_search
@@ -188,6 +195,49 @@ class MemberRecord(BaseModel):
     term_end: str | None
     counts: dict[str, int]  # edges by type: voted_aye_on / .../ moved / seconded
     record: list[MemberVote]
+
+
+class MatterAction(BaseModel):
+    document_id: int
+    meeting_date: str | None
+    title: str  # display title of the meeting the action happened at
+    motion: str
+    result: str
+    result_basis: str
+    vote_count_yes: int | None
+    vote_count_no: int | None
+    vote_count_abstain: int | None
+    source_quote: str  # the verbatim motion text the edge cites
+    citation: str
+    source_url: str | None  # original artifact (PDF); may be null
+    html_url: str  # site-relative deep link to the cited passage in context
+
+
+class MatterSummary(BaseModel):
+    slug: str
+    name: str  # 'Bill No. 7156'
+    kind: str | None  # bill | resolution
+    number: str | None
+    title: str | None  # the ordinance/resolution title, when stated in a motion
+    actions: int
+    latest_date: str | None
+
+
+class MattersResponse(BaseModel):
+    entity: str
+    count: int
+    matters: list[MatterSummary]
+
+
+class MatterRecord(BaseModel):
+    entity: str
+    slug: str
+    name: str
+    kind: str | None
+    number: str | None
+    title: str | None
+    actions: int
+    timeline: list[MatterAction]  # cited council actions, oldest first
 
 
 # --- Auth --------------------------------------------------------------------
@@ -629,6 +679,30 @@ def _member_summary(member: dict) -> MemberSummary:
     )
 
 
+def _build_matter_action(row: dict) -> MatterAction:
+    """One cited action from a matter_vote_records row (same document fields as a
+    member record, so the shared doc/title/url builders apply)."""
+    doc = _member_doc(row)
+    title = display_title(doc)
+    cite_ref = row.get("citation_id")
+    hash_id = chunk_hash_id(cite_ref)
+    return MatterAction(
+        document_id=row["document_id"],
+        meeting_date=row.get("meeting_date") or None,
+        title=title,
+        motion=row.get("motion") or "",
+        result=row.get("result") or "",
+        result_basis=row.get("result_basis") or "stated",
+        vote_count_yes=row.get("vote_count_yes"),
+        vote_count_no=row.get("vote_count_no"),
+        vote_count_abstain=row.get("vote_count_abstain"),
+        source_quote=row.get("source_quote") or "",
+        citation=f"{title} [{hash_id}]",
+        source_url=_source_url(doc),
+        html_url=f"/chunk/{cite_ref}/source" if cite_ref else "",
+    )
+
+
 @api_router.get(
     "/{state}/{place}/{body}/members",
     response_model=MembersResponse,
@@ -640,6 +714,63 @@ def api_members(entity: dict = Depends(resolve_api_entity)) -> MembersResponse:
     members = body_members(get_db(), entity["id"])
     summaries = sorted((_member_summary(m) for m in members), key=lambda s: s.name)
     return MembersResponse(entity=_entity_path(entity), count=len(summaries), members=summaries)
+
+
+@api_router.get(
+    "/{state}/{place}/{body}/matters",
+    response_model=MattersResponse,
+    summary="Bills & resolutions the body acted on",
+    dependencies=[Depends(rate_limit_general)],
+)
+def api_matters(entity: dict = Depends(resolve_api_entity)) -> MattersResponse:
+    """Every bill/resolution the body acted on, with its action count and latest date."""
+    matters = body_matters(get_db(), entity["id"])
+    summaries = [
+        MatterSummary(
+            slug=m["slug"],
+            name=m["canonical_name"],
+            kind=(m.get("metadata") or {}).get("kind"),
+            number=(m.get("metadata") or {}).get("number"),
+            title=(m.get("metadata") or {}).get("title"),
+            actions=m["actions"],
+            latest_date=m.get("latest_date"),
+        )
+        for m in matters
+    ]
+    return MattersResponse(entity=_entity_path(entity), count=len(summaries), matters=summaries)
+
+
+@api_router.get(
+    "/{state}/{place}/{body}/matters/{slug}",
+    response_model=MatterRecord,
+    summary="A bill/resolution's complete cited timeline",
+    dependencies=[Depends(rate_limit_general)],
+)
+def api_matter(slug: str, entity: dict = Depends(resolve_api_entity)) -> MatterRecord:
+    """One matter's complete cited timeline (every council action), oldest first.
+
+    Every action cites the verbatim minutes passage it was read from. 404 if the slug
+    is not a publishable matter, or has no action in this body.
+    """
+    client = get_db()
+    matter = matter_by_slug(client, entity["place_id"], slug)
+    if not matter:
+        raise HTTPException(status_code=404, detail="Unknown matter")
+    rows = matter_records(client, matter["id"], entity["id"])
+    if not rows:
+        raise HTTPException(status_code=404, detail="Unknown matter")
+    rows.sort(key=lambda r: r.get("meeting_date") or "")
+    meta = matter.get("metadata") or {}
+    return MatterRecord(
+        entity=_entity_path(entity),
+        slug=matter["slug"],
+        name=matter["canonical_name"],
+        kind=meta.get("kind"),
+        number=meta.get("number"),
+        title=meta.get("title"),
+        actions=len(rows),
+        timeline=[_build_matter_action(r) for r in rows],
+    )
 
 
 @api_router.get(

@@ -1,0 +1,19 @@
+{# One cited action in a matter's timeline: the date, the outcome + tally, the
+   verbatim motion, and a link to the source passage in its native form. Leads with
+   the record, never a windowed snippet (DESIGN.md "Citations resolve to the
+   original"). `r` is a matter_vote_records row. #}
+{% macro matter_record(r) %}
+<a class="cited-record" href="/chunk/{{ r.citation_id }}/source">
+  <div class="cited-record-meta">
+    {% if r.meeting_date %}<span class="date">{{ r.meeting_date }}</span>{% endif %}
+    {% if r.result %}<span class="kind">{{ r.result }}</span>{% endif %}
+    {% if r.vote_count_yes is not none and r.vote_count_no is not none %}<span>{{ r.vote_count_yes }}&ndash;{{ r.vote_count_no }}{% if r.vote_count_abstain %}&ndash;{{ r.vote_count_abstain }}{% endif %}</span>{% endif %}
+  </div>
+  {% if r.motion %}<blockquote class="cited-record-quote">&ldquo;{{ r.motion }}&rdquo;</blockquote>{% endif %}
+  <div class="cited-record-foot">
+    <span class="src-title">{{ r.meeting_title or 'Council minutes' }}</span>
+    <span class="hash">#q{{ r.citation_id }}</span>
+    <span class="open-orig">Open the original &rarr;</span>
+  </div>
+</a>
+{% endmacro %}
