@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import threading
 import time
@@ -341,6 +342,8 @@ templates.env.filters["clean_text"] = normalize_whitespace
 templates.env.filters["content_paragraphs"] = content_paragraphs
 templates.env.filters["paragraphize_prose"] = paragraphize_prose
 templates.env.filters["display_title"] = display_title
+# Absolute site origin for canonical/OG URLs + JSON-LD (config-driven, prod default).
+templates.env.globals["site_url"] = os.environ.get("ACTALUX_SITE_BASE_URL", "https://actalux.org")
 templates.env.filters["meeting_date_long"] = meeting_date_long
 templates.env.filters["clock"] = clock
 templates.env.filters["source_label"] = source_label

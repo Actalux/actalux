@@ -1,6 +1,17 @@
 {% extends "base.html" %}
 {% from "partials/_member_record.html" import member_record %}
 {% block title %}{{ member.canonical_name }} — record{% endblock %}
+{% block meta_description %}{{ member.canonical_name }}{% set role = member.metadata.role if member.metadata else none %}{% if role %}, {{ role }},{% endif %} on the {{ entity.display_name }} — complete cited voting record and motions, every entry sourced to the official minutes.{% endblock %}
+{% block structured_data %}
+<script type="application/ld+json">{{ {
+  "@context": "https://schema.org",
+  "@type": "Person",
+  "name": member.canonical_name,
+  "jobTitle": (member.metadata.role if member.metadata else None) | default(None, true),
+  "url": site_url ~ request.url.path,
+  "memberOf": {"@type": "GovernmentOrganization", "name": entity.display_name | default(None, true)}
+} | tojson }}</script>
+{% endblock %}
 {% block content %}
 
 {% set meta = member.metadata or {} %}

@@ -1,6 +1,14 @@
 {% extends "base.html" %}
 {% from "partials/_matter_record.html" import matter_record %}
 {% block title %}{{ matter.canonical_name }}{% endblock %}
+{% block structured_data %}
+<script type="application/ld+json">{{ {
+  "@context": "https://schema.org",
+  "@type": "Legislation",
+  "name": matter.canonical_name,
+  "url": site_url ~ request.url.path
+} | tojson }}</script>
+{% endblock %}
 {% block content %}
 
 {% set meta = matter.metadata or {} %}
