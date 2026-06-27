@@ -68,8 +68,8 @@ def main() -> int:
     args = parser.parse_args()
 
     cfg = load_config()
-    if not cfg.openai_api_key:
-        logger.error("OPENAI_API_KEY not set; aborting")
+    if not cfg.openrouter_api_key:
+        logger.error("OpenRouter key not set; aborting")
         return 1
     # Writer: service key bypasses RLS.
     client = get_client(cfg.supabase_url, cfg.supabase_service_key)
@@ -105,8 +105,9 @@ def main() -> int:
                 title=d.get("meeting_title") or "",
                 date=str(d.get("meeting_date") or ""),
                 timestamped_transcript=transcript,
-                api_key=cfg.openai_api_key,
+                api_key=cfg.openrouter_api_key,
                 model=cfg.summary_model,
+                base_url=cfg.openrouter_base_url,
                 max_seconds=max_seconds,
             )
         except SummaryError as exc:

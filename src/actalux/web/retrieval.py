@@ -58,10 +58,14 @@ def expand_and_embed(query: str) -> list[tuple[str, list[float]]]:
     """
     try:
         cfg = get_config()
-        if cfg.query_expansion_mode != "on" or not cfg.openai_api_key:
+        if cfg.query_expansion_mode != "on" or not cfg.openrouter_api_key:
             return []
         variants = generate_query_variants(
-            query, cfg.openai_api_key, cfg.expansion_model, n=cfg.expansion_count
+            query,
+            cfg.openrouter_api_key,
+            cfg.expansion_model,
+            n=cfg.expansion_count,
+            base_url=cfg.openrouter_base_url,
         )
         if not variants:
             return []

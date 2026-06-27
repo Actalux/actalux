@@ -75,7 +75,9 @@ jobs:
       ACTALUX_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
       ACTALUX_SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
       GROQ_ACTALUX_API_KEY: ${{ secrets.GROQ_ACTALUX_API_KEY }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}  # summary + chapter generation
+      # Summary + chapter generation route through OpenRouter (one gateway for all LLMs).
+      OPENROUTER_ACTALUX_KEY: ${{ secrets.OPENROUTER_ACTALUX_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}  # legacy fallback; unused once OpenRouter is set
     steps:
       - uses: actions/checkout@v4
 

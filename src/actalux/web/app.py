@@ -1903,7 +1903,7 @@ async def summarize(
     with the summary text and inline citation links.
     """
     cfg = _get_config()
-    if not q.strip() or not cfg.openai_api_key:
+    if not q.strip() or not cfg.openrouter_api_key:
         return templates.TemplateResponse(
             request,
             "partials/summary.html",
@@ -1933,7 +1933,13 @@ async def summarize(
             expansions=_search_expansions(q, view.entity.get("place_id")),
         )
         logger.info("summarize route=%s for query: %s", route, q)
-        summary = generate_summary(q, enriched, cfg.openai_api_key, cfg.summary_model)
+        summary = generate_summary(
+            q,
+            enriched,
+            cfg.openrouter_api_key,
+            cfg.summary_model,
+            base_url=cfg.openrouter_base_url,
+        )
     except (SearchError, SummaryError):
         logger.exception("Summary generation failed for: %s", q)
         return templates.TemplateResponse(
@@ -2198,7 +2204,7 @@ def ask_post(
             prior,
         )
 
-    if not cfg.openai_api_key:
+    if not cfg.openrouter_api_key:
         return render(
             _blocked_turn(question, "The assistant is temporarily unavailable. Please use search."),
             prior,
@@ -2206,7 +2212,13 @@ def ask_post(
 
     client = _get_db()
     try:
-        standalone = condense_question(prior, question, cfg.openai_api_key, cfg.condense_model)
+        standalone = condense_question(
+            prior,
+            question,
+            cfg.openrouter_api_key,
+            cfg.condense_model,
+            base_url=cfg.openrouter_base_url,
+        )
         embedding = _embed_query(standalone)
         entity_id, entity_ids = _resolve_scope(view.entity, scope)
         filters = SearchFilters(entity_id=entity_id, entity_ids=entity_ids)
@@ -2220,7 +2232,13 @@ def ask_post(
             expansions=_search_expansions(standalone, view.entity.get("place_id")),
         )
         logger.info("ask route=%s for: %s", route, standalone)
-        summary = generate_summary(standalone, enriched, cfg.openai_api_key, cfg.summary_model)
+        summary = generate_summary(
+            standalone,
+            enriched,
+            cfg.openrouter_api_key,
+            cfg.summary_model,
+            base_url=cfg.openrouter_base_url,
+        )
     except (SearchError, SummaryError):
         logger.exception("Ask failed for: %s", question)
         return render(
@@ -2303,7 +2321,7 @@ def ask_stream(
             yield event({"type": "done", "history": json.dumps(prior)})
             return
 
-        if not cfg.openai_api_key:
+        if not cfg.openrouter_api_key:
             yield event(
                 {
                     "type": "notice",
@@ -2315,7 +2333,13 @@ def ask_stream(
 
         client = _get_db()
         try:
-            standalone = condense_question(prior, question, cfg.openai_api_key, cfg.condense_model)
+            standalone = condense_question(
+                prior,
+                question,
+                cfg.openrouter_api_key,
+                cfg.condense_model,
+                base_url=cfg.openrouter_base_url,
+            )
             if standalone.strip() != question:
                 yield event({"type": "meta", "standalone": standalone})
             embedding = _embed_query(standalone)
@@ -2333,7 +2357,11 @@ def ask_stream(
             logger.info("ask-stream route=%s for: %s", route, standalone)
             summary: Summary | None = None
             for item in generate_summary_stream(
-                standalone, enriched, cfg.openai_api_key, cfg.summary_model
+                standalone,
+                enriched,
+                cfg.openrouter_api_key,
+                cfg.summary_model,
+                base_url=cfg.openrouter_base_url,
             ):
                 if isinstance(item, Summary):
                     summary = item

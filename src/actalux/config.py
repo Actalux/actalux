@@ -60,16 +60,24 @@ class Config:
     )
     anthropic_api_key: str = field(default_factory=lambda: os.environ.get("ANTHROPIC_API_KEY", ""))
     openai_api_key: str = field(default_factory=lambda: os.environ.get("OPENAI_API_KEY", ""))
-    # OpenRouter: one key reaches many models for synthesis A/B (eval/eval_answers).
+    # OpenRouter is the single gateway for every chat/completion LLM call (search
+    # summaries, the ask chatbot, follow-up condense, query expansion, the digest):
+    # the OpenAI SDK targets ``openrouter_base_url`` with this key and reaches the
+    # same models by provider-prefixed id (``openai/gpt-5-mini``, ...). One key,
+    # one place for all LLMs. New actalux-scoped name, old name kept as a fallback
+    # so moving the secret is non-breaking.
     openrouter_api_key: str = field(
-        default_factory=lambda: os.environ.get("OPENROUTER_API_KEY", "")
+        default_factory=lambda: (
+            os.environ.get("OPENROUTER_ACTALUX_KEY") or os.environ.get("OPENROUTER_API_KEY", "")
+        )
     )
-    summary_model: str = "gpt-5-mini"
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    summary_model: str = "openai/gpt-5-mini"
     # Follow-ups are condensed into a standalone retrieval query — a mechanical
     # rewrite, not a reasoning task — so a fast non-reasoning model keeps that
     # extra LLM hop off the answer's critical path (the reasoning summary model
     # added ~1.4s per follow-up; see task #19 latency measurement).
-    condense_model: str = "gpt-4o-mini"
+    condense_model: str = "openai/gpt-4o-mini"
     # Query expansion: also retrieve LLM-generated alternate phrasings of the
     # query and fuse the candidate pools, so a question whose wording differs
     # from the records ("did the bond measure pass" vs "Proposition O") still
@@ -80,13 +88,15 @@ class Config:
         default_factory=lambda: os.environ.get("ACTALUX_QUERY_EXPANSION", "off")
     )
     # Cheap non-reasoning model for the expansion hop (same class as condense).
-    expansion_model: str = "gpt-4o-mini"
+    expansion_model: str = "openai/gpt-4o-mini"
     # Number of alternate phrasings retrieved alongside the original query.
     expansion_count: int = 3
     # ZeroEntropy hosted reranker. Key gates the API call; zerank-1-small is the
     # Apache-2.0 model that won the retrieval eval (+24% nDCG@10; see eval/README.md).
     zeroentropy_api_key: str = field(
-        default_factory=lambda: os.environ.get("ZEROENTROPY_API_KEY", "")
+        default_factory=lambda: (
+            os.environ.get("ACTALUX_ZE") or os.environ.get("ZEROENTROPY_API_KEY", "")
+        )
     )
     rerank_model: str = "zerank-1-small"
     # "off" (RRF only, default) or "api" (rerank the RRF pool via ZeroEntropy).
@@ -103,7 +113,11 @@ class Config:
     # and faster), keyed by GROQ_ACTALUX_API_KEY (namespaced separately from any
     # other Groq usage). transcribe.py also accepts these as plain args, so the
     # provider can be swapped (e.g. back to OpenAI) without code change.
-    groq_api_key: str = field(default_factory=lambda: os.environ.get("GROQ_ACTALUX_API_KEY", ""))
+    groq_api_key: str = field(
+        default_factory=lambda: (
+            os.environ.get("ACTALUX_GROQ") or os.environ.get("GROQ_ACTALUX_API_KEY", "")
+        )
+    )
     transcribe_model: str = "whisper-large-v3"
     transcribe_base_url: str = "https://api.groq.com/openai/v1"
     chunk_target_words: int = 200

@@ -17,8 +17,9 @@ from actalux.web import retrieval
 def _cfg(**overrides) -> SimpleNamespace:
     base = dict(
         query_expansion_mode="on",
-        openai_api_key="sk-test",
-        expansion_model="gpt-4o-mini",
+        openrouter_api_key="sk-test",
+        openrouter_base_url="https://openrouter.ai/api/v1",
+        expansion_model="openai/gpt-4o-mini",
         expansion_count=3,
     )
     base.update(overrides)
@@ -36,7 +37,7 @@ class TestExpandAndEmbed:
 
     def test_no_api_key_returns_empty_without_llm(self) -> None:
         with (
-            patch.object(retrieval, "get_config", return_value=_cfg(openai_api_key="")),
+            patch.object(retrieval, "get_config", return_value=_cfg(openrouter_api_key="")),
             patch.object(retrieval, "generate_query_variants") as gen,
         ):
             assert retrieval.expand_and_embed("q") == []

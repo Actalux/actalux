@@ -592,6 +592,7 @@ def generate_doc_summary(
     excerpts: list[str],
     api_key: str,
     model: str = DEFAULT_MODEL,
+    base_url: str | None = None,
 ) -> str:
     """Short (2-4 sentence) content summary of a document. Stored on the row."""
     excerpts_block = "\n\n".join(e.strip() for e in excerpts if e and e.strip())[:8000]
@@ -603,7 +604,7 @@ def generate_doc_summary(
         excerpts=excerpts_block or "(no excerpts available)",
     )
     try:
-        client = OpenAI(api_key=api_key)
+        client = OpenAI(api_key=api_key, base_url=base_url)
         messages = [
             {"role": "system", "content": DOC_SUMMARY_SYSTEM},
             {"role": "user", "content": user_message},
@@ -725,6 +726,7 @@ def generate_chapters(
     api_key: str,
     model: str = DEFAULT_MODEL,
     *,
+    base_url: str | None = None,
     max_seconds: int | None = None,
 ) -> list[dict[str, Any]]:
     """Topic chapters for a transcript: ``[{"t": seconds, "title": str}, ...]``.
@@ -739,7 +741,7 @@ def generate_chapters(
         transcript=_fit_timestamped_transcript(timestamped_transcript),
     )
     try:
-        client = OpenAI(api_key=api_key)
+        client = OpenAI(api_key=api_key, base_url=base_url)
         messages = [
             {"role": "system", "content": CHAPTERS_SYSTEM},
             {"role": "user", "content": user_message},
