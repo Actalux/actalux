@@ -35,6 +35,7 @@ scripts/corrections/proposals_*.json
 .serena/
 .gstack/
 .claude/
+.impeccable/
 
 # Docs (tracked separately when ready)
 ARTICLES_OF_INCORPORATION.md

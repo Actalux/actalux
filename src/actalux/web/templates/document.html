@@ -51,7 +51,7 @@
 
     {% if original_url %}
       <span class="label">Original</span>
-      <span class="value"><a href="{{ original_url | safe_url }}" target="_blank" rel="noopener" style="color: var(--accent); word-break: break-all;">{{ 'Watch on YouTube →' if is_video else 'Open original →' }}</a></span>
+      <span class="value"><a href="{{ original_url | safe_url }}" target="_blank" rel="noopener" style="color: var(--accent-ink); word-break: break-all;">{{ 'Watch on YouTube →' if is_video else 'Open original →' }}</a></span>
     {% endif %}
 
     {% if document.version %}
@@ -74,7 +74,7 @@
     {% if is_budget_or_audit %}
     <div style="margin-bottom: var(--s-5); padding: var(--s-4); border-left: 3px solid var(--accent); background: var(--bg-2, #f9f6f1);">
       <p style="margin: 0; font-family: var(--font-ui, Geist, sans-serif); font-size: 14px; color: var(--fg-2, var(--fg));">
-        See the <a href="{{ base }}/budget" style="color: var(--accent);">Budget topic page</a>
+        See the <a href="{{ base }}/budget" style="color: var(--accent-ink);">Budget topic page</a>
         for structured budget figures and cited records.
       </p>
     </div>

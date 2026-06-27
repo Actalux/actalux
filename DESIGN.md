@@ -98,8 +98,11 @@ marks a source.
   --rule-strong: #C9C6BD;  /* stronger divider, input border */
 
   /* accent — vermillion (the "highlighter on archive" move) */
-  --accent:      #C8553D;  /* primary accent, CTA, highlight chroma */
+  --accent:      #C8553D;  /* primary accent, CTA, highlight chroma, the logo flame */
   --accent-soft: #F3DDD6;  /* highlighted-word background */
+  --accent-ink:  #BD4A33;  /* accent applied to TEXT on light surfaces — a hair
+                              deeper so small accent labels clear WCAG AA (4.5:1).
+                              Fills, borders, highlights, and the flame keep --accent. */
 
   /* citation treatment */
   --highlight:   #F4E9B0;  /* archival-yellow highlight for cited passages
@@ -133,6 +136,41 @@ thing the product does.
 **Dark mode:** Not in scope for MVP. When added, redesign surfaces rather
 than invert (paper-dark should be warm charcoal `~#1A1815`, not pure black;
 accent saturation reduces ~15%).
+
+## Brand & Logo
+
+The mark is a stylized ancient oil lamp cradling a flame — a heritage symbol
+of knowledge and learning, abstracted to a flat two-path silhouette. Source
+vectors live in the business-docs logo folder (`actalux-lamp-logo.ai` = mark,
+`actalux-lamp-logo-full.ai` = full wordmark lockup); web assets are in
+`static/img/`.
+
+**Two-tone treatment (canonical).** In product, the lamp *vessel* is **ink**
+(`--ink`) and the *flame* is **vermillion** (`--accent`). This is the single
+sanctioned brand use of the accent: the flame *is* the light — the same meaning
+vermillion carries everywhere else (the highlighter on a cited passage). It is
+not an exception to "accent reserved for citations"; it is that rule expressed
+in the mark. The flame replaces the former typographic vermillion dot after
+"Actalux".
+
+**Brand neutral.** The logo's native warm tan is tokenized as
+`--brand: #BCAB92`, with a deeper `--bronze: #7C6C50` for legible small-size or
+reverse use. Tan is a brand *neutral* that harmonizes with the paper palette;
+it is never a functional accent. (Tan-on-paper is too low-contrast for the
+top-bar mark — which is why the in-product mark is ink + vermillion, not tan.)
+
+**Top bar.** `.brand-mark` (26px) + "Actalux" in Fraunces 500. The full
+wordmark lockup (mark + ACTALUX + "revealing what matters") is for
+footer / social / print, not the top bar (too small to read inline).
+
+**Favicons & social.** `static/img/favicon.svg` is a square ink tile (tan lamp
++ vermillion flame); `favicon-32.png` and `apple-touch-icon.png` derive from
+it; `mask-icon.svg` is the monochrome Safari pinned-tab mask (link color
+`--accent`); `og-card.png` (1200×630) is the share card. All wired in
+`base.html` `<head>` with `theme-color` and Open Graph / Twitter meta.
+
+**Retired.** The earlier placeholder `actalux_icon.svg` (navy `#0B1F3A`, a
+civic-blue the palette explicitly rejects) is superseded by the lamp mark.
 
 ## Layout
 
@@ -483,3 +521,5 @@ into an archive, so they deserve serif). Focus: border color → `--ink`.
 | 2026-04-12 | No border-radius, no icon library, no gradients, no modals for primary actions | Anti-slop. Every one of these is a SaaS tell. Archive should feel like an archive. |
 | 2026-06-19 | Search reader pane: mark only the query's words (soft accent) over a reflowed passage with a vermillion rule, not a solid-yellow block | A whole-passage highlight reads the same as no highlight and hides why the result matched; word-level marks show the match in context. Full-yellow `.cited` retained for the document view / no-query citations. |
 | 2026-06-19 | Never adjudicate tax/levy "increase vs no increase"; state the levy rate | Whether a levy change is an increase depends on a chosen baseline (expiring bond lowers it, new bond restores it) — a political call the archive does not make. Report the figures; do not repeat district framing even attributed. |
+| 2026-06-26 | Lamp mark adopted; in-product two-tone (ink vessel + vermillion flame); tan tokenized as brand neutral (`--brand`), bronze (`--bronze`) for small sizes | Brand identity. The flame as accent is the one sanctioned brand use of vermillion (it *is* "the light," same meaning as the citation highlighter). Tan-on-paper too faint for top-bar use, so the in-product mark is ink + flame; full wordmark lockup reserved for footer/social/print. Favicon/Apple-touch/mask-icon/OG card added; navy `actalux_icon.svg` placeholder retired. |
+| 2026-06-27 | `--accent-ink` (#BD4A33) for accent applied to TEXT on light surfaces; `--accent` (#C8553D) retained for fills, borders, highlights, and the flame | Accessibility. Small accent labels at #C8553D were 4.16:1 (below WCAG AA 4.5). The deeper text variant clears AA while the brand fill color is unchanged, so the identity reads the same. |

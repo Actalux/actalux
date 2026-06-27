@@ -2405,9 +2405,10 @@ def _render_citation_links(text: str, results: list[dict[str, Any]]) -> str:
 @app.get("/{state}/{place}", response_class=HTMLResponse)
 async def place_hub(request: Request, state: str, place: str) -> HTMLResponse:
     """Place hub: the directory of public bodies archived for this place."""
+    db = _get_db()
     bodies = [
         e
-        for e in list_entities(_get_db())
+        for e in list_entities(db)
         if (e.get("place") or {}).get("state") == state
         and (e.get("place") or {}).get("slug") == place
     ]
@@ -2423,8 +2424,26 @@ async def place_hub(request: Request, state: str, place: str) -> HTMLResponse:
         }
         for e in sorted(bodies, key=lambda e: e.get("display_name", ""))
     ]
+    # Recent meeting records across every body in the place, newest meeting first.
+    # Mechanical recency (not an editorial selection); minutes + transcripts only,
+    # since those carry real meeting dates, so the hub shows the live record.
+    type_label = {"minutes": "Minutes", "transcript": "Transcript"}
+    recent: list[dict[str, Any]] = []
+    for e in bodies:
+        for d in list_recent_meeting_documents(db, e["id"], list(MEETING_PAGE_TYPES), limit=5):
+            recent.append(
+                {
+                    "meeting_date": d.get("meeting_date"),
+                    "type_label": type_label.get(d.get("document_type") or "", "Record"),
+                    "body": e["display_name"],
+                    "url": f"/document/{d['id']}",
+                }
+            )
+    recent.sort(key=lambda r: r.get("meeting_date") or "", reverse=True)
+    recent = recent[:6]
+
     return templates.TemplateResponse(
-        request, "landing.html", _page(None, place_name=place_name, bodies=cards)
+        request, "landing.html", _page(None, place_name=place_name, bodies=cards, recent=recent)
     )
 
 

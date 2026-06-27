@@ -31,6 +31,21 @@
     </a>
     {% endfor %}
   </div>
+
+  {% if recent %}
+  <div class="recent">
+    <div class="recent-head">Recent meetings across all bodies</div>
+    <ul class="recent-list">
+      {% for r in recent %}
+      <li>
+        <span class="date">{{ r.meeting_date }}</span>
+        <span class="type">{{ r.type_label }}</span>
+        <a class="title" href="{{ r.url }}">{{ r.body }}</a>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
 </div>
 
 {% endblock %}
