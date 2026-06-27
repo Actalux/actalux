@@ -52,7 +52,13 @@ def run_once(
     standalone = question
     if history:
         t = time.perf_counter()
-        standalone = condense_question(history, question, cfg.openai_api_key, cfg.summary_model)
+        standalone = condense_question(
+            history,
+            question,
+            cfg.openrouter_api_key,
+            cfg.summary_model,
+            base_url=cfg.openrouter_base_url,
+        )
         timings["condense (LLM)"] = _ms(t)
 
     t = time.perf_counter()
@@ -66,7 +72,13 @@ def run_once(
     timings[f"assemble_evidence [{route}]"] = _ms(t)
 
     t = time.perf_counter()
-    summary = generate_summary(standalone, enriched, cfg.openai_api_key, cfg.summary_model)
+    summary = generate_summary(
+        standalone,
+        enriched,
+        cfg.openrouter_api_key,
+        cfg.summary_model,
+        base_url=cfg.openrouter_base_url,
+    )
     timings["generate_summary (LLM)"] = _ms(t)
 
     total = sum(timings.values())

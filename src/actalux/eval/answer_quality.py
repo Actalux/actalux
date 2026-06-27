@@ -127,6 +127,7 @@ def run(
     query_ids: set[str] | None = None,
     regenerate: bool = False,
     judge_model: str = judge.JUDGE_MODEL,
+    judge_base_url: str = judge.DEFAULT_BASE_URL,
 ) -> list[AnswerRow]:
     """Generate + judge answers for the query set, caching per (query_id, model_id).
 
@@ -179,7 +180,12 @@ def run(
         if score is None:
             try:
                 score = judge.grade_answer(
-                    q["query"], cached["answer"], cached["quotes"], judge_key, judge_model
+                    q["query"],
+                    cached["answer"],
+                    cached["quotes"],
+                    judge_key,
+                    judge_model,
+                    judge_base_url,
                 )
             except Exception as exc:  # noqa: BLE001 - skip-and-report, don't score a hole
                 logger.warning("answer judge failed for %s: %s", qid, exc)

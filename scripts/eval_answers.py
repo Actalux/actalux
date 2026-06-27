@@ -41,8 +41,8 @@ def main() -> None:
         "--model",
         type=str,
         default="",
-        help="summary model (default: config). A provider-prefixed id (e.g. "
-        "'openai/gpt-5', 'anthropic/claude-haiku-4.5') routes via OpenRouter.",
+        help="summary model (default: config). All models route via OpenRouter, so "
+        "use a provider-prefixed id (e.g. 'openai/gpt-5', 'anthropic/claude-haiku-4.5').",
     )
     parser.add_argument(
         "--reasoning",
@@ -63,20 +63,15 @@ def main() -> None:
     args = parser.parse_args()
 
     cfg = load_config()
-    if not cfg.openai_api_key:
-        parser.error("OPENAI_API_KEY not set; run under doppler.")
-    if not cfg.anthropic_api_key:
-        parser.error("ANTHROPIC_API_KEY not set (the answer judge); run under doppler.")
+    # Generator and judge both route through OpenRouter (one key for all LLMs), so
+    # a single key gates the whole eval.
+    if not cfg.openrouter_api_key:
+        parser.error(
+            "OpenRouter key not set (gen + judge route via OpenRouter); run under doppler."
+        )
 
     summary_model = args.model or cfg.summary_model
-    # A provider-prefixed model id routes via OpenRouter (one key, many models);
-    # a bare id (e.g. "gpt-5-mini") hits OpenAI directly.
-    if "/" in summary_model:
-        if not cfg.openrouter_api_key:
-            parser.error("OPENROUTER_API_KEY not set; needed for a provider-prefixed --model.")
-        gen_key, base_url = cfg.openrouter_api_key, "https://openrouter.ai/api/v1"
-    else:
-        gen_key, base_url = cfg.openai_api_key, None
+    gen_key, base_url = cfg.openrouter_api_key, cfg.openrouter_base_url
 
     # Cache/report label: distinguish a reasoning variant of the same model so it
     # doesn't collide with the base model's cached answers. The "+finance" arm is
@@ -100,7 +95,7 @@ def main() -> None:
         client,
         embed_model,
         gen_key,
-        cfg.anthropic_api_key,
+        cfg.openrouter_api_key,  # judge key (Claude via OpenRouter)
         summary_model,
         reranker,
         model_id=model_id,
@@ -110,6 +105,7 @@ def main() -> None:
         limit=args.limit,
         query_ids=query_ids,
         regenerate=args.regenerate,
+        judge_base_url=cfg.openrouter_base_url,
     )
 
     body = answer_quality.render_markdown(rows, model_id, judge.JUDGE_MODEL)

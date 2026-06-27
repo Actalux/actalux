@@ -15,7 +15,7 @@ Usage:
         --out draft.md --email
 
 Run under `doppler run --project mac --config dev -- ...` locally so the
-Supabase/OpenAI/SMTP env vars are present. In CI the ingest workflow sets them.
+Supabase/OpenRouter/SMTP env vars are present. In CI the ingest workflow sets them.
 """
 
 from __future__ import annotations
@@ -86,16 +86,17 @@ def main() -> None:
         logger.info("No new or updated documents since %s; nothing to draft.", since)
         return
 
-    if not config.openai_api_key:
-        logger.warning("No OPENAI_API_KEY set; topics will list documents without cited summaries.")
+    if not config.openrouter_api_key:
+        logger.warning("No OpenRouter key set; topics will list documents without cited summaries.")
 
     generated_on = datetime.now(UTC).date().isoformat()
     draft = draft_post(
         client,
         digest,
-        config.openai_api_key,
+        config.openrouter_api_key,
         generated_on=generated_on,
         model=args.model or config.summary_model,
+        base_url=config.openrouter_base_url,
         site_base_url=config.site_base_url,
     )
 

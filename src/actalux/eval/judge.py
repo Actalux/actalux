@@ -6,8 +6,10 @@ cached to disk keyed by (query_id, chunk_id) so a passage is graded once and
 reused across arms and across runs -- the judge is paid for once.
 
 Judge model is Claude (stronger than the gpt-4o-mini summary model, which
-matters because these grades decide a methods question). Spot-check a sample
-of grades against your own relevance sense before trusting the aggregate.
+matters because these grades decide a methods question), reached through
+OpenRouter like every other LLM call so offline eval needs only the one
+OpenRouter key — same model and prompts, just a different transport. Spot-check
+a sample of grades against your own relevance sense before trusting the aggregate.
 """
 
 from __future__ import annotations
@@ -18,12 +20,13 @@ import re
 from pathlib import Path
 from typing import Any
 
-import anthropic
-from anthropic.types import TextBlock
+from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
-JUDGE_MODEL = "claude-sonnet-4-6"
+# Provider-prefixed so the OpenAI SDK reaches Claude through OpenRouter.
+JUDGE_MODEL = "anthropic/claude-sonnet-4-6"
+DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 MAX_PASSAGE_CHARS = 4000
 
 GRADE_SYSTEM = """\
@@ -68,26 +71,32 @@ def save_cache(path: Path, cache: dict[str, Any]) -> None:
     path.write_text(json.dumps(cache, indent=2, sort_keys=True) + "\n")
 
 
-def grade_relevance(query: str, passage: str, api_key: str, model: str = JUDGE_MODEL) -> int:
-    """Grade one (query, passage) pair 0-3 via Claude.
+def grade_relevance(
+    query: str,
+    passage: str,
+    api_key: str,
+    model: str = JUDGE_MODEL,
+    base_url: str = DEFAULT_BASE_URL,
+) -> int:
+    """Grade one (query, passage) pair 0-3 via Claude (through OpenRouter).
 
     Raises on an API error or an unparseable response so the caller can decide
     whether to skip the pair (and report reduced coverage) rather than silently
     treating a failure as grade 0.
     """
-    client = anthropic.Anthropic(api_key=api_key)
-    resp = client.messages.create(
+    client = OpenAI(api_key=api_key, base_url=base_url)
+    resp = client.chat.completions.create(
         model=model,
         max_tokens=8,
-        system=GRADE_SYSTEM,
         messages=[
+            {"role": "system", "content": GRADE_SYSTEM},
             {
                 "role": "user",
                 "content": GRADE_USER.format(query=query, passage=passage[:MAX_PASSAGE_CHARS]),
-            }
+            },
         ],
     )
-    text = "".join(b.text for b in resp.content if isinstance(b, TextBlock)).strip()
+    text = (resp.choices[0].message.content or "").strip()
     match = _DIGIT_RE.search(text)
     if not match:
         raise ValueError(f"judge returned no 0-3 digit: {text!r}")
@@ -155,28 +164,33 @@ _JSON_OBJ_RE = re.compile(r"\{[^{}]*\}")
 
 
 def grade_answer(
-    query: str, answer: str, quotes: str, api_key: str, model: str = JUDGE_MODEL
+    query: str,
+    answer: str,
+    quotes: str,
+    api_key: str,
+    model: str = JUDGE_MODEL,
+    base_url: str = DEFAULT_BASE_URL,
 ) -> dict[str, int]:
     """Grade a generated answer on faithfulness/completeness/directness (each 0-3).
 
     Raises on an API error or an unparseable response so the caller skips the
     query (reduced coverage) rather than scoring on a hole.
     """
-    client = anthropic.Anthropic(api_key=api_key)
-    resp = client.messages.create(
+    client = OpenAI(api_key=api_key, base_url=base_url)
+    resp = client.chat.completions.create(
         # Headroom for the judge to reason through every claim before the JSON; a
-        # tight cap truncated thorough analyses mid-JSON. (This model rejects prefill.)
+        # tight cap truncated thorough analyses mid-JSON.
         model=model,
         max_tokens=1024,
-        system=ANSWER_GRADE_SYSTEM,
         messages=[
+            {"role": "system", "content": ANSWER_GRADE_SYSTEM},
             {
                 "role": "user",
                 "content": ANSWER_GRADE_USER.format(query=query, quotes=quotes, answer=answer),
-            }
+            },
         ],
     )
-    text = "".join(b.text for b in resp.content if isinstance(b, TextBlock))
+    text = resp.choices[0].message.content or ""
     matches = _JSON_OBJ_RE.findall(text)
     if not matches:
         raise ValueError(f"answer judge returned no JSON object: {text!r}")

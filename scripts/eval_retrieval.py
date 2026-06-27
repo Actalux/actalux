@@ -130,8 +130,11 @@ def main() -> None:
     arms = build_arms(args.rerankers, parser)
 
     cfg = load_config()
-    if not args.no_judge and not cfg.anthropic_api_key:
-        parser.error("ANTHROPIC_API_KEY not set; use --no-judge or run under doppler.")
+    if not args.no_judge and not cfg.openrouter_api_key:
+        parser.error(
+            "OpenRouter key not set (the judge routes via OpenRouter); "
+            "use --no-judge or run under doppler."
+        )
 
     if args.api_rerank:
         if not cfg.zeroentropy_api_key:
@@ -148,11 +151,12 @@ def main() -> None:
     report = harness.run(
         client,
         model,
-        cfg.anthropic_api_key,
+        cfg.openrouter_api_key,
         arms=arms,
         limit=args.limit,
         do_judge=not args.no_judge,
         query_ids=query_ids,
+        base_url=cfg.openrouter_base_url,
     )
     body = harness.render_markdown(report)
     print("\n" + body)

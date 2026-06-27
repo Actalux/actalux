@@ -90,6 +90,7 @@ def judge_pool(
     api_key: str,
     depth: int = JUDGE_DEPTH,
     model: str = judge.JUDGE_MODEL,
+    base_url: str = judge.DEFAULT_BASE_URL,
 ) -> dict[int, int]:
     """Grade the top `depth` of `ranked`, reusing/extending the cache.
 
@@ -105,7 +106,7 @@ def judge_pool(
             grades_out[result.chunk_id] = cached["grade"]
             continue
         try:
-            grade = judge.grade_relevance(query, result.content, api_key, model)
+            grade = judge.grade_relevance(query, result.content, api_key, model, base_url)
         except Exception as exc:  # noqa: BLE001 - skip-and-report, never default to 0
             logger.warning("judge failed for %s chunk %d: %s", query_id, result.chunk_id, exc)
             continue
@@ -153,6 +154,7 @@ def run(
     limit: int | None = None,
     do_judge: bool = True,
     query_ids: set[str] | None = None,
+    base_url: str = judge.DEFAULT_BASE_URL,
 ) -> dict[str, Any]:
     """Run the eval and return a report dict.
 
@@ -180,7 +182,9 @@ def run(
         if do_judge:
             for reorder in arms.values():
                 ranked = reorder(q["query"], pool)
-                grades.update(judge_pool(q["id"], q["query"], ranked, cache, api_key))
+                grades.update(
+                    judge_pool(q["id"], q["query"], ranked, cache, api_key, base_url=base_url)
+                )
             judge.save_cache(JUDGMENTS_PATH, cache)
 
         qr = QueryReport(
