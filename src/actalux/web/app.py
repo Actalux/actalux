@@ -443,7 +443,14 @@ async def apex() -> RedirectResponse:
 @jurisdiction.get("", response_class=HTMLResponse)
 async def home(request: Request, view: EntityView = Depends(resolve_entity)) -> HTMLResponse:
     """A body's home page with the search box."""
-    return templates.TemplateResponse(request, "home.html", _page(view))
+    # Real recent meeting records for this body (newest first) — replaces the old
+    # hardcoded "start here" list. Minutes + transcripts only (they carry real dates).
+    label = {"minutes": "Minutes", "transcript": "Transcript"}
+    rows = list_recent_meeting_documents(
+        _get_db(), view.entity["id"], list(MEETING_PAGE_TYPES), limit=6
+    )
+    recent = [{**d, "type_label": label.get(d.get("document_type") or "", "Record")} for d in rows]
+    return templates.TemplateResponse(request, "home.html", _page(view, recent=recent))
 
 
 def _run_search(

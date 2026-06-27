@@ -37,31 +37,19 @@
     </div>
   </div>
 
+  {% if recent %}
   <div class="recent">
-    <div class="recent-head">Featured topic</div>
+    <div class="recent-head">Recent meetings</div>
     <ul class="recent-list">
+      {% for r in recent %}
       <li>
-        <span class="date">Topic</span>
-        <span class="type">Budget</span>
-        <a class="title" href="{{ base }}/budget">What the district said about spending, salaries, and the tax levy</a>
+        <span class="type">{{ r.type_label }}</span>
+        <a class="title" href="/document/{{ r.id }}">{{ r | display_title }}</a>
       </li>
-      <li>
-        <span class="date">Search</span>
-        <span class="type">Try it</span>
-        <a class="title" href="{{ base }}/search?q=multilingual+learner+program">multilingual learner program</a>
-      </li>
-      <li>
-        <span class="date">Search</span>
-        <span class="type">Try it</span>
-        <a class="title" href="{{ base }}/search?q=long+range+facilities+master+plan">long range facilities master plan</a>
-      </li>
-      <li>
-        <span class="date">Search</span>
-        <span class="type">Try it</span>
-        <a class="title" href="{{ base }}/search?q=curriculum+adoption">curriculum adoption</a>
-      </li>
+      {% endfor %}
     </ul>
   </div>
+  {% endif %}
 </div>
 {% else %}
 <div class="landing">
@@ -71,26 +59,19 @@
     Actalux is a nonpartisan, independent archive of the public records of the {{ entity.display_name if entity else 'city' }} in Clayton, Missouri: meeting videos and searchable transcripts, and the records produced in session. Every passage on this site is a verbatim quote with its source citation attached. We add nothing to the record. We take nothing away. <a href="{{ base }}/methodology">Read how this works.</a>
   </p>
 
+  {% if recent %}
   <div class="recent">
-    <div class="recent-head">Start here</div>
+    <div class="recent-head">Recent meetings</div>
     <ul class="recent-list">
+      {% for r in recent %}
       <li>
-        <span class="date">Browse</span>
-        <span class="type">Meetings</span>
-        <a class="title" href="{{ base }}/meetings">Council meetings, newest first</a>
+        <span class="type">{{ r.type_label }}</span>
+        <a class="title" href="/document/{{ r.id }}">{{ r | display_title }}</a>
       </li>
-      <li>
-        <span class="date">Ask</span>
-        <span class="type">Beta</span>
-        <a class="title" href="{{ base }}/ask">Ask the archive a question</a>
-      </li>
-      <li>
-        <span class="date">Search</span>
-        <span class="type">Try it</span>
-        <a class="title" href="{{ base }}/search?q=public+hearing">public hearing</a>
-      </li>
+      {% endfor %}
     </ul>
   </div>
+  {% endif %}
 </div>
 {% endif %}
 
