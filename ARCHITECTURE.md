@@ -32,6 +32,22 @@ Design system: `DESIGN.md`. Working rules: `CLAUDE.md`.
 - **Read path is public and RLS-protected; write path is service-key only**, run
   exclusively from CI (no laptop writes to prod).
 
+### Two execution surfaces
+
+Everything runs in one of two places — keeping them straight is the key to the
+whole system:
+
+- **(A) The autonomous pipeline — cloud-only, no developer machine.** A meeting
+  lands → it gets ingested → everything is built out (transcript, summary,
+  chapters, name-corrections, votes, newsletter draft) and the site serves it.
+  This is entirely **GitHub Actions** (the crons in §10) plus the **Fly** web app,
+  running on cloud secrets. It needs no laptop and no manual trigger; if the Mac
+  is offline it still runs.
+- **(B) Operator tools — local, manual, never on the serving or ingest path.**
+  The evaluation harness (the LLM **judge**, §7) and the latency bench are run by
+  hand from a dev machine to *measure* quality. A meeting landing never invokes
+  them — they are instruments, not part of "build-out."
+
 ## 2. Tech stack
 
 | Layer | Choice |
@@ -41,9 +57,9 @@ Design system: `DESIGN.md`. Working rules: `CLAUDE.md`.
 | Store | Supabase — Postgres + `pgvector` (project "Actalux Clayton") |
 | Embeddings | `BAAI/bge-small-en-v1.5`, 384-dim, local inference, cached model |
 | Rerank | ZeroEntropy `zerank-1-small` (Apache-2.0) via hosted API, opt-in |
-| LLM (answers/summaries) | OpenAI `gpt-5-mini` (reasoning, minimal); `gpt-4o-mini` for condense/expansion hops; OpenRouter for synthesis A/B in the eval harness |
-| Transcription | Groq `whisper-large-v3` (free tier) |
-| Secrets | Doppler (project `mac`, config `dev`); CI uses GitHub Actions secrets; prod uses Fly secrets |
+| LLM (all chat) | **One gateway — OpenRouter, single key.** `openai/gpt-5-mini` (reasoning, minimal) for answers/summaries; `openai/gpt-4o-mini` for the condense/expansion hops; `anthropic/claude-sonnet-4-6` for the eval judge. Direct OpenAI/Anthropic keys are retired (nothing in code reads them). |
+| Transcription | Groq `whisper-large-v3` (free tier) — a non-LLM audio service, its own key |
+| Secrets | Doppler is the source of truth, synced out to Fly (web) + GitHub Actions (CI); see `docs/SECRETS.md` for the per-secret map and the `actalux`-project consolidation |
 | Hosting | Fly.io app `actalux`; Supabase managed Postgres |
 
 ## 3. Data model
@@ -183,13 +199,17 @@ chapters. Idempotent and deduped per `(entity, meeting_date)`.
   **post-verification**: every generated statement must map to a retrieved
   verbatim quote, or it's dropped. Neutrality guardrails (e.g. never adopt "no tax
   rate increase" framing — state the levy rate figures). Summary model
-  `gpt-5-mini`.
-- **Chatbot** (`/ask`, `/ask/stream`) — multi-turn: condense (`gpt-4o-mini`) →
-  retrieve → (rerank) → generate, streamed. Per-IP and per-day caps
+  `openai/gpt-5-mini` (via OpenRouter).
+- **Chatbot** (`/ask`, `/ask/stream`) — multi-turn: condense (`openai/gpt-4o-mini`)
+  → retrieve → (rerank) → generate, streamed. Per-IP and per-day caps
   (`rate_limit_ask_per_minute=8`, `ask_daily_message_cap=400`).
-- **Eval** (`src/actalux/eval/`) — an answer-quality harness with an LLM judge,
-  retrieval metrics, and model A/B (OpenRouter). Drove the "keep gpt-5-mini" +
-  reranker decisions.
+- **Eval — operator-run measurement (surface B), not a serving/ingest step.**
+  `src/actalux/eval/` retrieves + generates an answer on a committed query set,
+  then an LLM **judge** (`anthropic/claude-sonnet-4-6`, via OpenRouter) grades each
+  result for relevance and answer faithfulness; it also reports retrieval metrics
+  (nDCG/MRR/recall) and supports model A/B. The judge is a measuring instrument —
+  a stronger model grading the production model's output — run by hand, never by a
+  meeting landing. Drove the "keep gpt-5-mini" + reranker decisions.
 
 ## 8. Web app
 
@@ -247,10 +267,12 @@ etc.) over the same store. Monetization-ready but **dormant**:
 
 ## 11. Security & content policy
 
-- **Secrets** (`docs/SECRETS.md`, names-only register): canonical home is Doppler
-  `mac/dev`, mirrored to GitHub Actions + Fly. Never inline a secret value; web
-  uses the anon key + RLS; service key is CI-only. Rotate all once Actalux has its
-  own accounts.
+- **Secrets** (`docs/SECRETS.md`, names-only register): source of truth is the
+  Doppler **`actalux`** project, synced out to GitHub Actions + Fly. **One LLM key
+  (OpenRouter)** now covers every chat model — the OpenAI and Anthropic keys are
+  retired (dead in code). Non-LLM service keys stay separate (Groq = Whisper audio,
+  ZeroEntropy = reranker, Supabase = DB). Never inline a secret value; web uses the
+  anon key + RLS; the service key is CI-only and never reaches Fly.
 - **PII guard** blocks SSN/DOB pre-DB for every body.
 - **Content policy** (`CLAUDE.md`): every AI statement cites a verbatim quote;
   closed/executive session content never published; nonpartisan, no editorializing,
