@@ -27,7 +27,7 @@ from typing import Any
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, FastAPI, Form, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup, escape
@@ -111,6 +111,7 @@ from actalux.web.retrieval import (
     get_db,
     search_expansions,
 )
+from actalux.web.sitemap import build_robots_txt, build_sitemap_xml
 from actalux.web.storage import stored_file_exists, stored_file_url
 from actalux.web.text_snippets import (
     TRANSCRIPT_CAPTION_LABEL,
@@ -424,6 +425,19 @@ def healthz() -> dict[str, str]:
     up and serving.
     """
     return {"status": "ok"}
+
+
+@app.get("/robots.txt", include_in_schema=False)
+def robots_txt() -> Response:
+    """robots.txt: allow crawling and point at the sitemap (SEO Phase 1)."""
+    return Response(build_robots_txt(_get_config().site_base_url), media_type="text/plain")
+
+
+@app.get("/sitemap.xml", include_in_schema=False)
+def sitemap_xml() -> Response:
+    """DB-driven sitemap of canonical entity + document pages (cached per base_url)."""
+    xml = build_sitemap_xml(_get_db(), _get_config().site_base_url)
+    return Response(content=xml, media_type="application/xml")
 
 
 def _redirect_to_default(suffix: str, request: Request) -> RedirectResponse:
