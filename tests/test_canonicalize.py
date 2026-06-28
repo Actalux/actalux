@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from actalux.glossary.canonicalize import (
+    ALL_SOURCES,
     Canonicalization,
     CorrectionRule,
     build_rules,
@@ -46,6 +47,7 @@ def test_longest_match_wins_no_double_apply():
             {"mangled": "moscow sports lighting", "canonical": "Musco Sports Lighting"},
         ],
         [],
+        sources=ALL_SOURCES,
     )
     raw = "the Moscow Sports Lighting bid"
     text, audits = canonicalize_text(raw, rules)
@@ -69,7 +71,9 @@ def test_char_start_is_raw_offset_not_canonical_offset():
 def test_whitespace_flexible_multiword_match():
     # A multi-word mangling must match across a line wrap / double space in the raw text.
     rules = build_rules(
-        [{"mangled": "moscow sports lighting", "canonical": "Musco Sports Lighting"}], []
+        [{"mangled": "moscow sports lighting", "canonical": "Musco Sports Lighting"}],
+        [],
+        sources=ALL_SOURCES,
     )
     raw = "the Moscow\nSports  Lighting bid"
     text, audits = canonicalize_text(raw, rules)
@@ -86,6 +90,7 @@ def test_build_rules_drops_conflicting_case_variants():
             {"mangled": "York", "canonical": "Yorke"},
         ],
         [],
+        sources=ALL_SOURCES,
     )
     assert rules == []
 
@@ -98,6 +103,7 @@ def test_build_rules_keeps_agreeing_case_variants():
             {"mangled": "York", "canonical": "Yorg"},
         ],
         [],
+        sources=ALL_SOURCES,
     )
     assert len(rules) == 1
     assert rules[0].canonical == "Yorg"
@@ -118,11 +124,25 @@ def test_build_rules_source_classification():
         {"mangled": "shah park", "canonical": "Shaw Park", "provenance": "auto"},
         {"mangled": "brentwood ave", "canonical": "Brentwood Avenue", "provenance": "asr"},
     ]
-    by_canonical = {r.canonical: r.source for r in build_rules(corrections, lexicon)}
+    rules = build_rules(corrections, lexicon, sources=ALL_SOURCES)
+    by_canonical = {r.canonical: r.source for r in rules}
     assert by_canonical["Jeffery Yorg"] == "lexicon"  # canonical is an official
     assert by_canonical["Musco"] == "manual"  # reviewed/curated
     assert by_canonical["Shaw Park"] == "auto_discovery"  # auto, not an official
     assert by_canonical["Brentwood Avenue"] == "auto_discovery"  # asr-origin, not an official
+
+
+def test_build_rules_default_excludes_auto_discovery():
+    # The default (canonical-text) build keeps only lexicon/manual; auto-discovered
+    # fixes are dropped so they never rewrite the stored transcript.
+    lexicon = [{"canonical_name": "Jeffery Yorg"}]
+    corrections = [
+        {"mangled": "york", "canonical": "Jeffery Yorg", "provenance": "asr"},  # lexicon
+        {"mangled": "moscow", "canonical": "Musco", "provenance": "reviewed"},  # manual
+        {"mangled": "shah park", "canonical": "Shaw Park", "provenance": "auto"},  # auto -> dropped
+    ]
+    canonicals = {r.canonical for r in build_rules(corrections, lexicon)}
+    assert canonicals == {"Jeffery Yorg", "Musco"}  # Shaw Park (auto_discovery) excluded
 
 
 def test_build_rules_skips_noops_and_empty():
@@ -141,6 +161,7 @@ def test_build_rules_orders_longest_mangled_first():
             {"mangled": "moscow sports lighting", "canonical": "Musco Sports Lighting"},
         ],
         [],
+        sources=ALL_SOURCES,
     )
     assert rules[0].mangled == "moscow sports lighting"
 

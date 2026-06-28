@@ -41,6 +41,13 @@ logger = logging.getLogger(__name__)
 # 'reviewed'/'manual' are human-curated; everything else came from auto-discovery.
 _PROVENANCE_SOURCE = {"reviewed": "manual", "manual": "manual"}
 
+# Sources trusted to REWRITE the canonical (displayed/embedded) transcript: official
+# names from the lexicon and human-curated fixes. Auto-discovered corrections are noisy
+# and body-agnostic within a place (a schools-curriculum spelling could hit a council
+# transcript), so they are kept for SEARCH expansion only — never applied to stored text.
+CANONICAL_SOURCES = frozenset({"lexicon", "manual"})
+ALL_SOURCES = frozenset({"lexicon", "manual", "auto_discovery"})
+
 
 @dataclass(frozen=True)
 class CorrectionRule:
@@ -74,7 +81,10 @@ class Canonicalization:
 
 
 def build_rules(
-    corrections: list[dict[str, Any]], lexicon: list[dict[str, Any]]
+    corrections: list[dict[str, Any]],
+    lexicon: list[dict[str, Any]],
+    *,
+    sources: frozenset[str] = CANONICAL_SOURCES,
 ) -> list[CorrectionRule]:
     """Vetted ``name_corrections`` rows + officials lexicon -> forward rules.
 
@@ -82,6 +92,11 @@ def build_rules(
     canonical is an official's name is sourced ``lexicon``; a reviewed/manual one is
     ``manual``; the rest (auto-discovered street/business/etc. spellings) are
     ``auto_discovery``. No spelling is added that isn't already a vetted correction.
+
+    Only rules whose source is in ``sources`` are returned; the default
+    (``CANONICAL_SOURCES``) keeps just the high-trust lexicon/manual fixes, so noisy
+    auto-discovered corrections never rewrite the stored transcript. Pass
+    ``ALL_SOURCES`` to include them (e.g. when testing classification).
 
     Rules are ordered longest-mangled-first (then lexicographically) so a specific
     multi-word fix claims its span before a shorter contained one, deterministically.
@@ -102,6 +117,8 @@ def build_rules(
             source = "lexicon"
         else:
             source = _PROVENANCE_SOURCE.get((row.get("provenance") or "").lower(), "auto_discovery")
+        if source not in sources:
+            continue  # not trusted to rewrite the canonical text
         by_key.setdefault(mangled.lower(), []).append(CorrectionRule(mangled, canonical, source))
 
     rules: list[CorrectionRule] = []
