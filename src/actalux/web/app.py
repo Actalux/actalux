@@ -40,12 +40,15 @@ from actalux.db import (
     get_chunk_citation_ids,
     get_chunk_with_context,
     get_dese_line_items,
+    get_diarization_turns,
     get_document,
     get_documents,
     get_entity,
     get_entity_by_path,
     get_meeting_records,
+    get_name_corrections,
     get_proposed_budget_line_items,
+    get_speaker_identities,
     insert_correction,
     list_documents,
     list_entities,
@@ -55,7 +58,9 @@ from actalux.db import (
     resolve_chunk_ref,
     resolve_source_anchor,
 )
+from actalux.diarization.reader import build_reader_transcript
 from actalux.errors import SearchError, SummaryError
+from actalux.glossary.canonicalize import build_rules, canonicalize_text
 from actalux.graph.store import (
     body_matters,
     body_members,
@@ -63,6 +68,7 @@ from actalux.graph.store import (
     matter_records,
     member_by_slug,
     member_records,
+    place_lexicon,
 )
 from actalux.ingest.embedder import load_model
 from actalux.models import Correction, chunk_hash_id
@@ -1672,6 +1678,35 @@ async def topic_meetings_redirect(request: Request) -> RedirectResponse:
 # Document and chunk pages stay flat (IDs are globally unique, reached only via
 # their body's results). They resolve their body from the document so the page
 # chrome (sidebar, top-bar) renders under the right jurisdiction.
+def _transcript_speaker_turns(client: Client, doc: dict[str, Any]) -> list[dict[str, Any]]:
+    """Speaker-labeled, name-canonicalized turn blocks for a transcript's reader view.
+
+    Empty for non-transcripts and for transcripts with no attribution layer yet (the
+    reader falls back to canonical paragraphs). Corrections are place-scoped (cardinal
+    rule): a mangling fixed here is the place's own, never borrowed from another town.
+    """
+    if doc.get("source_portal") != "youtube" or doc.get("document_type") != "transcript":
+        return []
+    turns = get_diarization_turns(client, doc["id"])
+    if not turns:
+        return []
+    identities = get_speaker_identities(client, doc["id"])
+    entity = get_entity(client, doc["entity_id"]) if doc.get("entity_id") is not None else None
+    rules = (
+        build_rules(
+            get_name_corrections(client, entity["place_id"]),
+            place_lexicon(client, entity["place_id"]),
+        )
+        if entity
+        else []
+    )
+
+    def canonicalize(text: str) -> str:
+        return canonicalize_text(text, rules)[0] if rules else text
+
+    return build_reader_transcript(turns, identities, canonicalize)
+
+
 @app.get("/document/{doc_id}", response_class=HTMLResponse, response_model=None)
 async def document_view(request: Request, doc_id: int) -> HTMLResponse | RedirectResponse:
     """Full document view; redirects a superseded id to its current version."""
@@ -1689,7 +1724,12 @@ async def document_view(request: Request, doc_id: int) -> HTMLResponse | Redirec
     return templates.TemplateResponse(
         request,
         "document.html",
-        _page(view, document=resolved.document, pdf_available=_pdf_available(resolved.document)),
+        _page(
+            view,
+            document=resolved.document,
+            pdf_available=_pdf_available(resolved.document),
+            speaker_turns=_transcript_speaker_turns(client, resolved.document),
+        ),
     )
 
 
