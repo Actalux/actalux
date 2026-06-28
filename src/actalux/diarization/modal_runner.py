@@ -112,6 +112,31 @@ class ModalRunner:
         segments = self._fn.remote(audio_bytes, hint_num_speakers)
         return SpeakerTimeline.from_segments(segments, self._model)
 
+    def spawn(
+        self, audio_bytes: bytes, *, hint_num_speakers: int | None = None
+    ) -> modal.FunctionCall:
+        """Kick off a diarization without blocking; returns a handle for ``collect``.
+
+        Lets a backfill spawn every meeting's GPU work up front so it all runs in
+        parallel across Modal containers, instead of one blocking ``run`` at a time.
+        Pair with ``collect`` to retrieve the result.
+        """
+        return self._fn.spawn(audio_bytes, hint_num_speakers)
+
+    def collect(self, call: modal.FunctionCall) -> SpeakerTimeline:
+        """Block for a spawned diarization's result and map it to ``SpeakerTimeline``."""
+        from actalux.diarization.backend import SpeakerTimeline
+
+        return SpeakerTimeline.from_segments(call.get(), self._model)
+
+    @staticmethod
+    def cancel(call: modal.FunctionCall) -> None:
+        """Best-effort cancel a spawned call so a half-failed pair leaves no orphan running."""
+        try:
+            call.cancel()
+        except Exception:  # noqa: BLE001 - cleanup must never mask the original error
+            pass
+
 
 @app.local_entrypoint()
 def main(audio_path: str, hint_num_speakers: int = 0) -> None:
