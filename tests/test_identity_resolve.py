@@ -5,10 +5,12 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
+from actalux.glossary.canonicalize import CorrectionRule
 from actalux.identity.resolve import (
     IdentityProposal,
     ResolverTurn,
     RosterMember,
+    _rows_to_turns,
     persist_identities,
     resolve_identities,
 )
@@ -161,6 +163,36 @@ def test_name_not_in_roster_is_never_invented():
 def test_empty_inputs():
     assert resolve_identities([], _members()) == []
     assert resolve_identities([_t("A", "Jane Harris")], []) == []
+
+
+def test_rows_to_turns_canonicalizes_names():
+    rows = [
+        {
+            "cluster_label": "SPEAKER_00",
+            "words": [{"word": "Council"}, {"word": "member"}, {"word": "York"}],
+        }
+    ]
+    rules = [CorrectionRule("york", "Jeffery Yorg", "lexicon")]
+    assert _rows_to_turns(rows, rules)[0].text == "Council member Jeffery Yorg"
+    assert _rows_to_turns(rows)[0].text == "Council member York"  # raw when no rules
+
+
+def test_resolution_after_canonicalizing_a_mangled_name():
+    # The mangled "York" only resolves to roster "Jeffery Yorg" once canonicalized.
+    members = [RosterMember(1, "jeffery-yorg", "Jeffery Yorg", frozenset({"jeffery yorg"}))]
+    rows = [
+        {
+            "cluster_label": "CLERK",
+            "words": [{"word": "Council"}, {"word": "member"}, {"word": "York"}],
+        },
+        {"cluster_label": "M1", "words": [{"word": "Here"}]},
+    ]
+    rules = [CorrectionRule("york", "Jeffery Yorg", "lexicon")]
+    props = resolve_identities(_rows_to_turns(rows, rules), members)
+    assert len(props) == 1
+    assert props[0].subject_id == 1 and props[0].confidence == "inferred_high"
+    # Without canonicalization the raw "York" does not match -> no proposal.
+    assert resolve_identities(_rows_to_turns(rows), members) == []
 
 
 def test_to_row_shape():

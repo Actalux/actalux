@@ -37,7 +37,9 @@ from typing import Any
 
 from supabase import Client
 
-from actalux.db import fetch_all_rows, get_diarization_turns
+from actalux.db import fetch_all_rows, get_diarization_turns, get_name_corrections
+from actalux.glossary.canonicalize import CorrectionRule, build_rules, canonicalize_text
+from actalux.graph.store import place_lexicon
 
 # A roll-call response is one of a small set of exact affirmative forms. Anything else
 # ("she is here", "I am here to present the budget", "not present") is ordinary speech,
@@ -340,15 +342,29 @@ def members_for_entity(client: Client, entity_id: int) -> list[RosterMember]:
     ]
 
 
-def turns_for_document(client: Client, document_id: int) -> list[ResolverTurn]:
+def _rows_to_turns(
+    rows: list[dict[str, Any]], rules: list[CorrectionRule] | None = None
+) -> list[ResolverTurn]:
+    """Diarization-turn rows -> ``ResolverTurn``\\ s, optionally name-canonicalized.
+
+    Resolution matches the roster's canonical names, but the stored turn words are raw
+    ASR (so the clerk's "York" never matches roster "Yorg"). Applying the place's
+    canonical name-corrections to each turn's text first lets a known mangling resolve.
+    """
+    turns: list[ResolverTurn] = []
+    for row in rows:
+        text = " ".join(w.get("word", "") for w in (row.get("words") or []))
+        if rules:
+            text = canonicalize_text(text, rules)[0]
+        turns.append(ResolverTurn(cluster_label=row["cluster_label"], text=text))
+    return turns
+
+
+def turns_for_document(
+    client: Client, document_id: int, rules: list[CorrectionRule] | None = None
+) -> list[ResolverTurn]:
     """The document's diarization turns reduced to ``(cluster, text)`` for resolution."""
-    return [
-        ResolverTurn(
-            cluster_label=row["cluster_label"],
-            text=" ".join(w.get("word", "") for w in (row.get("words") or [])),
-        )
-        for row in get_diarization_turns(client, document_id)
-    ]
+    return _rows_to_turns(get_diarization_turns(client, document_id), rules)
 
 
 def persist_identities(
@@ -390,12 +406,26 @@ def persist_identities(
     return len(rows)
 
 
+def _place_canonical_rules(client: Client, entity_id: int) -> list[CorrectionRule]:
+    """The place's canonical name-correction rules for the body's entity, or []."""
+    row = client.table("entities").select("place_id").eq("id", entity_id).limit(1).execute().data
+    if not row:
+        return []
+    place_id = row[0]["place_id"]
+    return build_rules(get_name_corrections(client, place_id), place_lexicon(client, place_id))
+
+
 def resolve_document(
     client: Client, service_client: Client, document_id: int, entity_id: int
 ) -> list[IdentityProposal]:
-    """Resolve + persist identities for one transcript; return the proposals."""
+    """Resolve + persist identities for one transcript; return the proposals.
+
+    Turn text is name-canonicalized first (so a known mangling like "York" resolves to
+    roster "Jeffery Yorg") before matching against the body roster.
+    """
     members = members_for_entity(client, entity_id)
-    turns = turns_for_document(client, document_id)
+    rules = _place_canonical_rules(client, entity_id)
+    turns = turns_for_document(client, document_id, rules)
     proposals = resolve_identities(turns, members)
     persist_identities(service_client, document_id, proposals)
     return proposals
