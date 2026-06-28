@@ -127,21 +127,25 @@ def main() -> int:
         edges, queue = derive_document_edges(votes, roster)
         if doc["entity_id"] == council_eid and matter_ids:
             edges = edges + derive_matter_edges(votes, matter_ids)
-        if not edges and not queue:
-            continue
         for e in edges:
             edge_types[e["type"]] += 1
         total_edges += len(edges)
         total_queue += len(queue)
+        # Rebuild this document's graph even when it now derives nothing: a current doc
+        # that previously had edges but no longer does (votes removed, or every name went
+        # unresolvable) must have its stale edges CLEARED, not skipped. The empty case is
+        # the clear — replace_document_graph deletes by source_document_id then inserts
+        # nothing (a no-op delete for a doc that never had edges).
         if args.apply:
             replace_document_graph(client, doc_id, edges, queue)
-        logger.info(
-            "  doc %s (%s): %d edges, %d queued",
-            doc_id,
-            entities.get(doc["entity_id"], "?"),
-            len(edges),
-            len(queue),
-        )
+        if edges or queue:
+            logger.info(
+                "  doc %s (%s): %d edges, %d queued",
+                doc_id,
+                entities.get(doc["entity_id"], "?"),
+                len(edges),
+                len(queue),
+            )
 
     pruned = 0
     if args.apply and not args.doc:

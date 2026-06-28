@@ -1,0 +1,21 @@
+{
+  "place": "mo/clayton",
+  "organizations": [
+    {
+      "slug": "city-of-clayton",
+      "name": "City of Clayton",
+      "organization_type": "municipality",
+      "state": "mo",
+      "bodies": ["council", "plan-commission", "board-of-adjustment"],
+      "serves": ["clayton"]
+    },
+    {
+      "slug": "school-district-of-clayton",
+      "name": "School District of Clayton",
+      "organization_type": "school_district",
+      "state": "mo",
+      "bodies": ["schools"],
+      "serves": ["clayton"]
+    }
+  ]
+}

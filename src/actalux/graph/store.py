@@ -133,42 +133,96 @@ def body_members(client: Client, entity_id: int) -> list[dict[str, Any]]:
         return []
     subjects = (
         client.table("subjects")
-        .select("id,slug,canonical_name,metadata")
+        .select("id,slug,canonical_name,metadata,person_id")
         .in_("id", subject_ids)
         .eq("publishable", True)
         .execute()
         .data
     )
     by_id = {s["id"]: s for s in subjects}
+    # The member link/URL uses the public persons.slug, not the internal subject slug
+    # (a non-primary board's subject slug is '{slug}--{body_slug}'). Map each subject's
+    # person to its public slug; fall back to the subject slug when unlinked (a person
+    # row not yet backfilled).
+    person_ids = [s["person_id"] for s in subjects if s.get("person_id")]
+    public_slug_by_person: dict[int, str] = {}
+    if person_ids:
+        persons = client.table("persons").select("id,slug").in_("id", person_ids).execute().data
+        public_slug_by_person = {p["id"]: p["slug"] for p in persons}
     members: list[dict[str, Any]] = []
     for m in memberships:
         subject = by_id.get(m["subject_id"])
         if subject is None:
             continue
+        public_slug = public_slug_by_person.get(subject.get("person_id")) or subject["slug"]
         # role from the membership (per body) — a cross-body member's role differs
         # between, say, council and the Plan Commission.
         members.append(
-            {**subject, "role": m["role"], "start_date": m["start_date"], "end_date": m["end_date"]}
+            {
+                **subject,
+                "slug": public_slug,
+                "role": m["role"],
+                "start_date": m["start_date"],
+                "end_date": m["end_date"],
+            }
         )
     return members
 
 
 def member_by_slug(client: Client, place_id: int, slug: str, entity_id: int) -> dict | None:
-    """One publishable member of a body by slug, with its term window, or None."""
-    rows = (
-        client.table("subjects")
-        .select("id,slug,canonical_name,metadata")
-        .eq("place_id", place_id)
+    """One publishable member of a body by slug, with its term window, or None.
+
+    The public identity is ``persons.slug`` (Model B): a person on N bodies has one
+    ``persons`` row and one per-board ``subjects`` row each, so the member-in-body page
+    resolves ``persons.slug`` + the body to that board's subject. Falls back to a
+    ``subjects.slug`` match when no person resolves — which keeps every member URL
+    working before the per-board migration (``persons`` not yet populated) and resolves
+    any legacy/internal subject-slug link afterward. The returned ``slug`` is always the
+    public one; ``id`` is the per-board subject id (the vote record keys on it).
+    """
+    subject: Any = None
+    public_slug = slug
+    person = (
+        client.table("persons")
+        .select("id,slug")
         .eq("slug", slug)
-        .eq("type", "person")
         .eq("publishable", True)
         .limit(1)
         .execute()
         .data
     )
-    if not rows:
-        return None
-    subject = rows[0]
+    if person:
+        rows = (
+            client.table("subjects")
+            .select("id,slug,canonical_name,metadata")
+            .eq("person_id", person[0]["id"])
+            .eq("entity_id", entity_id)
+            .eq("type", "person")
+            .eq("publishable", True)
+            .limit(1)
+            .execute()
+            .data
+        )
+        if rows:
+            subject = rows[0]
+            public_slug = person[0]["slug"]
+    if subject is None:
+        rows = (
+            client.table("subjects")
+            .select("id,slug,canonical_name,metadata")
+            .eq("place_id", place_id)
+            .eq("slug", slug)
+            .eq("type", "person")
+            .eq("publishable", True)
+            .limit(1)
+            .execute()
+            .data
+        )
+        if not rows:
+            return None
+        subject = rows[0]
+        public_slug = rows[0]["slug"]
+    assert subject is not None  # set by the person or fallback branch, else returned above
     membership = (
         client.table("memberships")
         .select("role,start_date,end_date")
@@ -180,7 +234,7 @@ def member_by_slug(client: Client, place_id: int, slug: str, entity_id: int) -> 
     )
     if not membership:
         return None  # publishable subject, but not a member of THIS body
-    return {**subject, **membership[0]}
+    return {**subject, **membership[0], "slug": public_slug}
 
 
 def member_records(client: Client, subject_id: int, entity_id: int) -> list[dict[str, Any]]:
@@ -200,6 +254,108 @@ def member_records(client: Client, subject_id: int, entity_id: int) -> list[dict
     )
 
 
+def _member_record_summary(client: Client, subject_id: int, entity_id: int) -> dict[str, Any]:
+    """Cited-action count + meeting-date span for one (member, body) — two light reads.
+
+    PostgREST's exact count is the total matching set (not the limited page), so the
+    ascending query yields the count and the earliest date together; one more read
+    gives the latest. Avoids paging a long-serving member's whole record just to
+    summarize it on the person spine.
+    """
+    asc = (
+        client.table("member_vote_records")
+        .select("meeting_date", count="exact")
+        .eq("subject_id", subject_id)
+        .eq("entity_id", entity_id)
+        .order("meeting_date")
+        .limit(1)
+        .execute()
+    )
+    desc = (
+        client.table("member_vote_records")
+        .select("meeting_date")
+        .eq("subject_id", subject_id)
+        .eq("entity_id", entity_id)
+        .order("meeting_date", desc=True)
+        .limit(1)
+        .execute()
+        .data
+    )
+    return {
+        "count": asc.count or 0,
+        "first_date": asc.data[0]["meeting_date"] if asc.data else None,
+        "last_date": desc[0]["meeting_date"] if desc else None,
+    }
+
+
+def person_dossier(client: Client, slug: str) -> dict | None:
+    """One publishable person with a per-body tenure summary, or None.
+
+    The /people/{slug} spine (Model B): the global person identity plus one entry per
+    governing body they serve(d) — each per-board subject's role, term window, cited-
+    action count, and the span of that cited record. Returns DATA only; the caller
+    assembles URLs/labels per tenure from ``entity_id`` (presentation stays in the web
+    layer). A non-publishable / unknown slug returns None.
+    """
+    person_rows = (
+        client.table("persons")
+        .select("id,slug,canonical_name")
+        .eq("slug", slug)
+        .eq("publishable", True)
+        .limit(1)
+        .execute()
+        .data
+    )
+    if not person_rows:
+        return None
+    person = person_rows[0]
+
+    subjects = (
+        client.table("subjects")
+        .select("id,entity_id,metadata")
+        .eq("person_id", person["id"])
+        .eq("type", "person")
+        .eq("publishable", True)
+        .execute()
+        .data
+    )
+    subject_ids = [s["id"] for s in subjects if s.get("entity_id") is not None]
+    memberships = (
+        client.table("memberships")
+        .select("subject_id,role,start_date,end_date")
+        .in_("subject_id", subject_ids)
+        .execute()
+        .data
+        if subject_ids
+        else []
+    )
+    mem_by_subject = {m["subject_id"]: m for m in memberships}
+
+    tenures: list[dict[str, Any]] = []
+    for s in subjects:
+        entity_id = s.get("entity_id")
+        if entity_id is None:
+            continue  # an unsplit/legacy subject carries no single body; skip it
+        m = mem_by_subject.get(s["id"], {})
+        summary = _member_record_summary(client, s["id"], entity_id)
+        tenures.append(
+            {
+                "subject_id": s["id"],
+                "entity_id": entity_id,
+                "role": m.get("role") or (s.get("metadata") or {}).get("role"),
+                "start_date": m.get("start_date"),
+                "end_date": m.get("end_date"),
+                "actions": summary["count"],
+                "first_date": summary["first_date"],
+                "last_date": summary["last_date"],
+            }
+        )
+    return {
+        "person": {"slug": person["slug"], "canonical_name": person["canonical_name"]},
+        "tenures": tenures,
+    }
+
+
 def place_lexicon(client: Client, place_id: int) -> list[dict[str, Any]]:
     """Every publishable person in a place with its name variants and memberships.
 
@@ -212,7 +368,7 @@ def place_lexicon(client: Client, place_id: int) -> list[dict[str, Any]]:
     subjects = fetch_all_rows(
         lambda: (
             client.table("subjects")
-            .select("id,slug,canonical_name,metadata")
+            .select("id,slug,canonical_name,metadata,person_id,entity_id")
             .eq("place_id", place_id)
             .eq("type", "person")
             .eq("publishable", True)
@@ -232,6 +388,17 @@ def place_lexicon(client: Client, place_id: int) -> list[dict[str, Any]]:
     )
     entities = client.table("entities").select("id,body_slug").eq("place_id", place_id).execute()
     body_by_eid = {e["id"]: e["body_slug"] for e in entities.data}
+    person_ids = [s["person_id"] for s in subjects if s.get("person_id")]
+    persons = (
+        client.table("persons")
+        .select("id,slug,canonical_name")
+        .in_("id", person_ids)
+        .execute()
+        .data
+        if person_ids
+        else []
+    )
+    person_by_id = {p["id"]: p for p in persons}
 
     by_aliases: dict[int, list[dict]] = {sid: [] for sid in subject_ids}
     for a in aliases:
@@ -242,9 +409,26 @@ def place_lexicon(client: Client, place_id: int) -> list[dict[str, Any]]:
         if m["subject_id"] in by_memberships and m["entity_id"] in body_by_eid:
             by_memberships[m["subject_id"]].append(m)
 
-    lexicon: list[dict[str, Any]] = []
+    # Group a person's per-board subjects (Model B) back into ONE lexicon entry keyed by
+    # the public persons.slug, so a cross-body person is one entry carrying both bodies —
+    # the pre-split contract the downstream consumers (ledger glossary, speaker
+    # attribution) depend on. A subject not yet linked to a person stands alone.
+    groups: dict[Any, list[dict]] = {}
     for s in subjects:
-        mships = by_memberships[s["id"]]
+        key = s["person_id"] if s.get("person_id") else ("subject", s["id"])
+        groups.setdefault(key, []).append(s)
+
+    def _entity_order(subject: dict) -> int:
+        return subject["entity_id"] if subject.get("entity_id") is not None else 1_000_000
+
+    lexicon: list[dict[str, Any]] = []
+    for key, subs in groups.items():
+        primary = min(subs, key=_entity_order)  # lowest entity_id keeps role/identity
+        person = person_by_id.get(key) if isinstance(key, int) else None
+        slug = person["slug"] if person else primary["slug"]
+        canonical = person["canonical_name"] if person else primary["canonical_name"]
+
+        mships = [m for s in subs for m in by_memberships[s["id"]]]
         bodies = sorted(
             (
                 {
@@ -257,25 +441,29 @@ def place_lexicon(client: Client, place_id: int) -> list[dict[str, Any]]:
             ),
             key=lambda b: b["body_slug"],
         )
+        # Union the per-board subjects' aliases (each board carries the same copied set).
+        alias_by_norm: dict[str, dict] = {}
+        for s in subs:
+            for a in by_aliases[s["id"]]:
+                alias_by_norm.setdefault(
+                    a["normalized_alias"],
+                    {
+                        "raw": a["raw_alias"],
+                        "normalized": a["normalized_alias"],
+                        "source": a["source"],
+                    },
+                )
         lexicon.append(
             {
-                "slug": s["slug"],
-                "canonical_name": s["canonical_name"],
+                "slug": slug,
+                "canonical_name": canonical,
                 "kind": "person",
-                "role": (s.get("metadata") or {}).get("role"),
+                "role": (primary.get("metadata") or {}).get("role"),
                 # still seated on at least one body (a NULL end_date = open term)
                 "current": any(m["end_date"] is None for m in mships),
                 "bodies": bodies,
                 "aliases": sorted(
-                    (
-                        {
-                            "raw": a["raw_alias"],
-                            "normalized": a["normalized_alias"],
-                            "source": a["source"],
-                        }
-                        for a in by_aliases[s["id"]]
-                    ),
-                    key=lambda a: a["raw"] or a["normalized"] or "",
+                    alias_by_norm.values(), key=lambda a: a["raw"] or a["normalized"] or ""
                 ),
             }
         )

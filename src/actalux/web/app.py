@@ -68,6 +68,7 @@ from actalux.graph.store import (
     matter_records,
     member_by_slug,
     member_records,
+    person_dossier,
     place_lexicon,
 )
 from actalux.ingest.embedder import load_model
@@ -2490,6 +2491,46 @@ def _render_citation_links(text: str, results: list[dict[str, Any]]) -> str:
         last = match.end()
     parts.append(str(escape(text[last:])))
     return "".join(parts)
+
+
+# The global person spine. Registered BEFORE the greedy /{state}/{place} catch-all so
+# /people/{slug} is not matched as state=people, place=<slug>.
+@app.get("/people/{slug}", response_class=HTMLResponse)
+def person_detail(request: Request, slug: str) -> HTMLResponse:
+    """A person's cross-body career: every governing body they serve(d), each a cited record.
+
+    The global person identity (Model B): one page aggregating the person's per-board
+    subjects into a career timeline. Each tenure links to that body's full cited record
+    (the member-in-body page). A slug that is not a publishable person 404s.
+    """
+    client = _get_db()
+    dossier = person_dossier(client, slug)
+    if not dossier:
+        raise HTTPException(status_code=404, detail="Unknown person")
+    person = dossier["person"]
+    tenures: list[dict[str, Any]] = []
+    for t in dossier["tenures"]:
+        entity = get_entity(client, t["entity_id"])
+        if not entity:
+            continue
+        view = _entity_view(entity)
+        place = entity.get("place") or {}
+        tenures.append(
+            {
+                **t,
+                "body_label": entity.get("display_name") or entity.get("body_slug"),
+                "place_label": place.get("display_name") or place.get("slug"),
+                "member_url": f"{view.base}/member/{person['slug']}",
+            }
+        )
+    # Career timeline: earliest tenure first (term start, or the earliest cited action
+    # for an appointed board with no published term dates).
+    tenures.sort(key=lambda t: t.get("start_date") or t.get("first_date") or "9999-99-99")
+    return templates.TemplateResponse(
+        request,
+        "person.html",
+        _page(None, person=person, tenures=tenures),
+    )
 
 
 # Registered after the flat routes so /document/{id} and /topic/budget win the

@@ -1432,3 +1432,71 @@ class TestMatterPages:
         # a matter with no cited action in this body is withheld (404), not an empty page.
         r = client.get("/mo/clayton/council/matter/bill-7156")
         assert r.status_code == 404
+
+
+# Council + PC entities for the global person page (career timeline across bodies).
+_PERSON_COUNCIL_ENTITY = {
+    "id": 2,
+    "body_slug": "council",
+    "type": "city_council",
+    "display_name": "Clayton City Council",
+    "place_id": 10,
+    "place": {"state": "mo", "slug": "clayton", "display_name": "Clayton"},
+}
+_PERSON_PC_ENTITY = {
+    "id": 3,
+    "body_slug": "plan-commission",
+    "type": "plan_commission",
+    "display_name": "Clayton Plan Commission",
+    "place_id": 10,
+    "place": {"state": "mo", "slug": "clayton", "display_name": "Clayton"},
+}
+_PERSON_DOSSIER = {
+    "person": {"slug": "susan-buse", "canonical_name": "Susan Buse"},
+    "tenures": [
+        {
+            "subject_id": 1,
+            "entity_id": 2,
+            "role": "Councilmember",
+            "start_date": "2020-06-23",
+            "end_date": None,
+            "actions": 12,
+            "first_date": "2021-01-01",
+            "last_date": "2023-05-05",
+        },
+        {
+            "subject_id": 2,
+            "entity_id": 3,
+            "role": "Commissioner",
+            "start_date": None,
+            "end_date": None,
+            "actions": 4,
+            "first_date": "2025-02-02",
+            "last_date": "2026-01-01",
+        },
+    ],
+}
+_PERSON_ENTITY_BY_ID = {2: _PERSON_COUNCIL_ENTITY, 3: _PERSON_PC_ENTITY}
+
+
+class TestPersonPage:
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity", side_effect=lambda _c, eid: _PERSON_ENTITY_BY_ID.get(eid))
+    @patch("actalux.web.app.person_dossier", return_value=_PERSON_DOSSIER)
+    def test_person_page_renders_career_across_bodies(self, m_dos, m_ent, m_db) -> None:
+        r = client.get("/people/susan-buse")
+        assert r.status_code == 200
+        assert "Susan Buse" in r.text
+        # each body served links to that body's per-board record by the PUBLIC person
+        # slug (never an internal '--plan-commission' subject slug)
+        assert "Clayton City Council" in r.text
+        assert "Clayton Plan Commission" in r.text
+        assert "/mo/clayton/council/member/susan-buse" in r.text
+        assert "/mo/clayton/plan-commission/member/susan-buse" in r.text
+        assert "12 cited actions" in r.text
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.person_dossier", return_value=None)
+    def test_unknown_person_404(self, m_dos, m_db) -> None:
+        r = client.get("/people/nobody")
+        assert r.status_code == 404

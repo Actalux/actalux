@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}{{ person.canonical_name }} — record{% endblock %}
+{% block meta_description %}{{ person.canonical_name }} — every Clayton, MO governing body they have served on, each with a complete cited record drawn verbatim from the official minutes.{% endblock %}
+{% block structured_data %}
+{% set member_of = [] %}
+{% for t in tenures %}{% set _ = member_of.append({"@type": "GovernmentOrganization", "name": t.body_label}) %}{% endfor %}
+<script type="application/ld+json">{{ {
+  "@context": "https://schema.org",
+  "@type": "Person",
+  "name": person.canonical_name,
+  "url": site_url ~ request.url.path,
+  "memberOf": member_of
+} | tojson }}</script>
+{% endblock %}
+{% block content %}
+
+<section class="pane-header">
+  <h2>Person</h2>
+  <span class="meta">Clayton, MO</span>
+</section>
+
+<div style="padding: var(--s-6) var(--s-6) var(--s-8);">
+  <article class="doc-page">
+    <h1>{{ person.canonical_name }}</h1>
+    <p style="font-family: var(--mono); font-size: 11px; color: var(--muted); margin-bottom: var(--s-5);">
+      {{ tenures | length }} governing bod{{ 'y' if tenures | length == 1 else 'ies' }} in the record
+    </p>
+
+    <p style="font-size: 13px; color: var(--muted); margin-bottom: var(--s-5);">
+      Each body below links to {{ person.canonical_name }}'s complete cited record there,
+      drawn verbatim from the official minutes. These are the records we have gathered —
+      not a claim of a complete record.
+    </p>
+
+    {% if tenures %}
+    <section class="original-block" style="margin-bottom: var(--s-6);">
+      <div class="section-head">Service across bodies</div>
+      {% for t in tenures %}
+      <div style="padding: var(--s-3) 0;{% if not loop.last %} border-bottom: 1px solid var(--rule);{% endif %}">
+        <a href="{{ t.member_url }}" style="font-size: 17px; font-weight: 600; color: var(--accent-ink);">{{ t.body_label }}</a>
+        <span style="color: var(--muted); font-size: 13px;"> · {{ t.place_label }}</span>
+        <div style="font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: var(--s-1);">
+          {{ t.role or 'Member' }}
+          {% if t.start_date or t.end_date %}
+          · {{ t.start_date or 'term start unrecorded' }} – {{ t.end_date or 'present' }}
+          {% elif t.first_date %}
+          · in the record {{ t.first_date[:4] }}{% if t.last_date and t.last_date[:4] != t.first_date[:4] %}–{{ t.last_date[:4] }}{% endif %}
+          {% endif %}
+          {% if t.actions %} · <span class="badge">{{ t.actions }} cited action{{ '' if t.actions == 1 else 's' }}</span>{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </section>
+    {% else %}
+    <p class="doc-para" style="color: var(--muted);">No cited record for this person in the minutes we have.</p>
+    {% endif %}
+  </article>
+</div>
+
+{% endblock %}
