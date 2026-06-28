@@ -11,6 +11,7 @@ the lexicon is place-scoped because a person can sit on more than one body):
   GET /api/v1/{state}/{place}/{body}/meetings/{date} one meeting's documents
   GET /api/v1/{state}/{place}/{body}/recent          recent meetings feed
   GET /api/v1/{state}/{place}/{body}/votes           structured cited vote records
+  GET /api/v1/{state}/{place}/{body}/transcripts/{id}/speakers  speaker turns + identities
   GET /api/v1/{state}/{place}/{body}/members         the body's roster
   GET /api/v1/{state}/{place}/{body}/members/{slug}  a member's cited voting record
   GET /api/v1/{state}/{place}/lexicon                canonical official names + variants
@@ -39,14 +40,17 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from actalux.db import (
+    get_diarization_turns,
     get_documents,
     get_entity_by_path,
     get_entity_votes,
     get_meeting_documents,
     get_name_corrections,
     get_place_by_path,
+    get_speaker_identities,
     list_recent_meeting_documents,
 )
+from actalux.diarization.reader import build_meeting_speakers
 from actalux.errors import SearchError
 from actalux.graph.store import (
     body_matters,
@@ -157,6 +161,35 @@ class VotesResponse(BaseModel):
     since: str | None
     count: int
     votes: list[VoteRecord]
+
+
+class SpeakerIdentity(BaseModel):
+    name: str  # the official's canonical name (only present when gated high/confirmed)
+    slug: str | None
+    confidence: str | None  # inferred_high | confirmed (the only publicly-shown levels)
+    basis: str | None  # rollcall | vote_anchor | self_intro | manual
+
+
+class SpeakerWord(BaseModel):
+    word: str
+    start: float
+    end: float
+
+
+class SpeakerTurn(BaseModel):
+    cluster_label: str  # anonymous per-document cluster, e.g. "SPEAKER_00"
+    start_seconds: float
+    end_seconds: float
+    speaker: SpeakerIdentity | None  # the resolved official, when gated; else null
+    words: list[SpeakerWord]  # word-level timings (for clip cutting / the podcast)
+
+
+class MeetingSpeakersResponse(BaseModel):
+    entity: str
+    document_id: int
+    turn_count: int
+    speakers: dict[str, SpeakerIdentity]  # cluster_label -> identity (gated only)
+    turns: list[SpeakerTurn]
 
 
 class MemberVote(BaseModel):
@@ -681,6 +714,53 @@ def api_votes(
     records = [_build_vote_record(r, docs.get(r["document_id"], {})) for r in rows]
     return VotesResponse(
         entity=_entity_path(entity), since=iso_since, count=len(records), votes=records
+    )
+
+
+@api_router.get(
+    "/{state}/{place}/{body}/transcripts/{document_id}/speakers",
+    response_model=MeetingSpeakersResponse,
+    summary="Word-level speaker turns + (gated) speaker identities for a transcript",
+    dependencies=[Depends(rate_limit_general)],
+)
+def api_meeting_speakers(
+    document_id: int,
+    entity: dict = Depends(resolve_api_entity),
+) -> MeetingSpeakersResponse:
+    """The speaker-attribution layer for one meeting transcript.
+
+    Anonymous word-level speaker turns plus, where a cluster is resolved to the public
+    bar (high/confirmed), the official it maps to. The display gate is enforced in the
+    database, so a not-yet-confirmed cluster simply appears as turns with no name. Word
+    timings are included for downstream clip cutting / the podcast.
+    """
+    client = get_db()
+    # Scope the document to the requested body so one body's transcript can't be served
+    # under another body's path.
+    owner = (
+        client.table("documents").select("entity_id").eq("id", document_id).limit(1).execute().data
+    )
+    if not owner or owner[0].get("entity_id") != entity["id"]:
+        raise HTTPException(status_code=404, detail="transcript not found for this body")
+    layer = build_meeting_speakers(
+        get_diarization_turns(client, document_id),
+        get_speaker_identities(client, document_id),
+    )
+    return MeetingSpeakersResponse(
+        entity=_entity_path(entity),
+        document_id=document_id,
+        turn_count=len(layer["turns"]),
+        speakers={c: SpeakerIdentity(**ident) for c, ident in layer["speakers"].items()},
+        turns=[
+            SpeakerTurn(
+                cluster_label=t["cluster_label"],
+                start_seconds=t["start_seconds"],
+                end_seconds=t["end_seconds"],
+                speaker=SpeakerIdentity(**t["speaker"]) if t["speaker"] else None,
+                words=[SpeakerWord(**w) for w in t["words"]],
+            )
+            for t in layer["turns"]
+        ],
     )
 
 

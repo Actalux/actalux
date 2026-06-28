@@ -191,6 +191,40 @@ def get_name_corrections(client: Client, place_id: int) -> list[dict[str, Any]]:
     )
 
 
+def get_diarization_turns(client: Client, document_id: int) -> list[dict[str, Any]]:
+    """Word-level speaker turns for a transcript, in time order (the attribution layer).
+
+    Anonymous clusters + their word timings; identity is layered separately and gated
+    (see ``get_speaker_identities``). A long meeting has thousands of turns, so this
+    pages past the server row cap.
+    """
+    return fetch_all_rows(
+        lambda: (
+            client.table("diarization_turns")
+            .select("cluster_label,start_seconds,end_seconds,words,source_model")
+            .eq("document_id", document_id)
+        ),
+        order="start_seconds",
+    )
+
+
+def get_speaker_identities(client: Client, document_id: int) -> list[dict[str, Any]]:
+    """Cluster -> official identity for a transcript, with the subject embedded.
+
+    Through the anon RLS path this returns ONLY publicly-displayable
+    (``inferred_high`` / ``confirmed``) rows — the display gate lives in the database,
+    not here. A service-key caller sees all rows (for the review queue).
+    """
+    return (
+        client.table("speaker_identities")
+        .select("cluster_label,confidence,basis,subject_id,subject:subjects(slug,canonical_name)")
+        .eq("document_id", document_id)
+        .execute()
+        .data
+        or []
+    )
+
+
 def get_entity(client: Client, entity_id: int) -> dict[str, Any] | None:
     """Fetch one public body by id with its place embedded under ``place``."""
     result = (
