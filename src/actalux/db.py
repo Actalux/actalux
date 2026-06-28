@@ -191,6 +191,73 @@ def get_name_corrections(client: Client, place_id: int) -> list[dict[str, Any]]:
     )
 
 
+def get_diarization_turns(client: Client, document_id: int) -> list[dict[str, Any]]:
+    """Word-level speaker turns for a transcript, in time order (the attribution layer).
+
+    Anonymous clusters + their word timings; identity is layered separately and gated
+    (see ``get_speaker_identities``). A long meeting has thousands of turns, so this
+    pages past the server row cap.
+    """
+    return fetch_all_rows(
+        lambda: (
+            client.table("diarization_turns")
+            .select("cluster_label,start_seconds,end_seconds,words,source_model")
+            .eq("document_id", document_id)
+        ),
+        order="start_seconds",
+    )
+
+
+def get_speaker_identities(client: Client, document_id: int) -> list[dict[str, Any]]:
+    """Cluster -> official identity for a transcript, with the subject embedded.
+
+    Through the anon RLS path this returns ONLY publicly-displayable
+    (``inferred_high`` / ``confirmed``) rows — the display gate lives in the database,
+    not here. A service-key caller sees all rows (for the review queue).
+    """
+    return (
+        client.table("speaker_identities")
+        .select("cluster_label,confidence,basis,subject_id,subject:subjects(slug,canonical_name)")
+        .eq("document_id", document_id)
+        .execute()
+        .data
+        or []
+    )
+
+
+def get_identity_review_queue(service_client: Client, entity_id: int) -> list[dict[str, Any]]:
+    """Below-gate speaker-identity proposals for a body's transcripts, for human review.
+
+    SERVICE client only: these rows (``inferred_low`` / ``inferred_medium``) are below
+    the public display gate, so RLS hides them from the anon path. This is an operator
+    tool, never a public surface. Returns one shaped row per proposal with its meeting
+    context, sorted by date then cluster.
+    """
+    from actalux.identity.review import REVIEW_CONFIDENCE, shape_review_queue
+
+    docs = fetch_all_rows(
+        lambda: (
+            service_client.table("documents")
+            .select("id,meeting_date,meeting_title,video_id")
+            .eq("entity_id", entity_id)
+            .eq("document_type", "transcript")
+        )
+    )
+    docs_by_id = {d["id"]: d for d in docs}
+    if not docs_by_id:
+        return []
+    rows = (
+        service_client.table("speaker_identities")
+        .select("document_id,cluster_label,confidence,basis,subject:subjects(slug,canonical_name)")
+        .in_("document_id", list(docs_by_id))
+        .in_("confidence", list(REVIEW_CONFIDENCE))
+        .execute()
+        .data
+        or []
+    )
+    return shape_review_queue(rows, docs_by_id)
+
+
 def get_entity(client: Client, entity_id: int) -> dict[str, Any] | None:
     """Fetch one public body by id with its place embedded under ``place``."""
     result = (
@@ -377,9 +444,13 @@ def list_recent_meeting_documents(
 
 
 def find_document_by_source(
-    client: Client, source_file: str, source_portal: str = ""
+    client: Client, source_file: str, source_portal: str = "", entity_id: int | None = None
 ) -> dict[str, Any] | None:
-    """Find the latest version of a document by source_file and portal."""
+    """Find the latest version of a document by source_file and portal.
+
+    When ``entity_id`` is given the match is scoped to that body, so a record is only
+    ever deduped against a prior version of the *same* body's record.
+    """
     query = (
         client.table("documents")
         .select("*")
@@ -388,12 +459,14 @@ def find_document_by_source(
     )
     if source_portal:
         query = query.eq("source_portal", source_portal)
+    if entity_id is not None:
+        query = query.eq("entity_id", entity_id)
     result = query.execute()
     return result.data[0] if result.data else None
 
 
 def find_document_by_source_ref(
-    client: Client, source_portal: str, source_ref: str
+    client: Client, source_portal: str, source_ref: str, entity_id: int | None = None
 ) -> dict[str, Any] | None:
     """Find the current document for a stable external id within a portal.
 
@@ -422,25 +495,27 @@ def find_document_by_source_ref(
     """
     if not source_ref:
         return None
-    result = (
+    query = (
         client.table("documents")
         .select("*")
         .eq("source_portal", source_portal)
         .eq("source_ref", source_ref)
         .is_("replaces_id", "null")
-        .execute()
     )
+    if entity_id is not None:
+        query = query.eq("entity_id", entity_id)
+    result = query.execute()
     return result.data[0] if result.data else None
 
 
 def find_document_by_content_hash(
-    client: Client, content_hash: str, source_portal: str = ""
+    client: Client, content_hash: str, source_portal: str = "", entity_id: int | None = None
 ) -> dict[str, Any] | None:
     """Find the current document whose stored content matches ``content_hash``.
 
     Used as the second dedup tier after ``source_ref``: identical bytes are the
     same document even when the filename or origin URL has changed. An empty
-    hash short-circuits to None. Optionally scoped to a portal.
+    hash short-circuits to None. Optionally scoped to a portal and/or body.
 
     Parameters
     ----------
@@ -450,6 +525,9 @@ def find_document_by_content_hash(
         SHA-256 of the parsed content.
     source_portal
         Optional portal scope; empty matches any portal.
+    entity_id
+        Optional body scope; when set, identical bytes under a *different* body are
+        not treated as the same document (a meeting belongs to one body).
 
     Returns
     -------
@@ -466,6 +544,8 @@ def find_document_by_content_hash(
     )
     if source_portal:
         query = query.eq("source_portal", source_portal)
+    if entity_id is not None:
+        query = query.eq("entity_id", entity_id)
     result = query.execute()
     return result.data[0] if result.data else None
 

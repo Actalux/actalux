@@ -1,0 +1,182 @@
+name: transcribe-whisperx
+
+# Going-forward speaker-attribution pipeline (design: docs/architecture/
+# speaker-attribution.md): clean WhisperX (word-level, no name biasing) + pyannote
+# diarization on Modal, name-canonicalized against the place lexicon, all in the
+# cloud (never a laptop). Stages canonical text + a per-meeting attribution sidecar,
+# ingests the canonical text (documents + chunks + version chain), then attaches the
+# speaker-attribution layer (raw text, word-level turns, the correction audit, media
+# asset) keyed to the new document id.
+#
+# Manual-trigger only for now — there is NO schedule block. Enabling the nightly cron
+# (and retiring the Groq transcribe.yml path) is a deliberate go-live step taken once
+# the Modal apps are deployed and a live run is verified.
+#
+# Prereq: the two Modal apps must already be deployed:
+#   modal deploy src/actalux/diarization/modal_runner.py        (actalux-diarization)
+#   modal deploy src/actalux/transcription/modal_whisperx.py    (actalux-whisperx)
+#
+# Required repository secrets:
+#   SUPABASE_URL / SUPABASE_KEY / SUPABASE_SERVICE_KEY / SUPABASE_PAT   (ingest + persist)
+#   MODAL_TOKEN_ID / MODAL_TOKEN_SECRET                                 (invoke the GPU apps)
+#   OPENROUTER_ACTALUX_KEY                                              (summaries + chapters)
+
+on:
+  workflow_dispatch:
+    inputs:
+      body:
+        description: "Which public body: schools | council | plan-commission | board-of-adjustment"
+        required: false
+        default: "council"
+      since:
+        description: "Only meetings on/after YYYY-MM-DD"
+        required: false
+        default: ""
+      limit:
+        description: "Max meetings to process"
+        required: false
+        default: "3"
+      force:
+        description: "Re-transcribe even if already ingested (supersedes via version chain)"
+        type: boolean
+        default: false
+      video_id:
+        description: "Re-transcribe a single video id (overrides discover; always forced)"
+        required: false
+        default: ""
+      date:
+        description: "Meeting date for video_id (YYYY-MM-DD)"
+        required: false
+        default: ""
+      title:
+        description: "Meeting title for video_id"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+# One transcription run at a time; never race the Groq transcribe path or the
+# document ingest either (they share the documents table + version chain).
+concurrency:
+  group: transcribe
+  cancel-in-progress: false
+
+jobs:
+  transcribe-whisperx:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      ACTALUX_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      ACTALUX_SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      ACTALUX_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      ACTALUX_SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      OPENROUTER_ACTALUX_KEY: ${{ secrets.OPENROUTER_ACTALUX_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv + Python 3.11
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+          enable-cache: true
+
+      - name: Install dependencies (incl. the Modal client)
+        run: uv sync --no-dev --group diarization
+
+      - name: Install yt-dlp, ffmpeg, Cloudflare WARP
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg curl gpg lsb-release
+          curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg \
+            | sudo gpg --yes --dearmor -o /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" \
+            | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
+          sudo apt-get update -qq && sudo apt-get install -y -qq cloudflare-warp
+
+      - name: Connect Cloudflare WARP (proxy mode)
+        run: |
+          sudo systemctl enable --now warp-svc
+          sleep 6
+          warp-cli --accept-tos registration new
+          warp-cli --accept-tos mode proxy
+          warp-cli --accept-tos connect
+          sleep 8
+          warp-cli --accept-tos status
+          curl -s --socks5-hostname 127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/trace \
+            | grep -q "warp=on" || { echo "WARP not active"; exit 1; }
+
+      - name: Verify schema is up to date
+        run: uv run python scripts/apply_migrations.py --check
+
+      - name: Transcribe + diarize + stage
+        env:
+          BODY: ${{ inputs.body }}
+          SINCE: ${{ inputs.since }}
+          LIMIT: ${{ inputs.limit }}
+          FORCE: ${{ inputs.force }}
+          VIDEO_ID: ${{ inputs.video_id }}
+          MEETING_DATE: ${{ inputs.date }}
+          MEETING_TITLE: ${{ inputs.title }}
+        run: |
+          PROXY="socks5h://127.0.0.1:40000"
+          BODY="${BODY:-council}"
+          if [ -n "$VIDEO_ID" ]; then
+            uv run python scripts/transcribe_whisperx.py \
+              --body "$BODY" --video-id "$VIDEO_ID" --date "$MEETING_DATE" --title "$MEETING_TITLE" \
+              --force --proxy "$PROXY"
+          else
+            ARGS="--discover --body $BODY --proxy $PROXY --limit ${LIMIT:-3}"
+            [ -n "$SINCE" ] && ARGS="$ARGS --since $SINCE"
+            [ "$FORCE" = "true" ] && ARGS="$ARGS --force"
+            uv run python scripts/transcribe_whisperx.py $ARGS
+          fi
+          echo "BODY=$BODY" >> "$GITHUB_ENV"
+
+      - name: Ingest canonical transcripts
+        run: |
+          if [ -f data/documents/whisperx_manifest.json ]; then
+            uv run python scripts/ingest.py \
+              --manifest data/documents/whisperx_manifest.json --body "$BODY"
+          else
+            echo "::warning::no transcripts produced; nothing to ingest"
+          fi
+
+      - name: Attach speaker-attribution layer
+        run: |
+          if [ -f data/documents/whisperx_manifest.json ]; then
+            uv run python scripts/persist_whisperx.py \
+              --manifest data/documents/whisperx_manifest.json
+          else
+            echo "::warning::no manifest; nothing to persist"
+          fi
+
+      - name: Set chunk timestamps from segment sidecars
+        run: uv run python scripts/backfill_chunk_timestamps.py
+
+      - name: Generate transcript summaries + chapters
+        run: |
+          uv run python scripts/backfill_doc_summaries.py
+          uv run python scripts/backfill_transcript_chapters.py
+
+      - name: Discover + apply name corrections
+        run: |
+          if [ -f data/documents/whisperx_manifest.json ]; then
+            uv run python scripts/discover_corrections.py \
+              --manifest data/documents/whisperx_manifest.json --apply
+          else
+            echo "::warning::no transcripts produced; skipping name-correction discovery"
+          fi
+
+      - name: Upload staged artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: whisperx-transcripts
+          path: |
+            data/documents/*.txt
+            data/documents/*.segments.json
+            data/documents/*.attribution.json
+            data/documents/whisperx_manifest.json

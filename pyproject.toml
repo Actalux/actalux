@@ -56,3 +56,8 @@ dev = [
     # not used by production search). See src/actalux/eval/rerank.py.
     "accelerate>=1.0",
 ]
+# Speaker diarization: the Modal client only (the GPU image carries pyannote +
+# torch, defined in src/actalux/diarization/modal_runner.py — never the web image).
+diarization = [
+    "modal>=1.0",
+]
