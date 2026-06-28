@@ -225,6 +225,39 @@ def get_speaker_identities(client: Client, document_id: int) -> list[dict[str, A
     )
 
 
+def get_identity_review_queue(service_client: Client, entity_id: int) -> list[dict[str, Any]]:
+    """Below-gate speaker-identity proposals for a body's transcripts, for human review.
+
+    SERVICE client only: these rows (``inferred_low`` / ``inferred_medium``) are below
+    the public display gate, so RLS hides them from the anon path. This is an operator
+    tool, never a public surface. Returns one shaped row per proposal with its meeting
+    context, sorted by date then cluster.
+    """
+    from actalux.identity.review import REVIEW_CONFIDENCE, shape_review_queue
+
+    docs = fetch_all_rows(
+        lambda: (
+            service_client.table("documents")
+            .select("id,meeting_date,meeting_title,video_id")
+            .eq("entity_id", entity_id)
+            .eq("document_type", "transcript")
+        )
+    )
+    docs_by_id = {d["id"]: d for d in docs}
+    if not docs_by_id:
+        return []
+    rows = (
+        service_client.table("speaker_identities")
+        .select("document_id,cluster_label,confidence,basis,subject:subjects(slug,canonical_name)")
+        .in_("document_id", list(docs_by_id))
+        .in_("confidence", list(REVIEW_CONFIDENCE))
+        .execute()
+        .data
+        or []
+    )
+    return shape_review_queue(rows, docs_by_id)
+
+
 def get_entity(client: Client, entity_id: int) -> dict[str, Any] | None:
     """Fetch one public body by id with its place embedded under ``place``."""
     result = (
