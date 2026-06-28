@@ -37,8 +37,11 @@ app = modal.App(APP_NAME)
 # whisperx pulls a CUDA torch + ctranslate2 + the wav2vec2 align stack.
 image = modal.Image.debian_slim(python_version="3.11").apt_install("ffmpeg").pip_install("whisperx")
 
-
-@app.function(image=image, gpu="T4", timeout=60 * 60)
+# L4 over T4: on a 2.4 hr meeting it ran 1.59x faster at 0.85x the per-meeting cost
+# (RTF 0.034 vs 0.055; identical transcript) and its 24 GB clears the T4's 16 GB OOM
+# margin. A10 was faster still (2.07x) but dearer per meeting; L4 wins steady-state,
+# which is what the nightly cron pays forever. Benchmarked 2026-06-28 (whisperx_gpu_bench.py).
+@app.function(image=image, gpu="L4", timeout=60 * 60)
 def transcribe_remote(audio_bytes: bytes) -> dict:
     """Clean word-level transcribe of one audio file; return ``{language, segments[...]}``.
 
