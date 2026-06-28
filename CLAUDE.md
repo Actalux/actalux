@@ -11,6 +11,29 @@ Clayton is the first jurisdiction, not the only one. **Everything must be built 
 - **Watch for cross-jurisdiction collisions.** The same string can be correct in one town and a mangling in another (e.g. a name-correction `merrimack → Meramec` valid in Clayton must not apply to a town that has a real "Merrimack"). Scope every lookup to its place.
 - When a change *can't* be made jurisdiction-agnostic, stop and surface the tradeoff rather than hardcoding.
 
+## Architectural decisions default to scalability (cardinal rule)
+
+When an architectural fork has no clear winner, **default to the more scalable
+option** — the one that stays correct and cheap as the corpus, jurisdictions,
+bodies, and people grow — even when it costs more up front. Scalability is the
+tie-breaker, and often the decider.
+
+- **Structural over procedural.** Prefer a guarantee enforced by the schema/types
+  (a constraint, a separate row, a trigger) over one that depends on a code path
+  staying correct (a guard a future change can regress). The integrity that
+  matters at scale is the integrity the database enforces, not the convention.
+- **One mechanism over two.** Prefer a single uniform model over special-casing;
+  parallel mechanisms diverge and breed bugs as things multiply.
+- **Reversible over one-way.** Prefer designs where a wrong decision (a bad merge,
+  a misclassification) is undone by a cheap repoint, not destructive surgery —
+  because at scale, wrong decisions are a *when*, not an *if*.
+- **Pay the one-time cost now, while the corpus is tiny.** A restructuring that is
+  cheap today (few rows, regenerable derived data) is expensive after expansion.
+  "Do it now" beats "retrofit later" for anything load-bearing.
+- This generalizes the municipalities cardinal above: jurisdiction-scoping is one
+  instance of defaulting to scale. When the scalable path can't be taken, **stop
+  and surface the tradeoff** rather than quietly choosing the convenient one.
+
 ## Content policy
 
 Universal (all bodies):
