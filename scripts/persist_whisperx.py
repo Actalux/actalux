@@ -2,10 +2,12 @@
 """Attach staged speaker-attribution layers to freshly-ingested transcript documents.
 
 Runs AFTER scripts/ingest.py --manifest. For each entry in the WhisperX manifest it
-finds the current (non-superseded) transcript document for the meeting and persists
-its ``<stem>.attribution.json`` — raw verbatim text, word-level speaker turns, the
-name-correction audit, and the media asset — via the SERVICE client. Idempotent
-(persist_speaker_layer clears + re-writes the whole layer), so re-running is safe.
+finds the current (non-superseded) transcript document for the meeting, persists its
+``<stem>.attribution.json`` — raw verbatim text, word-level speaker turns, the
+name-correction audit, and the media asset — via the SERVICE client, then resolves
+speaker identities (deterministic; publishes only clean anchors, the rest land in the
+review queue). Idempotent (the layer is cleared + re-written, identities reconciled),
+so re-running is safe.
 
 Why a separate step: the document id doesn't exist until ingest runs, and the new
 tables are keyed to it. Splitting transcription (GPU) from persistence keeps each
@@ -27,6 +29,7 @@ from supabase import Client
 
 from actalux.config import load_config
 from actalux.db import get_client
+from actalux.identity.resolve import resolve_document
 from actalux.transcription.pipeline import SpeakerLayer, persist_speaker_layer
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -109,7 +112,17 @@ def main() -> None:
             duration_seconds=att.get("duration_seconds"),
         )
         persisted += 1
-        logger.info("persisted speaker layer for doc %s (%d turns)", doc_id, len(layer.turns))
+        # Resolve identities right after the turns exist (deterministic; publishes only
+        # clean anchors, the rest go to the review queue). Service client for read+write.
+        proposals = resolve_document(service, service, doc_id, att["entity_id"])
+        published = sum(1 for p in proposals if p.confidence == "inferred_high")
+        logger.info(
+            "persisted speaker layer for doc %s (%d turns, %d identities: %d published)",
+            doc_id,
+            len(layer.turns),
+            len(proposals),
+            published,
+        )
 
     logger.info("persisted %d/%d staged layer(s)", persisted, len(entries))
 
