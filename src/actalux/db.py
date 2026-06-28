@@ -808,9 +808,21 @@ def set_chunk_start_seconds(client: Client, chunk_id: int, start_seconds: int) -
 
 # --- Chunks ---
 
+# Rows per chunk INSERT. A single insert of a long transcript's chunks (each row
+# carries a 384-dim embedding) does all the HNSW index maintenance in one statement
+# and trips the Supabase free-tier statement timeout (postgrest 57014) — the failure
+# that silently broke the speaker-attribution backfill on a 162-chunk document. 50
+# keeps each statement small enough to stay under the timeout.
+_CHUNK_INSERT_BATCH = 50
+
 
 def insert_chunks(client: Client, chunks: list[Chunk]) -> list[int]:
-    """Bulk insert chunks and return their IDs."""
+    """Bulk insert chunks (in batches) and return their IDs in chunk order.
+
+    Inserted in ``_CHUNK_INSERT_BATCH``-row batches, not one statement: see the
+    constant's note for why a single large insert times out on the free tier.
+    Batching keeps each statement under the timeout while preserving insertion order.
+    """
     if not chunks:
         return []
 
@@ -829,8 +841,11 @@ def insert_chunks(client: Client, chunks: list[Chunk]) -> list[int]:
             row["citation_id"] = chunk.citation_id
         rows.append(row)
 
-    result = client.table("chunks").insert(rows).execute()
-    ids = [r["id"] for r in result.data]
+    ids: list[int] = []
+    for start in range(0, len(rows), _CHUNK_INSERT_BATCH):
+        batch = rows[start : start + _CHUNK_INSERT_BATCH]
+        result = client.table("chunks").insert(batch).execute()
+        ids.extend(r["id"] for r in result.data)
     logger.info("Inserted %d chunks for document %d", len(ids), chunks[0].document_id)
     return ids
 

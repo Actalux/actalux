@@ -4,15 +4,17 @@ from dataclasses import replace
 from datetime import date
 
 from actalux.db import (
+    _CHUNK_INSERT_BATCH,
     backfill_document_source_ref,
     fetch_all_rows,
     get_chunk_citation_ids,
     get_chunk_with_context,
+    insert_chunks,
     insert_document,
     resolve_chunk_ref,
     resolve_source_anchor,
 )
-from actalux.models import Document
+from actalux.models import Chunk, Document
 
 
 class _Result:
@@ -159,6 +161,62 @@ class TestInsertDocumentDateSource:
         client = _InsertClient()
         insert_document(client, _doc(date_source="unknown"))
         assert client.captured["date_source"] == "unknown"
+
+
+class _BatchInsertTable:
+    """Records each .insert(batch) and returns ascending ids across batches."""
+
+    def __init__(self, recorder: "_BatchInsertClient") -> None:
+        self._recorder = recorder
+        self._batch: list[dict] = []
+
+    def insert(self, rows: list[dict]) -> "_BatchInsertTable":
+        self._batch = rows
+        return self
+
+    def execute(self) -> _InsertResult:
+        self._recorder.batch_sizes.append(len(self._batch))
+        start = self._recorder.next_id
+        ids = list(range(start, start + len(self._batch)))
+        self._recorder.next_id = start + len(self._batch)
+        return _InsertResult([{"id": i} for i in ids])
+
+
+class _BatchInsertClient:
+    def __init__(self) -> None:
+        self.batch_sizes: list[int] = []
+        self.next_id = 1
+
+    def table(self, _name: str) -> _BatchInsertTable:
+        return _BatchInsertTable(self)
+
+
+class TestInsertChunksBatching:
+    """A long transcript's chunks must insert in batches, or one statement's HNSW
+    index work trips the free-tier statement timeout (the backfill failure)."""
+
+    def _chunks(self, n: int) -> list[Chunk]:
+        return [Chunk(document_id=7, content=f"c{i}", chunk_index=i) for i in range(n)]
+
+    def test_splits_into_batches_and_returns_ids_in_order(self) -> None:
+        n = 162  # the doc that failed the backfill; at batch 50 -> [50, 50, 50, 12]
+        client = _BatchInsertClient()
+        ids = insert_chunks(client, self._chunks(n))
+        assert client.batch_sizes == [50, 50, 50, 12]
+        assert max(client.batch_sizes) <= _CHUNK_INSERT_BATCH
+        assert len(ids) == n
+        assert ids == sorted(ids)  # ids returned in chunk order
+
+    def test_single_batch_when_small(self) -> None:
+        client = _BatchInsertClient()
+        ids = insert_chunks(client, self._chunks(3))
+        assert client.batch_sizes == [3]
+        assert len(ids) == 3
+
+    def test_empty_is_noop(self) -> None:
+        client = _BatchInsertClient()
+        assert insert_chunks(client, []) == []
+        assert client.batch_sizes == []
 
 
 class _UpdateTable:
