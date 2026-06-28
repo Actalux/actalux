@@ -116,6 +116,29 @@ class WhisperXRunner:
         payload = self._fn.remote(Path(audio_uri).read_bytes())
         return WordTranscript.from_payload(payload, self._model)
 
+    def spawn(self, audio_bytes: bytes) -> modal.FunctionCall:
+        """Kick off a transcription without blocking; returns a handle for ``collect``.
+
+        Lets a backfill spawn every meeting's GPU work up front so it all runs in
+        parallel across Modal containers, instead of one blocking ``transcribe`` at a
+        time. Pair with ``collect`` to retrieve the result.
+        """
+        return self._fn.spawn(audio_bytes)
+
+    def collect(self, call: modal.FunctionCall) -> WordTranscript:
+        """Block for a spawned transcription's result and map it to ``WordTranscript``."""
+        from actalux.transcription.backend import WordTranscript
+
+        return WordTranscript.from_payload(call.get(), self._model)
+
+    @staticmethod
+    def cancel(call: modal.FunctionCall) -> None:
+        """Best-effort cancel a spawned call so a half-failed pair leaves no orphan running."""
+        try:
+            call.cancel()
+        except Exception:  # noqa: BLE001 - cleanup must never mask the original error
+            pass
+
 
 @app.local_entrypoint()
 def main(audio_path: str) -> None:

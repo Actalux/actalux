@@ -21,7 +21,16 @@
   <p>Documents are converted from their original format (PDF, HTML, or transcript) to plain text. Text is split into verbatim passages of approximately 200 words, preserving section boundaries and sentence integrity. No text is paraphrased or rewritten.</p>
 
   <h2>Meeting transcripts</h2>
-  <p>Transcripts of public meetings are produced by automatic speech recognition — the open-source Whisper model — not by a human transcriber. They are accurate enough to search and read, but they can contain errors: misheard words, missing punctuation, and unlabeled or misattributed speakers. We publish the machine output as produced; we do not hand-correct it. Every transcript is shown next to the meeting's video and can be cued to the moment a passage was spoken, so any text can be checked against the recording. Longer meetings are divided into topic sections to aid navigation; those section labels are generated automatically and are a finding aid, not part of the record.</p>
+  <p>Transcripts of public meetings are produced by automatic speech recognition — the open-source WhisperX model — not by a human transcriber. The recognizer is run with no name hints, so the words are a faithful record of what was said; it can still contain errors such as misheard words or missing punctuation. Every transcript is shown next to the meeting's video and can be cued to the moment a passage was spoken, so any text can be checked against the recording. Longer meetings are divided into topic sections to aid navigation; those section labels are generated automatically and are a finding aid, not part of the record.</p>
+
+  <h3 id="speaker-attribution">Speaker labels and name corrections</h3>
+  <p>Two automatic steps add structure to a transcript while preserving the verbatim words:</p>
+  <ul>
+    <li><strong>Speaker turns.</strong> A diarization model (pyannote) groups the audio by distinct voice, so the transcript reads as a back-and-forth of speaker turns rather than one undivided block. This groups the words; it never changes them.</li>
+    <li><strong>Identifying a speaker.</strong> A voice is given a person's name only when the recording itself provides strong, checkable evidence — a roll call or a self-introduction that matches a member of the body's published roster. When that evidence is unambiguous, the name is shown; otherwise the voice stays anonymous, labeled "Speaker 2," "Speaker 3," and so on. We never guess a name; proposals that do not clear that bar are held for human review rather than published.</li>
+    <li><strong>Name corrections.</strong> Speech recognition often misspells proper nouns that the public record spells consistently — a council member's surname, a street, a contractor. The transcript is shown with the corrected spelling, drawn only from names already in this jurisdiction's public record; the verbatim "as transcribed" text stays one click away via the toggle, and the original words are never discarded.</li>
+  </ul>
+  <p>Because identification depends on what the recording makes explicit, many speakers — members of the public, and officials who never state their name aloud — remain anonymous. That is deliberate: we would rather leave a voice unlabeled than attach the wrong name.</p>
 
   <h2>How search works</h2>
   <p>Search uses two methods in parallel:</p>

@@ -1,0 +1,147 @@
+name: backfill-whisperx
+
+# One-time (re-runnable) corpus backfill: re-transcribe every body's meeting videos
+# with clean WhisperX (word-level, no name biasing) + pyannote diarization on Modal,
+# name-canonicalized against the place lexicon. Unlike transcribe_whisperx.yml (which
+# does a few meetings serially), this fans the GPU work out across Modal — each
+# meeting's transcribe + diarize is spawned up front, so they run in parallel while
+# downloads proceed. Re-transcribing supersedes the Groq versions via the document
+# version chain (replaces_id) and scrubs their decode-time prompt-leakage; PDFs and
+# minutes are untouched (transcripts only).
+#
+# Manual-trigger only. Prereq: the two Modal apps must already be deployed:
+#   modal deploy src/actalux/diarization/modal_runner.py        (actalux-diarization)
+#   modal deploy src/actalux/transcription/modal_whisperx.py    (actalux-whisperx)
+#
+# Required repository secrets:
+#   SUPABASE_URL / SUPABASE_KEY / SUPABASE_SERVICE_KEY / SUPABASE_PAT   (ingest + persist)
+#   MODAL_TOKEN_ID / MODAL_TOKEN_SECRET                                 (invoke the GPU apps)
+#   OPENROUTER_ACTALUX_KEY                                              (summaries + chapters)
+
+on:
+  workflow_dispatch:
+    inputs:
+      bodies:
+        description: "Space-separated body keys to backfill"
+        required: false
+        default: "schools council plan-commission board-of-adjustment"
+      workers:
+        description: "Concurrent downloads per body (the GPU work always fans out)"
+        required: false
+        default: "4"
+      since:
+        description: "Only meetings on/after YYYY-MM-DD (blank = entire corpus)"
+        required: false
+        default: ""
+      incremental:
+        description: "Skip already-ingested meetings (default: re-transcribe all)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Never race the Groq transcribe path or document ingest — they share the documents
+# table + version chain. Same group as the other transcription workflows.
+concurrency:
+  group: transcribe
+  cancel-in-progress: false
+
+jobs:
+  backfill-whisperx:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      ACTALUX_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      ACTALUX_SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      ACTALUX_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      ACTALUX_SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      OPENROUTER_ACTALUX_KEY: ${{ secrets.OPENROUTER_ACTALUX_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv + Python 3.11
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+          enable-cache: true
+
+      - name: Install dependencies (incl. the Modal client)
+        run: uv sync --no-dev --group diarization
+
+      - name: Install yt-dlp, ffmpeg, Cloudflare WARP
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg curl gpg lsb-release
+          curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg \
+            | sudo gpg --yes --dearmor -o /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" \
+            | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
+          sudo apt-get update -qq && sudo apt-get install -y -qq cloudflare-warp
+
+      - name: Connect Cloudflare WARP (proxy mode)
+        run: |
+          sudo systemctl enable --now warp-svc
+          sleep 6
+          warp-cli --accept-tos registration new
+          warp-cli --accept-tos mode proxy
+          warp-cli --accept-tos connect
+          sleep 8
+          warp-cli --accept-tos status
+          curl -s --socks5-hostname 127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/trace \
+            | grep -q "warp=on" || { echo "WARP not active"; exit 1; }
+
+      - name: Verify schema is up to date
+        run: uv run python scripts/apply_migrations.py --check
+
+      - name: Backfill each body (transcribe + diarize + stage + ingest + persist)
+        env:
+          BODIES: ${{ inputs.bodies }}
+          WORKERS: ${{ inputs.workers }}
+          SINCE: ${{ inputs.since }}
+          INCREMENTAL: ${{ inputs.incremental }}
+        run: |
+          PROXY="socks5h://127.0.0.1:40000"
+          BODIES="${BODIES:-schools council plan-commission board-of-adjustment}"
+          MANIFEST="data/documents/whisperx_manifest.json"
+          INC=""
+          [ "$INCREMENTAL" = "true" ] && INC="--incremental"
+          SINCE_ARG=""
+          [ -n "$SINCE" ] && SINCE_ARG="--since $SINCE"
+          for BODY in $BODIES; do
+            echo "::group::Backfill $BODY"
+            uv run --group diarization python scripts/backfill_whisperx.py \
+              --body "$BODY" --workers "${WORKERS:-4}" --proxy "$PROXY" $INC $SINCE_ARG
+            if [ -f "$MANIFEST" ]; then
+              uv run python scripts/ingest.py --manifest "$MANIFEST" --body "$BODY"
+              uv run python scripts/persist_whisperx.py --manifest "$MANIFEST"
+              # Body-scoped discovery (--place defaults to mo/clayton, correct for every
+              # current body; pass --place when a body in another place is added).
+              uv run python scripts/discover_corrections.py \
+                --manifest "$MANIFEST" --body "$BODY" --apply
+            else
+              echo "::warning::no manifest for $BODY; nothing to ingest"
+            fi
+            echo "::endgroup::"
+          done
+
+      - name: Set chunk timestamps from segment sidecars
+        run: uv run python scripts/backfill_chunk_timestamps.py
+
+      - name: Generate transcript summaries + chapters
+        run: |
+          uv run python scripts/backfill_doc_summaries.py
+          uv run python scripts/backfill_transcript_chapters.py
+
+      - name: Upload staged artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: whisperx-backfill-transcripts
+          path: |
+            data/documents/*.txt
+            data/documents/*.segments.json
+            data/documents/*.attribution.json
+            data/documents/whisperx_manifest.json

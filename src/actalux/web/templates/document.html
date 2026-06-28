@@ -104,9 +104,41 @@
       {% include "partials/_chapters.html" %}
     </section>
     {# The video is the original; the full transcript sits below it behind a
-       disclosure (DESIGN.md: lead with the original, tuck the text away). Whisper
-       stores the transcript as one block, so paragraphize_prose groups it into
-       readable paragraphs — verbatim words, grouping only. #}
+       disclosure (DESIGN.md: lead with the original, tuck the text away). When the
+       speaker-attribution layer exists, the transcript is rendered as labeled speaker
+       turns with a corrected/as-transcribed toggle; otherwise it falls back to
+       canonical paragraphs (verbatim words, grouped only). #}
+    {% if speaker_turns %}
+    <details class="cited-disclosure" style="margin-bottom: var(--s-5);">
+      <summary class="block-label">Full transcript</summary>
+      <div class="tx-reader" data-tx-view="canonical" data-video="{{ document.video_id | urlencode }}">
+        <div class="tx-controls">
+          <div class="tx-toggle" role="group" aria-label="Transcript spelling">
+            <button type="button" class="tx-tab is-active" data-tx-set="canonical">Corrected</button>
+            <button type="button" class="tx-tab" data-tx-set="raw">As transcribed</button>
+          </div>
+          <p class="tx-note">Speaker labels are inferred from the recording; proper names are corrected against the public record. <a href="{{ base }}/methodology#speaker-attribution">How this works ↗</a></p>
+        </div>
+        {% for turn in speaker_turns %}
+        <div class="tx-turn{% if not turn.identified %} tx-anon{% endif %}">
+          <div class="tx-speaker">
+            {% if turn.slug %}<a href="{{ base }}/member/{{ turn.slug }}">{{ turn.label }}</a>{% else %}<span>{{ turn.label }}</span>{% endif %}
+            {% if turn.start_seconds is not none %}<button type="button" class="tx-time" data-start="{{ turn.start_seconds | int }}" title="Play from {{ turn.start_seconds | clock }}">{{ turn.start_seconds | clock }}</button>{% endif %}
+          </div>
+          {# Most turns have no name correction (raw == canonical): render one line shown
+             in both views. Only a turn that actually differs carries both, so the toggle
+             swaps just those and the payload isn't doubled for the whole transcript. #}
+          {% if turn.raw_text == turn.canonical_text %}
+          <p class="tx-text">{{ turn.canonical_text }}</p>
+          {% else %}
+          <p class="tx-text tx-canonical">{{ turn.canonical_text }}</p>
+          <p class="tx-text tx-raw">{{ turn.raw_text }}</p>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </details>
+    {% else %}
     {% set _transcript_paras = document.content | paragraphize_prose %}
     {% if _transcript_paras %}
     <details class="cited-disclosure" style="margin-bottom: var(--s-5);">
@@ -116,6 +148,7 @@
       <p class="doc-para">{{ para }}</p>
       {% endfor %}
     </details>
+    {% endif %}
     {% endif %}
     {% elif is_pdf %}
     <section class="original-block" style="margin-bottom: var(--s-5);">
@@ -146,5 +179,47 @@
   </aside>
 
 </div>
+
+{% if speaker_turns %}
+<script>
+  (function () {
+    var reader = document.querySelector('.tx-reader');
+    if (!reader) return;
+    // Corrected / As-transcribed toggle: flip the view + the active tab (CSS hides
+    // the other spelling per data-tx-view).
+    reader.querySelectorAll('.tx-tab').forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        reader.setAttribute('data-tx-view', tab.getAttribute('data-tx-set'));
+        reader.querySelectorAll('.tx-tab').forEach(function (t) { t.classList.remove('is-active'); });
+        tab.classList.add('is-active');
+      });
+    });
+    // A turn's timestamp cues the meeting video to that moment, reusing the same
+    // privacy facade the play button uses (no YouTube connection until a click).
+    var col = document.getElementById('source-col') || document;
+    var vid = reader.getAttribute('data-video');
+    function embedSrc(start) {
+      var src = 'https://www.youtube-nocookie.com/embed/' + vid + '?autoplay=1';
+      return start > 0 ? src + '&start=' + start : src;
+    }
+    reader.querySelectorAll('.tx-time').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var start = parseInt(btn.getAttribute('data-start') || '0', 10);
+        var frame = col.querySelector('iframe');
+        if (frame) {
+          frame.src = embedSrc(start);  // player already open: re-cue it
+        } else {
+          var fac = col.querySelector('.yt-facade');
+          if (fac) { fac.setAttribute('data-start', String(start)); fac.click(); }
+        }
+        var player = col.querySelector('iframe, .yt-facade');
+        if (player && player.scrollIntoView) {
+          player.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      });
+    });
+  })();
+</script>
+{% endif %}
 
 {% endblock %}

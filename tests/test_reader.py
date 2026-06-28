@@ -4,10 +4,80 @@ from __future__ import annotations
 
 from actalux.diarization.reader import (
     build_meeting_speakers,
+    build_reader_transcript,
     clusters_in_window,
     resolve_speakers,
     speakers_in_window,
 )
+
+
+def _attr_turns() -> list[dict]:
+    return [
+        {"cluster_label": "SPK_A", "start_seconds": 0.0, "end_seconds": 5.0,
+         "words": [{"word": "Good"}, {"word": "evening"}]},
+        {"cluster_label": "SPK_B", "start_seconds": 5.0, "end_seconds": 9.0,
+         "words": [{"word": "Councilmember"}, {"word": "York"}]},
+        {"cluster_label": "SPK_C", "start_seconds": 9.0, "end_seconds": 12.0,
+         "words": [{"word": "My"}, {"word": "name"}, {"word": "is"}]},
+        {"cluster_label": "SPK_B", "start_seconds": 12.0, "end_seconds": 13.0, "words": []},
+        {"cluster_label": "SPK_C", "start_seconds": 13.0, "end_seconds": 15.0,
+         "words": [{"word": "again"}]},
+    ]  # fmt: skip
+
+
+def _named_a() -> list[dict]:
+    return [
+        {
+            "cluster_label": "SPK_A",
+            "confidence": "confirmed",
+            "basis": "rollcall",
+            "subject_id": 7,
+            "subject": {"slug": "jane-harris", "canonical_name": "Jane Harris"},
+        }
+    ]
+
+
+def _fix_york(text: str) -> str:
+    return text.replace("York", "Jeffery Yorg")
+
+
+def test_build_reader_transcript_labels_canonicalizes_and_keeps_raw():
+    blocks = build_reader_transcript(_attr_turns(), _named_a(), _fix_york)
+    # Empty SPK_B turn dropped; anonymous clusters numbered by first appearance; a
+    # recurring anonymous cluster keeps its number.
+    assert [b["label"] for b in blocks] == ["Jane Harris", "Speaker 1", "Speaker 2", "Speaker 2"]
+    a, b, c = blocks[0], blocks[1], blocks[2]
+    assert a["identified"] is True and a["slug"] == "jane-harris"
+    assert b["identified"] is False and b["slug"] is None
+    # Canonical view corrects the proper noun; the raw view stays verbatim.
+    assert b["canonical_text"] == "Councilmember Jeffery Yorg"
+    assert b["raw_text"] == "Councilmember York"
+    assert c["start_seconds"] == 9.0
+
+
+def test_build_reader_transcript_gates_low_confidence_identity():
+    # SPK_A's identity is below the public gate -> the cluster stays anonymous, never named.
+    low = [dict(_named_a()[0], confidence="inferred_low")]
+    blocks = build_reader_transcript(_attr_turns(), low, _fix_york)
+    assert blocks[0]["label"] == "Speaker 1" and blocks[0]["identified"] is False
+
+
+def test_build_reader_transcript_no_rules_passthrough():
+    blocks = build_reader_transcript(_attr_turns(), [], lambda t: t)
+    assert blocks[1]["canonical_text"] == blocks[1]["raw_text"] == "Councilmember York"
+
+
+def test_build_reader_transcript_tolerates_malformed_words():
+    # The JSONB column only guarantees an array; a malformed element must be skipped,
+    # not 500 the reader page.
+    turns = [
+        {"cluster_label": "SPK_A", "start_seconds": 0.0, "end_seconds": 2.0,
+         "words": ["not a dict", {"word": None}, {"start": 1.0}, {"word": "Hello"}]},
+        {"cluster_label": "SPK_B", "start_seconds": 2.0, "end_seconds": 3.0, "words": "junk"},
+    ]  # fmt: skip
+    blocks = build_reader_transcript(turns, [], lambda t: t)
+    # Only the one good word survives; the all-malformed turn drops (empty text).
+    assert [b["raw_text"] for b in blocks] == ["Hello"]
 
 
 def _turns() -> list[dict]:

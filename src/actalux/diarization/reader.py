@@ -9,6 +9,7 @@ inferred_high / confirmed identities); nothing here re-derives or re-gates ident
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 # A speaker's identity is public ONLY at these confidence levels. The DB enforces this
@@ -72,6 +73,64 @@ def speakers_in_window(
         {"cluster_label": c, "speaker": identities.get(c)}
         for c in clusters_in_window(turns, start_s, end_s)
     ]
+
+
+def _turn_text(words: list[dict[str, Any]]) -> str:
+    """Join a turn's words into readable prose (verbatim — whitespace only, never edited).
+
+    Defensive about the JSONB shape: the column only guarantees an array, so a malformed
+    element is skipped rather than allowed to error a reader page.
+    """
+    parts = []
+    for w in words:
+        token = w.get("word") if isinstance(w, dict) else None
+        if isinstance(token, str) and token.strip():
+            parts.append(token.strip())
+    return " ".join(parts).strip()
+
+
+def build_reader_transcript(
+    turns: list[dict[str, Any]],
+    identity_rows: list[dict[str, Any]],
+    canonicalize: Callable[[str], str],
+) -> list[dict[str, Any]]:
+    """Speaker-labeled turn blocks for the transcript reader (canonical + raw per turn).
+
+    Each block carries a display ``label`` — the gated official name for an identified
+    cluster, else a stable ``"Speaker N"`` numbered by first appearance so distinct
+    anonymous voices stay distinguishable without being named — plus the turn's start
+    time and both texts: ``canonical_text`` (proper nouns corrected, the default view)
+    and ``raw_text`` (verbatim as transcribed). ``canonicalize`` is injected (the route
+    binds it to the place's vetted corrections) so this stays pure and place-agnostic.
+
+    Identity gating is already applied by ``resolve_speakers`` (only high/confirmed name
+    a subject); every other cluster stays anonymous. Empty turns are dropped.
+    """
+    speakers = resolve_speakers(identity_rows)
+    anon_numbers: dict[str, int] = {}
+    blocks: list[dict[str, Any]] = []
+    for turn in turns:
+        raw_text = _turn_text(turn.get("words") or [])
+        if not raw_text:
+            continue
+        cluster = turn["cluster_label"]
+        identity = speakers.get(cluster)
+        if identity:
+            label, slug, identified = identity["name"], identity.get("slug"), True
+        else:
+            number = anon_numbers.setdefault(cluster, len(anon_numbers) + 1)
+            label, slug, identified = f"Speaker {number}", None, False
+        blocks.append(
+            {
+                "label": label,
+                "slug": slug,
+                "identified": identified,
+                "start_seconds": turn.get("start_seconds"),
+                "canonical_text": canonicalize(raw_text),
+                "raw_text": raw_text,
+            }
+        )
+    return blocks
 
 
 def build_meeting_speakers(
