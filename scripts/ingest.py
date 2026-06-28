@@ -334,6 +334,7 @@ def _find_existing_document(
     file_hash: str,
     portal: str,
     filename: str,
+    entity_id: int | None = None,
 ) -> dict[str, Any] | None:
     """Locate the current document this file should dedup against, or None.
 
@@ -345,15 +346,20 @@ def _find_existing_document(
          filename and origin both changed.
       3. ``source_file`` (filename) -- legacy fallback for rows ingested before
          source_ref existed, or hand-added docs with no origin URL.
+
+    When ``entity_id`` is given every tier is scoped to that body, so a record is
+    only deduped against a prior version of the *same* body's record. Without it a
+    video (or identical bytes) shared across bodies could wrongly supersede another
+    body's current document.
     """
     if source_ref:
-        existing = find_document_by_source_ref(client, portal, source_ref)
+        existing = find_document_by_source_ref(client, portal, source_ref, entity_id)
         if existing:
             return existing
-    existing = find_document_by_content_hash(client, file_hash, portal)
+    existing = find_document_by_content_hash(client, file_hash, portal, entity_id)
     if existing:
         return existing
-    return find_document_by_source(client, filename)
+    return find_document_by_source(client, filename, portal, entity_id)
 
 
 def _ingest_with_dedup(
@@ -396,6 +402,7 @@ def _ingest_with_dedup(
         file_hash=file_hash,
         portal=portal,
         filename=path.name,
+        entity_id=entity_id,
     )
 
     if existing:

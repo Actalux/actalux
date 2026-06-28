@@ -126,22 +126,30 @@ class TestNormalizeSourceRef:
 
 
 class _CallRecorder:
-    """Records which dedup lookups ran and in what order."""
+    """Records which dedup lookups ran, in what order, and with which entity scope."""
 
     def __init__(self, hits: dict[str, dict | None]) -> None:
         self._hits = hits
         self.order: list[str] = []
+        self.entity_ids: list[int | None] = []
+        self.portals: list[str] = []
 
-    def by_source_ref(self, _client, _portal, source_ref):
+    def by_source_ref(self, _client, portal, source_ref, entity_id=None):
         self.order.append("source_ref")
+        self.entity_ids.append(entity_id)
+        self.portals.append(portal)
         return self._hits.get("source_ref") if source_ref else None
 
-    def by_content_hash(self, _client, content_hash, _portal):
+    def by_content_hash(self, _client, content_hash, portal="", entity_id=None):
         self.order.append("content_hash")
+        self.entity_ids.append(entity_id)
+        self.portals.append(portal)
         return self._hits.get("content_hash") if content_hash else None
 
-    def by_source(self, _client, _filename):
+    def by_source(self, _client, _filename, portal="", entity_id=None):
         self.order.append("source_file")
+        self.entity_ids.append(entity_id)
+        self.portals.append(portal)
         return self._hits.get("source_file")
 
 
@@ -215,6 +223,25 @@ class TestFindExistingDocument:
 
         assert existing == {"id": 2}
         assert rec.order == ["content_hash"]
+
+    def test_entity_id_scopes_every_tier(self, monkeypatch) -> None:
+        # Dedup must be body-scoped so a video/content shared across bodies can't
+        # supersede another body's document.
+        rec = _CallRecorder({"source_ref": None, "content_hash": None, "source_file": None})
+        _patch_lookups(monkeypatch, rec)
+
+        _find_existing_document(
+            object(),
+            source_ref="https://example.test/document/abc",
+            file_hash="deadbeef",
+            portal="youtube",
+            filename="meeting.txt",
+            entity_id=42,
+        )
+
+        assert rec.order == ["source_ref", "content_hash", "source_file"]
+        assert rec.entity_ids == [42, 42, 42]  # forwarded to all three tiers
+        assert rec.portals == ["youtube", "youtube", "youtube"]  # portal-scoped too
 
 
 class TestUnchangedSkipBackfillsSourceRef:

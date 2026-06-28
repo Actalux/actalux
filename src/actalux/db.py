@@ -444,9 +444,13 @@ def list_recent_meeting_documents(
 
 
 def find_document_by_source(
-    client: Client, source_file: str, source_portal: str = ""
+    client: Client, source_file: str, source_portal: str = "", entity_id: int | None = None
 ) -> dict[str, Any] | None:
-    """Find the latest version of a document by source_file and portal."""
+    """Find the latest version of a document by source_file and portal.
+
+    When ``entity_id`` is given the match is scoped to that body, so a record is only
+    ever deduped against a prior version of the *same* body's record.
+    """
     query = (
         client.table("documents")
         .select("*")
@@ -455,12 +459,14 @@ def find_document_by_source(
     )
     if source_portal:
         query = query.eq("source_portal", source_portal)
+    if entity_id is not None:
+        query = query.eq("entity_id", entity_id)
     result = query.execute()
     return result.data[0] if result.data else None
 
 
 def find_document_by_source_ref(
-    client: Client, source_portal: str, source_ref: str
+    client: Client, source_portal: str, source_ref: str, entity_id: int | None = None
 ) -> dict[str, Any] | None:
     """Find the current document for a stable external id within a portal.
 
@@ -489,25 +495,27 @@ def find_document_by_source_ref(
     """
     if not source_ref:
         return None
-    result = (
+    query = (
         client.table("documents")
         .select("*")
         .eq("source_portal", source_portal)
         .eq("source_ref", source_ref)
         .is_("replaces_id", "null")
-        .execute()
     )
+    if entity_id is not None:
+        query = query.eq("entity_id", entity_id)
+    result = query.execute()
     return result.data[0] if result.data else None
 
 
 def find_document_by_content_hash(
-    client: Client, content_hash: str, source_portal: str = ""
+    client: Client, content_hash: str, source_portal: str = "", entity_id: int | None = None
 ) -> dict[str, Any] | None:
     """Find the current document whose stored content matches ``content_hash``.
 
     Used as the second dedup tier after ``source_ref``: identical bytes are the
     same document even when the filename or origin URL has changed. An empty
-    hash short-circuits to None. Optionally scoped to a portal.
+    hash short-circuits to None. Optionally scoped to a portal and/or body.
 
     Parameters
     ----------
@@ -517,6 +525,9 @@ def find_document_by_content_hash(
         SHA-256 of the parsed content.
     source_portal
         Optional portal scope; empty matches any portal.
+    entity_id
+        Optional body scope; when set, identical bytes under a *different* body are
+        not treated as the same document (a meeting belongs to one body).
 
     Returns
     -------
@@ -533,6 +544,8 @@ def find_document_by_content_hash(
     )
     if source_portal:
         query = query.eq("source_portal", source_portal)
+    if entity_id is not None:
+        query = query.eq("entity_id", entity_id)
     result = query.execute()
     return result.data[0] if result.data else None
 
