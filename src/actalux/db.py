@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from postgrest.exceptions import APIError
 from supabase import Client, create_client
 
 from actalux.models import BudgetLineItem, Chunk, Correction, Document, IngestRun, Vote
@@ -808,12 +810,39 @@ def set_chunk_start_seconds(client: Client, chunk_id: int, start_seconds: int) -
 
 # --- Chunks ---
 
-# Rows per chunk INSERT. A single insert of a long transcript's chunks (each row
-# carries a 384-dim embedding) does all the HNSW index maintenance in one statement
-# and trips the Supabase free-tier statement timeout (postgrest 57014) — the failure
-# that silently broke the speaker-attribution backfill on a 162-chunk document. 50
-# keeps each statement small enough to stay under the timeout.
-_CHUNK_INSERT_BATCH = 50
+# Rows per chunk INSERT. Each row carries a 384-dim embedding, so the insert does
+# HNSW index maintenance whose cost scales with the batch size; a large batch trips
+# the Supabase free-tier statement timeout (postgrest 57014). 50 was still too large
+# under sustained backfill load (a single 50-row batch timed out mid-run), so the
+# default is 25 and ``_insert_chunk_rows`` halves further on any timeout it still hits.
+_CHUNK_INSERT_BATCH = 25
+
+
+def _is_statement_timeout(err: Exception) -> bool:
+    """True if a PostgREST error is the free-tier statement timeout (57014)."""
+    return getattr(err, "code", None) == "57014" or "statement timeout" in str(err).lower()
+
+
+def _insert_chunk_rows(client: Client, rows: list[dict[str, Any]]) -> list[int]:
+    """Insert chunk rows, halving and retrying on a free-tier statement timeout.
+
+    The 384-dim-embedding insert's HNSW index work can exceed the Supabase
+    free-tier statement timeout under load. On a timeout we split the batch and
+    retry each half (down to a single row, which always fits under the timeout),
+    so a one-time backfill completes regardless of how slow the instance is.
+    Order is preserved (left half before right); a single row that still times
+    out — or any non-timeout error — propagates.
+    """
+    try:
+        result = client.table("chunks").insert(rows).execute()
+        return [r["id"] for r in result.data]
+    except APIError as err:
+        if not _is_statement_timeout(err) or len(rows) <= 1:
+            raise
+    # Reached only on a timeout with >1 row: let the instance breathe, then halve.
+    time.sleep(0.5)
+    mid = len(rows) // 2
+    return _insert_chunk_rows(client, rows[:mid]) + _insert_chunk_rows(client, rows[mid:])
 
 
 def insert_chunks(client: Client, chunks: list[Chunk]) -> list[int]:
@@ -844,8 +873,7 @@ def insert_chunks(client: Client, chunks: list[Chunk]) -> list[int]:
     ids: list[int] = []
     for start in range(0, len(rows), _CHUNK_INSERT_BATCH):
         batch = rows[start : start + _CHUNK_INSERT_BATCH]
-        result = client.table("chunks").insert(batch).execute()
-        ids.extend(r["id"] for r in result.data)
+        ids.extend(_insert_chunk_rows(client, batch))
     logger.info("Inserted %d chunks for document %d", len(ids), chunks[0].document_id)
     return ids
 

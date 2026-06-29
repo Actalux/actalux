@@ -3,6 +3,9 @@
 from dataclasses import replace
 from datetime import date
 
+import pytest
+from postgrest.exceptions import APIError
+
 from actalux.db import (
     _CHUNK_INSERT_BATCH,
     backfill_document_source_ref,
@@ -191,6 +194,44 @@ class _BatchInsertClient:
         return _BatchInsertTable(self)
 
 
+class _TimeoutInsertTable:
+    """Raises the free-tier statement timeout (57014) for batches larger than
+    ``max_ok``; with a non-timeout ``error_code`` it always raises that instead."""
+
+    def __init__(self, recorder: "_TimeoutInsertClient") -> None:
+        self._recorder = recorder
+        self._batch: list[dict] = []
+
+    def insert(self, rows: list[dict]) -> "_TimeoutInsertTable":
+        self._batch = rows
+        return self
+
+    def execute(self) -> _InsertResult:
+        rec = self._recorder
+        if rec.error_code != "57014":
+            raise APIError({"message": "boom", "code": rec.error_code})
+        if len(self._batch) > rec.max_ok:
+            raise APIError(
+                {"message": "canceling statement due to statement timeout", "code": "57014"}
+            )
+        rec.ok_sizes.append(len(self._batch))
+        start = rec.next_id
+        ids = list(range(start, start + len(self._batch)))
+        rec.next_id = start + len(self._batch)
+        return _InsertResult([{"id": i} for i in ids])
+
+
+class _TimeoutInsertClient:
+    def __init__(self, max_ok: int, error_code: str = "57014") -> None:
+        self.max_ok = max_ok
+        self.error_code = error_code
+        self.ok_sizes: list[int] = []
+        self.next_id = 1
+
+    def table(self, _name: str) -> _TimeoutInsertTable:
+        return _TimeoutInsertTable(self)
+
+
 class TestInsertChunksBatching:
     """A long transcript's chunks must insert in batches, or one statement's HNSW
     index work trips the free-tier statement timeout (the backfill failure)."""
@@ -199,10 +240,10 @@ class TestInsertChunksBatching:
         return [Chunk(document_id=7, content=f"c{i}", chunk_index=i) for i in range(n)]
 
     def test_splits_into_batches_and_returns_ids_in_order(self) -> None:
-        n = 162  # the doc that failed the backfill; at batch 50 -> [50, 50, 50, 12]
+        n = 162  # the doc that failed the backfill; at batch 25 -> 6x25 + 12
         client = _BatchInsertClient()
         ids = insert_chunks(client, self._chunks(n))
-        assert client.batch_sizes == [50, 50, 50, 12]
+        assert client.batch_sizes == [25, 25, 25, 25, 25, 25, 12]
         assert max(client.batch_sizes) <= _CHUNK_INSERT_BATCH
         assert len(ids) == n
         assert ids == sorted(ids)  # ids returned in chunk order
@@ -217,6 +258,37 @@ class TestInsertChunksBatching:
         client = _BatchInsertClient()
         assert insert_chunks(client, []) == []
         assert client.batch_sizes == []
+
+    def test_halves_on_statement_timeout_preserving_order(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A 25-row batch that still trips the free-tier statement timeout must be
+        # halved and retried until each piece fits — never crashing the backfill.
+        monkeypatch.setattr("actalux.db.time.sleep", lambda *_: None)
+        client = _TimeoutInsertClient(max_ok=7)  # anything > 7 rows "times out"
+        n = 60
+        ids = insert_chunks(client, self._chunks(n))
+        assert len(ids) == n
+        assert ids == sorted(ids)  # order preserved across the recursive halving
+        assert client.ok_sizes  # at least one successful (small) insert
+        assert all(size <= 7 for size in client.ok_sizes)  # every committed insert fit
+        assert sum(client.ok_sizes) == n  # all rows landed exactly once
+
+    def test_single_row_timeout_propagates(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # If even one row times out, there's nothing left to halve — surface it.
+        monkeypatch.setattr("actalux.db.time.sleep", lambda *_: None)
+        client = _TimeoutInsertClient(max_ok=0)
+        with pytest.raises(APIError):
+            insert_chunks(client, self._chunks(2))
+
+    def test_non_timeout_error_is_not_halved(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # A non-timeout APIError (e.g. a constraint violation) must propagate
+        # immediately, not get retried via halving.
+        monkeypatch.setattr("actalux.db.time.sleep", lambda *_: None)
+        client = _TimeoutInsertClient(max_ok=100, error_code="23505")
+        with pytest.raises(APIError):
+            insert_chunks(client, self._chunks(3))
+        assert client.ok_sizes == []  # never retried
 
 
 class _UpdateTable:

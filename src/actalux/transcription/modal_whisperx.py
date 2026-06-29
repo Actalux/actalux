@@ -32,10 +32,19 @@ WHISPER_MODEL = "large-v3"
 SOURCE_MODEL = "whisperx/large-v3"
 APP_NAME = "actalux-whisperx"
 
+# Force English. Every Clayton civic meeting is in English; whisperx's per-file
+# language auto-detect occasionally misfires on a silent/music intro (e.g. it
+# guessed "cy"/Welsh), which both garbles the transcript and crashes alignment
+# (no wav2vec2 align-model exists for many guessed languages). Pinning the known
+# language is a bug fix, not a transcription-method change — it does not alter how
+# the (English) speech is decoded.
+WHISPER_LANGUAGE = "en"
+
 app = modal.App(APP_NAME)
 
 # whisperx pulls a CUDA torch + ctranslate2 + the wav2vec2 align stack.
 image = modal.Image.debian_slim(python_version="3.11").apt_install("ffmpeg").pip_install("whisperx")
+
 
 # L4 over T4: on a 2.4 hr meeting it ran 1.59x faster at 0.85x the per-meeting cost
 # (RTF 0.034 vs 0.055; identical transcript) and its 24 GB clears the T4's 16 GB OOM
@@ -69,7 +78,11 @@ def transcribe_remote(audio_bytes: bytes) -> dict:
         "repetition_penalty": 1.05,
     }
     model = whisperx.load_model(
-        WHISPER_MODEL, device, compute_type="float16", asr_options=asr_options
+        WHISPER_MODEL,
+        device,
+        compute_type="float16",
+        asr_options=asr_options,
+        language=WHISPER_LANGUAGE,  # pin English; don't auto-detect (see note above)
     )
     result = model.transcribe(audio, batch_size=16)
     language = result["language"]
