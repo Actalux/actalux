@@ -572,6 +572,50 @@ def update_document_checked(client: Client, doc_id: int) -> None:
     client.table("documents").update({"last_checked_at": now}).eq("id", doc_id).execute()
 
 
+def delete_document(client: Client, doc_id: int) -> None:
+    """Delete a document row. Its chunks/votes cascade (``ON DELETE CASCADE``).
+
+    Used to roll back a half-ingested document: a doc row goes ``current``
+    (``replaces_id IS NULL``) the instant it's inserted, so if chunking/embedding
+    or the chunk insert then fails, deleting the row prevents a current but
+    chunkless (unsearchable) document from being left behind.
+    """
+    client.table("documents").delete().eq("id", doc_id).execute()
+
+
+def delete_chunks_for_document(client: Client, doc_id: int) -> None:
+    """Delete all chunks of a document (keeping the document row).
+
+    Used by in-place repair of a chunkless doc: clearing first (and again on a
+    failed rebuild) keeps the "0 chunks == needs repair" invariant true, so a
+    repair that fails partway leaves the doc at zero chunks to be retried rather
+    than stranded as a partial that future re-ingests skip.
+    """
+    client.table("chunks").delete().eq("document_id", doc_id).execute()
+
+
+# Retries for the version cutover (demote old -> point at new). It runs right after
+# a possibly-slow chunk insert and can hit the same free-tier statement timeout; if
+# lost, both versions stay current. Retry on timeout before surfacing.
+_SUPERSEDE_RETRIES = 3
+
+
+def supersede_document(client: Client, old_id: int, new_id: int) -> None:
+    """Mark ``old_id`` as replaced by ``new_id`` (demote the old version).
+
+    Retries on the free-tier statement timeout so a transient slow update doesn't
+    leave two current versions of the same meeting.
+    """
+    for attempt in range(_SUPERSEDE_RETRIES):
+        try:
+            client.table("documents").update({"replaces_id": new_id}).eq("id", old_id).execute()
+            return
+        except APIError as err:
+            if not _is_statement_timeout(err) or attempt == _SUPERSEDE_RETRIES - 1:
+                raise
+            time.sleep(0.5)
+
+
 # --- Supersession resolution -----------------------------------------------
 # When a document is replaced (a new version, or a duplicate twin canonicalised
 # by A2 dedup), the old row gets ``replaces_id`` set to the surviving canonical
@@ -876,6 +920,23 @@ def insert_chunks(client: Client, chunks: list[Chunk]) -> list[int]:
         ids.extend(_insert_chunk_rows(client, batch))
     logger.info("Inserted %d chunks for document %d", len(ids), chunks[0].document_id)
     return ids
+
+
+def document_has_chunks(client: Client, doc_id: int) -> bool:
+    """True if a document has at least one chunk.
+
+    Lets ingest distinguish a genuinely-unchanged document (skip) from a current
+    but chunkless one (a prior ingest died after the doc row but before its
+    chunks) so the latter is repaired rather than skipped forever.
+    """
+    result = (
+        client.table("chunks")
+        .select("id", count="exact")
+        .eq("document_id", doc_id)
+        .limit(1)
+        .execute()
+    )
+    return bool(result.count)
 
 
 # A stable citation id is exactly CITATION_ID_LEN (8) lowercase-hex chars; a

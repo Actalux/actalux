@@ -8,7 +8,11 @@ from postgrest.exceptions import APIError
 
 from actalux.db import (
     _CHUNK_INSERT_BATCH,
+    _SUPERSEDE_RETRIES,
     backfill_document_source_ref,
+    delete_chunks_for_document,
+    delete_document,
+    document_has_chunks,
     fetch_all_rows,
     get_chunk_citation_ids,
     get_chunk_with_context,
@@ -16,6 +20,7 @@ from actalux.db import (
     insert_document,
     resolve_chunk_ref,
     resolve_source_anchor,
+    supersede_document,
 )
 from actalux.models import Chunk, Document
 
@@ -545,3 +550,144 @@ class TestFetchAllRows:
         backing = [{"id": i} for i in range(3)]
         out = fetch_all_rows(lambda: _PagedBuilder(backing), order="id", desc=True)
         assert [r["id"] for r in out] == [2, 1, 0]
+
+
+class _CountResult:
+    def __init__(self, count: int | None) -> None:
+        self.count = count
+        self.data: list = []
+
+
+class _CountTable:
+    def __init__(self, count: int | None) -> None:
+        self._count = count
+
+    def select(self, *_a, **_k) -> "_CountTable":
+        return self
+
+    def eq(self, *_a, **_k) -> "_CountTable":
+        return self
+
+    def limit(self, *_a, **_k) -> "_CountTable":
+        return self
+
+    def execute(self) -> _CountResult:
+        return _CountResult(self._count)
+
+
+class _CountClient:
+    def __init__(self, count: int | None) -> None:
+        self._count = count
+
+    def table(self, _name: str) -> _CountTable:
+        return _CountTable(self._count)
+
+
+class _DeleteTable:
+    def __init__(self, calls: list) -> None:
+        self._calls = calls
+
+    def delete(self) -> "_DeleteTable":
+        self._calls.append("delete")
+        return self
+
+    def eq(self, col: str, val: object) -> "_DeleteTable":
+        self._calls.append((col, val))
+        return self
+
+    def execute(self) -> _Result:
+        return _Result([])
+
+
+class _DeleteClient:
+    def __init__(self) -> None:
+        self.calls: list = []
+
+    def table(self, name: str) -> _DeleteTable:
+        self.calls.append(name)
+        return _DeleteTable(self.calls)
+
+
+class TestDocumentHasChunks:
+    def test_true_when_count_positive(self) -> None:
+        assert document_has_chunks(_CountClient(3), 7) is True
+
+    def test_false_when_zero(self) -> None:
+        assert document_has_chunks(_CountClient(0), 7) is False
+
+    def test_false_when_count_none(self) -> None:
+        assert document_has_chunks(_CountClient(None), 7) is False
+
+
+class TestDeleteDocument:
+    def test_deletes_documents_row_by_id(self) -> None:
+        client = _DeleteClient()
+        delete_document(client, 42)
+        assert client.calls[0] == "documents"
+        assert "delete" in client.calls
+        assert ("id", 42) in client.calls
+
+
+class _SupersedeTable:
+    def __init__(self, rec: dict) -> None:
+        self._rec = rec
+
+    def update(self, payload: dict) -> "_SupersedeTable":
+        self._rec["payload"] = payload
+        return self
+
+    def eq(self, col: str, val: object) -> "_SupersedeTable":
+        self._rec.setdefault("eqs", []).append((col, val))
+        return self
+
+    def execute(self) -> _Result:
+        rec = self._rec
+        rec["attempts"] += 1
+        if rec["attempts"] <= rec["fail_timeouts"]:
+            raise APIError(
+                {"message": "canceling statement due to statement timeout", "code": "57014"}
+            )
+        if rec.get("hard_error"):
+            raise APIError({"message": "boom", "code": "23505"})
+        return _Result([])
+
+
+class _SupersedeClient:
+    def __init__(self, fail_timeouts: int = 0, hard_error: bool = False) -> None:
+        self.rec = {"attempts": 0, "fail_timeouts": fail_timeouts, "hard_error": hard_error}
+
+    def table(self, _name: str) -> _SupersedeTable:
+        return _SupersedeTable(self.rec)
+
+
+class TestSupersedeDocument:
+    def test_succeeds_after_timeout_retries(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("actalux.db.time.sleep", lambda *_: None)
+        client = _SupersedeClient(fail_timeouts=2)  # times out twice, then succeeds
+        supersede_document(client, old_id=10, new_id=20)
+        assert client.rec["attempts"] == 3
+        assert client.rec["payload"] == {"replaces_id": 20}
+        assert ("id", 10) in client.rec["eqs"]
+
+    def test_raises_after_max_timeouts(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("actalux.db.time.sleep", lambda *_: None)
+        client = _SupersedeClient(fail_timeouts=99)
+        with pytest.raises(APIError):
+            supersede_document(client, old_id=10, new_id=20)
+        assert client.rec["attempts"] == _SUPERSEDE_RETRIES
+
+    def test_non_timeout_propagates_immediately(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("actalux.db.time.sleep", lambda *_: None)
+        client = _SupersedeClient(hard_error=True)
+        with pytest.raises(APIError):
+            supersede_document(client, old_id=10, new_id=20)
+        assert client.rec["attempts"] == 1  # not retried
+
+
+class TestDeleteChunksForDocument:
+    def test_deletes_chunks_by_document_id(self) -> None:
+        client = _DeleteClient()
+        delete_chunks_for_document(client, 42)
+        assert client.calls[0] == "chunks"
+        assert "delete" in client.calls
+        assert ("document_id", 42) in client.calls

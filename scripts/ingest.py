@@ -36,6 +36,9 @@ from urllib.parse import SplitResult, parse_qs, urlsplit, urlunsplit
 from actalux.config import load_config
 from actalux.db import (
     backfill_document_source_ref,
+    delete_chunks_for_document,
+    delete_document,
+    document_has_chunks,
     find_document_by_content_hash,
     find_document_by_source,
     find_document_by_source_ref,
@@ -44,6 +47,7 @@ from actalux.db import (
     insert_chunks,
     insert_document,
     insert_ingest_run,
+    supersede_document,
     update_document_checked,
 )
 from actalux.errors import ActaluxError, ParseError
@@ -407,6 +411,36 @@ def _ingest_with_dedup(
 
     if existing:
         if existing.get("content_hash") == file_hash:
+            # Unchanged content is normally a no-op. But a current version with NO
+            # chunks (a prior ingest died after the doc row but before its chunks —
+            # the free-tier-timeout failure mode) would otherwise be skipped forever.
+            # Repair it in place by (re)building its chunks instead.
+            if not document_has_chunks(client, existing["id"]):
+                logger.warning("  REPAIR (chunkless current doc): %s", path.name)
+                # Key citations on the same source_ref a fresh ingest would use, and
+                # backfill it onto a legacy row that lacks one (same as the skip path).
+                eff_source_ref = existing.get("source_ref") or source_ref
+                doc_key = doc_stable_key(
+                    eff_source_ref,
+                    existing["content_hash"],
+                    existing.get("source_file") or path.name,
+                )
+                # Clear any partial stragglers first, and clear again if the rebuild
+                # fails partway, so the doc always ends at 0 chunks (== still needs
+                # repair) rather than a partial that future re-ingests skip forever.
+                delete_chunks_for_document(client, existing["id"])
+                try:
+                    n_chunks = _build_and_insert_chunks(
+                        client, existing["id"], text, doc_key, config, label=path.name
+                    )
+                except Exception:
+                    delete_chunks_for_document(client, existing["id"])
+                    raise
+                if source_ref and not existing.get("source_ref"):
+                    backfill_document_source_ref(client, existing["id"], source_ref)
+                    logger.info("  BACKFILL source_ref: %s", path.name)
+                update_document_checked(client, existing["id"])
+                return {"status": "updated", "chunks": n_chunks}
             # Content unchanged — mark as checked, and backfill source_ref onto a
             # legacy row that lacks one so a future twin can dedup against it.
             update_document_checked(client, existing["id"])
@@ -443,9 +477,9 @@ def _ingest_with_dedup(
             date_source=date_source,
             video_id=video_id,
         )
-        # Mark old document as replaced by the new one
-        new_id = result["doc_id"]
-        client.table("documents").update({"replaces_id": new_id}).eq("id", existing["id"]).execute()
+        # Mark old document as replaced by the new one (retries on a timeout so a
+        # slow cutover doesn't leave two current versions).
+        supersede_document(client, existing["id"], result["doc_id"])
         return {"status": "updated", "chunks": result["chunks"]}
 
     # New document
@@ -469,6 +503,45 @@ def _ingest_with_dedup(
     )
     logger.info("  OK %s: %d chunks ingested", path.name, result["chunks"])
     return {"status": "new", "chunks": result["chunks"]}
+
+
+def _build_and_insert_chunks(
+    client: Any, doc_id: int, text: str, doc_key: str, config: Any, *, label: str
+) -> int:
+    """Chunk, embed, citation-stamp, and insert a document's chunks; return the count.
+
+    Shared by first-time ingest and chunkless-doc repair so both produce identical
+    chunk and citation rows for the same text. ``doc_key`` is the document's stable
+    key (source_ref/content_hash/source_file) so citation ids reproduce across a
+    re-ingest. Raises ParseError if no chunk survives validation.
+    """
+    chunks = chunk_document(
+        document_id=doc_id,
+        text=text,
+        target_words=config.chunk_target_words,
+        overlap_sentences=config.chunk_overlap_sentences,
+    )
+    valid_chunks = validate_chunks(chunks, text)
+    if len(valid_chunks) < len(chunks):
+        logger.warning(
+            "%d/%d chunks failed validation for %s",
+            len(chunks) - len(valid_chunks),
+            len(chunks),
+            label,
+        )
+    if not valid_chunks:
+        raise ParseError(f"All chunks failed validation for {label}")
+
+    # Stamp each chunk with its stable, content-addressed citation id (what
+    # citations render and route on, surviving this row's eventual re-ingest).
+    embedded_chunks = embed_chunks(valid_chunks, model_name=config.embedding_model)
+    citation_ids = assign_citation_ids(doc_key, [c.content for c in embedded_chunks])
+    embedded_chunks = [
+        replace(chunk, citation_id=cid)
+        for chunk, cid in zip(embedded_chunks, citation_ids, strict=True)
+    ]
+    insert_chunks(client, embedded_chunks)
+    return len(embedded_chunks)
 
 
 def ingest_single_file(
@@ -525,40 +598,17 @@ def ingest_single_file(
     )
     doc_id = insert_document(client, doc)
 
-    chunks = chunk_document(
-        document_id=doc_id,
-        text=text,
-        target_words=config.chunk_target_words,
-        overlap_sentences=config.chunk_overlap_sentences,
-    )
-
-    valid_chunks = validate_chunks(chunks, text)
-    if len(valid_chunks) < len(chunks):
-        logger.warning(
-            "%d/%d chunks failed validation for %s",
-            len(chunks) - len(valid_chunks),
-            len(chunks),
-            path.name,
-        )
-
-    if not valid_chunks:
-        raise ParseError(f"All chunks failed validation for {path.name}")
-
-    embedded_chunks = embed_chunks(valid_chunks, model_name=config.embedding_model)
-
-    # Stamp each chunk with its stable, content-addressed citation id (what
-    # citations render and route on, surviving this row's eventual re-ingest).
-    # The doc key comes from the document built above, so a re-ingest of the same
-    # source reproduces the same ids.
+    # The doc row is now current (replaces_id IS NULL) the instant it's inserted.
+    # If building/inserting its chunks fails, delete it so a partial ingest never
+    # leaves a current but chunkless (unsearchable) document behind.
     doc_key = doc_stable_key(doc.source_ref, doc.content_hash, doc.source_file)
-    citation_ids = assign_citation_ids(doc_key, [c.content for c in embedded_chunks])
-    embedded_chunks = [
-        replace(chunk, citation_id=cid)
-        for chunk, cid in zip(embedded_chunks, citation_ids, strict=True)
-    ]
-    insert_chunks(client, embedded_chunks)
+    try:
+        n_chunks = _build_and_insert_chunks(client, doc_id, text, doc_key, config, label=path.name)
+    except Exception:
+        delete_document(client, doc_id)
+        raise
 
-    return {"doc_id": doc_id, "chunks": len(embedded_chunks)}
+    return {"doc_id": doc_id, "chunks": n_chunks}
 
 
 # YouTube is the one portal that puts a video's stable id in the QUERY string

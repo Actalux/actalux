@@ -257,6 +257,9 @@ class TestUnchangedSkipBackfillsSourceRef:
         monkeypatch.setattr(ingest, "parse_file", lambda _p: "body text")
         monkeypatch.setattr(ingest, "content_hash", lambda _t: "samehash")
         monkeypatch.setattr(ingest, "_find_existing_document", lambda *_a, **_k: existing)
+        # These rows are healthy (have chunks) — exercise the unchanged-skip path,
+        # not the chunkless-repair path.
+        monkeypatch.setattr(ingest, "document_has_chunks", lambda *_a, **_k: True)
         monkeypatch.setattr(ingest, "update_document_checked", lambda *_a, **_k: None)
         monkeypatch.setattr(
             ingest,
@@ -322,6 +325,195 @@ class TestUnchangedSkipBackfillsSourceRef:
 
         assert result["status"] == "skipped"
         assert backfills == []
+
+
+class TestChunklessRepairAndRollback:
+    """A current doc with no chunks (a prior ingest died after the doc row but
+    before its chunks) must be repaired on re-ingest, not skipped forever; and a
+    chunk-insert failure must roll back the orphan doc so a current-but-chunkless
+    (unsearchable) row is never left behind."""
+
+    def _config(self):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            chunk_target_words=200, chunk_overlap_sentences=2, embedding_model="bge-small"
+        )
+
+    def _patch_chunk_pipeline(
+        self,
+        monkeypatch,
+        inserted: list,
+        cleared: list | None = None,
+        backfilled: list | None = None,
+        *,
+        insert_raises: bool = False,
+    ):
+        monkeypatch.setattr(ingest, "parse_file", lambda _p: "body text")
+        monkeypatch.setattr(ingest, "content_hash", lambda _t: "samehash")
+        monkeypatch.setattr(
+            ingest,
+            "chunk_document",
+            lambda **k: [Chunk(document_id=k["document_id"], content="body text")],
+        )
+        monkeypatch.setattr(ingest, "validate_chunks", lambda c, _t: c)
+        monkeypatch.setattr(ingest, "embed_chunks", lambda c, **_k: c)
+        monkeypatch.setattr(
+            ingest, "assign_citation_ids", lambda _k, contents: ["abcd1234"] * len(contents)
+        )
+        monkeypatch.setattr(
+            ingest,
+            "delete_chunks_for_document",
+            lambda _c, doc_id: cleared.append(doc_id) if cleared is not None else None,
+        )
+        monkeypatch.setattr(
+            ingest,
+            "backfill_document_source_ref",
+            lambda _c, doc_id, ref: (
+                backfilled.append((doc_id, ref)) if backfilled is not None else None
+            ),
+        )
+
+        def _insert(_c, chunks):
+            if insert_raises:
+                raise RuntimeError("chunk insert blew up")
+            inserted.extend(chunks)
+            return list(range(len(chunks)))
+
+        monkeypatch.setattr(ingest, "insert_chunks", _insert)
+
+    def test_repairs_chunkless_current_doc(self, monkeypatch) -> None:
+        existing = {
+            "id": 7,
+            "content_hash": "samehash",
+            "source_ref": "https://x/doc/7",
+            "source_file": "m.txt",
+        }
+        monkeypatch.setattr(ingest, "_find_existing_document", lambda *_a, **_k: existing)
+        monkeypatch.setattr(ingest, "document_has_chunks", lambda _c, _id: False)  # broken
+        checked: list = []
+        monkeypatch.setattr(
+            ingest, "update_document_checked", lambda _c, doc_id: checked.append(doc_id)
+        )
+        inserted: list = []
+        self._patch_chunk_pipeline(monkeypatch, inserted)
+
+        result = _ingest_with_dedup(
+            client=object(),
+            path=Path("m.txt"),
+            meeting_date=date(2024, 9, 25),
+            meeting_title="M",
+            config=self._config(),
+            source_url="https://x/doc/7",
+            source_portal="youtube",
+        )
+
+        assert result["status"] == "updated"
+        assert result["chunks"] == 1
+        assert [c.document_id for c in inserted] == [7]  # repaired the EXISTING doc
+        assert checked == [7]
+
+    def test_skips_when_current_doc_has_chunks(self, monkeypatch) -> None:
+        existing = {
+            "id": 7,
+            "content_hash": "samehash",
+            "source_ref": "https://x/doc/7",
+            "source_file": "m.txt",
+        }
+        monkeypatch.setattr(ingest, "_find_existing_document", lambda *_a, **_k: existing)
+        monkeypatch.setattr(ingest, "document_has_chunks", lambda _c, _id: True)  # healthy
+        monkeypatch.setattr(ingest, "update_document_checked", lambda *_a, **_k: None)
+        inserted: list = []
+        self._patch_chunk_pipeline(monkeypatch, inserted)
+
+        result = _ingest_with_dedup(
+            client=object(),
+            path=Path("m.txt"),
+            meeting_date=date(2024, 9, 25),
+            meeting_title="M",
+            config=self._config(),
+            source_url="https://x/doc/7",
+            source_portal="youtube",
+        )
+
+        assert result["status"] == "skipped"
+        assert inserted == []  # never re-chunked a healthy doc
+
+    def test_rolls_back_orphan_on_chunk_insert_failure(self, monkeypatch) -> None:
+        monkeypatch.setattr(ingest, "_find_existing_document", lambda *_a, **_k: None)
+        monkeypatch.setattr(ingest, "_pii_gate", lambda *_a, **_k: False)
+        monkeypatch.setattr(ingest, "insert_document", lambda _c, _doc: 99)
+        deleted: list = []
+        monkeypatch.setattr(ingest, "delete_document", lambda _c, doc_id: deleted.append(doc_id))
+        inserted: list = []
+        self._patch_chunk_pipeline(monkeypatch, inserted, insert_raises=True)
+
+        with pytest.raises(RuntimeError):
+            _ingest_with_dedup(
+                client=object(),
+                path=Path("new.txt"),
+                meeting_date=date(2024, 9, 25),
+                meeting_title="M",
+                config=self._config(),
+                source_url="https://x/doc/new",
+                source_portal="youtube",
+            )
+
+        assert deleted == [99]  # the orphan new doc was rolled back
+
+    def test_repair_failure_clears_partial_chunks(self, monkeypatch) -> None:
+        existing = {
+            "id": 7,
+            "content_hash": "samehash",
+            "source_ref": "https://x/doc/7",
+            "source_file": "m.txt",
+        }
+        monkeypatch.setattr(ingest, "_find_existing_document", lambda *_a, **_k: existing)
+        monkeypatch.setattr(ingest, "document_has_chunks", lambda _c, _id: False)
+        monkeypatch.setattr(ingest, "update_document_checked", lambda *_a, **_k: None)
+        cleared: list = []
+        self._patch_chunk_pipeline(monkeypatch, [], cleared, insert_raises=True)
+
+        with pytest.raises(RuntimeError):
+            _ingest_with_dedup(
+                client=object(),
+                path=Path("m.txt"),
+                meeting_date=date(2024, 9, 25),
+                meeting_title="M",
+                config=self._config(),
+                source_url="https://x/doc/7",
+                source_portal="youtube",
+            )
+
+        # Cleared twice: once before the rebuild, once on failure — so the doc is
+        # left at 0 chunks (re-heals next time), never a stuck partial.
+        assert cleared == [7, 7]
+
+    def test_repair_backfills_blank_source_ref(self, monkeypatch) -> None:
+        existing = {
+            "id": 7,
+            "content_hash": "samehash",
+            "source_ref": "",  # legacy row missing its stable id
+            "source_file": "m.txt",
+        }
+        monkeypatch.setattr(ingest, "_find_existing_document", lambda *_a, **_k: existing)
+        monkeypatch.setattr(ingest, "document_has_chunks", lambda _c, _id: False)
+        monkeypatch.setattr(ingest, "update_document_checked", lambda *_a, **_k: None)
+        backfilled: list = []
+        self._patch_chunk_pipeline(monkeypatch, [], backfilled=backfilled)
+
+        result = _ingest_with_dedup(
+            client=object(),
+            path=Path("m.txt"),
+            meeting_date=date(2024, 9, 25),
+            meeting_title="M",
+            config=self._config(),
+            source_url="https://x/doc/7",
+            source_portal="youtube",
+        )
+
+        assert result["status"] == "updated"
+        assert backfilled == [(7, "https://x/doc/7")]
 
 
 class TestDateSourcePropagation:
