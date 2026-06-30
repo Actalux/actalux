@@ -7,7 +7,11 @@
       "organization_type": "municipality",
       "state": "mo",
       "bodies": ["council", "plan-commission", "board-of-adjustment"],
-      "serves": ["clayton"]
+      "serves": ["clayton"],
+      "metadata": {
+        "census_place_geoid": "2914572",
+        "standardized_id_source": "U.S. Census place GEOID 2914572 (mirrors the served place's geoid; verified via Census geocoder). The Census of Governments 'Government ID' is a distinct municipal identifier and is intentionally not recorded here -- unverified."
+      }
     },
     {
       "slug": "school-district-of-clayton",
@@ -15,7 +19,13 @@
       "organization_type": "school_district",
       "state": "mo",
       "bodies": ["schools"],
-      "serves": ["clayton"]
+      "serves": ["clayton"],
+      "metadata": {
+        "nces": "2909720",
+        "dese": "096102",
+        "state_district_id": "MO-096102",
+        "standardized_id_source": "NCES LEAID 2909720 identifies the local education agency (this organization); cross-checked against the MO DESE county-district code 096102 (= trailing of state district id MO-096102). Verified against NCES CCD 2026-06-14 (also on the schools entity via migrate_014)."
+      }
     }
   ]
 }

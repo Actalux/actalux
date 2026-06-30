@@ -3,7 +3,8 @@
 Pairs with migrate_036 (the additive DDL) and reads a per-place org config
 (scripts/orgs/<state>_<place>.json). For that place it idempotently:
 
-  1. upserts each ``organizations`` row (keyed on state+slug);
+  1. upserts each ``organizations`` row (keyed on state+slug), including any
+     standardized government IDs (NCES LEAID, Census place GEOID) in ``metadata``;
   2. sets ``entities.organization_id`` for every body the org owns;
   3. links the org to the geographies it serves via ``org_serves_place``.
 
@@ -91,18 +92,19 @@ def main() -> int:
         if not args.apply:
             continue
 
+        org_payload = {
+            "slug": org["slug"],
+            "name": org["name"],
+            "organization_type": org["organization_type"],
+            "state": org["state"],
+        }
+        # Standardized government IDs (NCES LEAID, Census place GEOID, ...) are
+        # config-owned: only set metadata when the config carries it, so an org
+        # whose config omits it keeps whatever is already stored.
+        if "metadata" in org:
+            org_payload["metadata"] = org["metadata"]
         org_row = (
-            client.table("organizations")
-            .upsert(
-                {
-                    "slug": org["slug"],
-                    "name": org["name"],
-                    "organization_type": org["organization_type"],
-                    "state": org["state"],
-                },
-                on_conflict="state,slug",
-            )
-            .execute()
+            client.table("organizations").upsert(org_payload, on_conflict="state,slug").execute()
         )
         org_id = org_row.data[0]["id"]
 
