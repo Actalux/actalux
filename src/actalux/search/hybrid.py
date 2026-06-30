@@ -15,6 +15,7 @@ from datetime import date
 from typing import Any
 
 import httpx
+from postgrest.exceptions import APIError
 from supabase import Client
 
 from actalux.errors import RerankError, SearchError
@@ -246,9 +247,11 @@ _RPC_RETRIES = 2
 def _rpc_with_retry(op: Callable[[], Any], what: str) -> Any:
     """Run a Supabase RPC ``op``, retrying transient connection failures.
 
-    Retries only the connection-level errors above (a dropped/closed HTTP/2
-    connection), where a reconnect succeeds. Non-transient errors propagate
-    immediately; the last transient error propagates after the final attempt.
+    Retries two transient classes, where a brief pause + retry usually succeeds:
+    a dropped/closed HTTP/2 connection (the errors above), and a Postgres statement
+    timeout (57014) from the database being momentarily overloaded. Any other error
+    (a bad query, a real outage) propagates immediately; the last transient error
+    propagates after the final attempt.
     """
     for attempt in range(_RPC_RETRIES + 1):
         try:
@@ -264,6 +267,18 @@ def _rpc_with_retry(op: Callable[[], Any], what: str) -> Any:
                 exc,
             )
             time.sleep(0.2 * (attempt + 1))
+        except APIError as exc:
+            # 57014 = "canceling statement due to statement timeout" (DB under load).
+            # Other API errors (malformed query, schema issue) are not transient.
+            if getattr(exc, "code", None) != "57014" or attempt == _RPC_RETRIES:
+                raise
+            logger.warning(
+                "%s statement timeout (attempt %d/%d); retrying",
+                what,
+                attempt + 1,
+                _RPC_RETRIES + 1,
+            )
+            time.sleep(0.3 * (attempt + 1))
 
 
 def _semantic_search(

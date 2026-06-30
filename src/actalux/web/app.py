@@ -496,6 +496,11 @@ def _run_search(
         template = "partials/search_results.html" if is_htmx else "search.html"
         return templates.TemplateResponse(request, template, _page(view, results=[], query=""))
 
+    # Per-IP cap on actual searches: each runs an expensive hybrid query, and a
+    # crawler following /search?q=<title> links can otherwise saturate the database
+    # (statement timeouts that also fail /ask). 30/min is generous for a human.
+    _enforce_rate(request, "search", _get_config().rate_limit_search_per_minute)
+
     entity_id, entity_ids = _resolve_scope(view.entity, scope)
     filters = SearchFilters(
         date_from=date.fromisoformat(date_from) if date_from else None,

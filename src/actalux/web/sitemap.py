@@ -95,5 +95,9 @@ def build_robots_txt(base_url: str) -> str:
         "Allow: /\n"
         "Disallow: /document/*/pane\n"
         "Disallow: /ask/stream\n"
+        # Search-result pages are dynamic queries, not content to index. Pages link
+        # documents/matters/meetings to a /search?q=<title>, so without this a crawler
+        # follows one expensive hybrid search per item and saturates the database.
+        "Disallow: /*/search\n"
         f"Sitemap: {base}/sitemap.xml\n"
     )

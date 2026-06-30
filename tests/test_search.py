@@ -422,3 +422,37 @@ class TestRpcRetry:
             out = _semantic_search(client, [0.0], SearchFilters())
         assert out == [{"chunk_id": 1}]
         assert attempts["n"] == 2  # one drop, then a successful reconnect
+
+
+def test_rpc_retry_retries_statement_timeout() -> None:
+    """A 57014 statement timeout (DB overload) is transient and retried."""
+    from postgrest.exceptions import APIError
+
+    calls = {"n": 0}
+
+    def op() -> str:
+        calls["n"] += 1
+        if calls["n"] < 2:
+            raise APIError(
+                {"message": "canceling statement due to statement timeout", "code": "57014"}
+            )
+        return "ok"
+
+    with patch("actalux.search.hybrid.time.sleep"):
+        assert _rpc_with_retry(op, "semantic_search") == "ok"
+    assert calls["n"] == 2
+
+
+def test_rpc_retry_does_not_retry_other_api_errors() -> None:
+    """A non-timeout API error (e.g. a real query/schema problem) is not retried."""
+    from postgrest.exceptions import APIError
+
+    calls = {"n": 0}
+
+    def op() -> str:
+        calls["n"] += 1
+        raise APIError({"message": "relation does not exist", "code": "42P01"})
+
+    with pytest.raises(APIError):
+        _rpc_with_retry(op, "keyword_search")
+    assert calls["n"] == 1
