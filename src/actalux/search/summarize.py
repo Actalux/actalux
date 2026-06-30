@@ -69,7 +69,11 @@ increasing the debt levy" — not even as an attributed claim; omit it and give 
 figures instead. If the sources state no specific rate, say so rather than describing \
 the impact. Attribute any other promotional or evaluative framing ("necessary", \
 "premier", "fiscally responsible") to the source rather than stating it yourself.
-6. Use plain language. Write 3-6 sentences.
+6. Use plain language, and the past tense for what the records report — the \
+meetings, votes, decisions, and statements already happened (e.g. "the board \
+approved the budget", "the superintendent said"). Use the present tense only for \
+conditions that still hold (e.g. a standing policy or a current figure). Write \
+3-6 sentences.
 7. If the quotes are not relevant to the query, say so briefly.
 """
 
