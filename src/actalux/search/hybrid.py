@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
+import httpx
 from supabase import Client
 
 from actalux.errors import RerankError, SearchError
@@ -223,6 +224,48 @@ def _demote_low_priority_types(results: list[SearchResult]) -> list[SearchResult
     return [r for _, r in sorted(enumerate(results), key=sort_key)]
 
 
+# Supabase sits behind a load balancer that periodically drops a long-lived HTTP/2
+# connection with a GOAWAY (surfaces as httpx RemoteProtocolError / "Connection
+# Terminated"). The web client is cached and shared (db.get_client), so it reuses
+# one connection across requests; an in-flight RPC -- especially under the
+# concurrent multi-variant fan-out -- can catch that close and die. These are
+# transient: the next attempt reconnects. The search RPCs had no retry (unlike DB
+# writes via _run_with_timeout_retry), so a single GOAWAY failed the whole query.
+_TRANSIENT_RPC_ERRORS = (
+    httpx.RemoteProtocolError,
+    httpx.ConnectError,
+    httpx.ConnectTimeout,
+    httpx.ReadError,
+    httpx.ReadTimeout,
+    httpx.WriteError,
+    httpx.PoolTimeout,
+)
+_RPC_RETRIES = 2
+
+
+def _rpc_with_retry(op: Callable[[], Any], what: str) -> Any:
+    """Run a Supabase RPC ``op``, retrying transient connection failures.
+
+    Retries only the connection-level errors above (a dropped/closed HTTP/2
+    connection), where a reconnect succeeds. Non-transient errors propagate
+    immediately; the last transient error propagates after the final attempt.
+    """
+    for attempt in range(_RPC_RETRIES + 1):
+        try:
+            return op()
+        except _TRANSIENT_RPC_ERRORS as exc:
+            if attempt == _RPC_RETRIES:
+                raise
+            logger.warning(
+                "%s transient connection error (attempt %d/%d): %s; retrying",
+                what,
+                attempt + 1,
+                _RPC_RETRIES + 1,
+                exc,
+            )
+            time.sleep(0.2 * (attempt + 1))
+
+
 def _semantic_search(
     client: Client,
     embedding: list[float],
@@ -246,7 +289,9 @@ def _semantic_search(
         params["filter_entity_ids"] = list(filters.entity_ids)
 
     try:
-        result = client.rpc("semantic_search", params).execute()
+        result = _rpc_with_retry(
+            lambda: client.rpc("semantic_search", params).execute(), "semantic_search"
+        )
         return result.data or []
     except Exception as exc:
         raise SearchError(f"Semantic search failed: {exc}") from exc
@@ -289,7 +334,9 @@ def _keyword_search(
         params["filter_entity_ids"] = list(filters.entity_ids)
 
     try:
-        result = client.rpc("keyword_search", params).execute()
+        result = _rpc_with_retry(
+            lambda: client.rpc("keyword_search", params).execute(), "keyword_search"
+        )
         return result.data or []
     except Exception as exc:
         raise SearchError(f"Keyword search failed: {exc}") from exc

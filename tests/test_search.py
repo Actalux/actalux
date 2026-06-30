@@ -4,7 +4,9 @@ RRF is a pure function — no database or embedding model needed.
 """
 
 from datetime import date
+from unittest.mock import Mock, patch
 
+import httpx
 import pytest
 
 from actalux.errors import SearchError
@@ -17,6 +19,7 @@ from actalux.search.hybrid import (
     _keyword_search,
     _normalize_fts_query,
     _reciprocal_rank_fusion,
+    _rpc_with_retry,
     _semantic_search,
     hybrid_search,
 )
@@ -368,3 +371,54 @@ class TestDemoteLowPriorityTypes:
     def test_relative_order_among_agendas_preserved(self) -> None:
         rows = [_sr(1, "agenda"), _sr(2, "agenda"), _sr(3, "minutes")]
         assert [r.chunk_id for r in _demote_low_priority_types(rows)] == [3, 1, 2]
+
+
+class TestRpcRetry:
+    """Search RPCs retry transient HTTP/2 connection drops (Supabase GOAWAY)."""
+
+    def test_retries_transient_then_succeeds(self) -> None:
+        calls = {"n": 0}
+
+        def op() -> str:
+            calls["n"] += 1
+            if calls["n"] < 3:
+                raise httpx.RemoteProtocolError("<ConnectionTerminated error_code:1>")
+            return "ok"
+
+        with patch("actalux.search.hybrid.time.sleep"):
+            assert _rpc_with_retry(op, "semantic_search") == "ok"
+        assert calls["n"] == 3  # failed twice (attempts 0,1), succeeded on attempt 2
+
+    def test_exhausts_retries_and_raises_transient(self) -> None:
+        def op() -> str:
+            raise httpx.RemoteProtocolError("<ConnectionTerminated error_code:1>")
+
+        with patch("actalux.search.hybrid.time.sleep"), pytest.raises(httpx.RemoteProtocolError):
+            _rpc_with_retry(op, "keyword_search")
+
+    def test_non_transient_error_is_not_retried(self) -> None:
+        calls = {"n": 0}
+
+        def op() -> str:
+            calls["n"] += 1
+            raise ValueError("boom")
+
+        with pytest.raises(ValueError):
+            _rpc_with_retry(op, "semantic_search")
+        assert calls["n"] == 1  # no retry on a non-transient error
+
+    def test_semantic_search_retries_connection_drop(self) -> None:
+        attempts = {"n": 0}
+
+        def execute() -> Mock:
+            attempts["n"] += 1
+            if attempts["n"] == 1:
+                raise httpx.RemoteProtocolError("<ConnectionTerminated error_code:1>")
+            return Mock(data=[{"chunk_id": 1}])
+
+        client = Mock()
+        client.rpc.return_value.execute.side_effect = execute
+        with patch("actalux.search.hybrid.time.sleep"):
+            out = _semantic_search(client, [0.0], SearchFilters())
+        assert out == [{"chunk_id": 1}]
+        assert attempts["n"] == 2  # one drop, then a successful reconnect
