@@ -156,6 +156,133 @@
         "term_start": "2026-04-28", "term_start_basis": "cited",
         "term_end": null, "term_end_basis": null,
         "source": "doc 854 (full name, May 2026); doc 1085 (current, Ward 1); doc 772 (Apr 2026 swearing-in). Newest member; only ever a Councilmember."
+      },
+      {
+        "canonical_name": "David Gipson",
+        "aliases": ["Gipson"],
+        "role": "City Manager",
+        "ward": null,
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED official (not elected). doc 991 (2020-09-18 minutes) 'David Gipson, City Manager'; doc 853 (2026-05-26 minutes staff block) 'City Manager Gipson'. Current. Same person as the David Gipson on the Plan Commission roster (staff attendance there)."
+      },
+      {
+        "canonical_name": "Myron Burr",
+        "aliases": ["Burr"],
+        "role": "Assistant City Manager",
+        "ward": null,
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED official. doc 881 (2026-02-20 minutes) 'Assistant City Manager, Myron Burr'; doc 880 (2026-02-24 minutes) 'Assistant City Manager Myron Burr'; doc 853 (staff block). Current."
+      },
+      {
+        "canonical_name": "June Frazier",
+        "aliases": ["Frazier"],
+        "role": "City Clerk",
+        "ward": null,
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED official. doc 1061 (2016-11-15 minutes) 'June Frazier - City Clerk'; doc 991 (2020-09-18 minutes) 'June Frazier, City Clerk'; doc 853 (staff block 'City Clerk Frazier'). Long-serving; current."
+      },
+      {
+        "canonical_name": "Kevin O'Keefe",
+        "aliases": ["O'Keefe", "OKeefe"],
+        "role": "City Attorney",
+        "ward": null,
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED official (outside counsel acting as City Attorney). doc 919 (2024-07-23 minutes) 'City Attorney O'Keefe'; doc 853 (staff block 'City Attorney O'Keefe'); doc 1245 (2026-06-01 PC minutes) 'Kevin O'Keefe, City Attorney'. Current primary. Same person as on the Plan Commission and Board of Adjustment."
+      },
+      {
+        "canonical_name": "Karen Dilber",
+        "aliases": ["Dilber"],
+        "role": "Director of Finance",
+        "ward": null,
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED official. doc 938 (2023-08-08 minutes) 'Karen Dilber, Director of Finance'; doc 880 (2026-02-24 minutes) 'Karen Dilber, Finance Director'; doc 1450 (City ACFR) 'Director of Finance'. Current ('Director of Finance' and 'Finance Director' used interchangeably)."
+      },
+      {
+        "canonical_name": "Anna Krane",
+        "aliases": ["Krane", "Ana Cray", "Honor Crane"],
+        "role": "Director of Planning & Development",
+        "ward": null,
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED official. doc 877 (2026-04-14 minutes) 'Anna Krane, Director of Planning'; doc 1245 (2026-06-01 PC minutes) 'Anna Krane, Director of Planning & Development'. Current. 'Ana Cray'/'Honor Crane' = ASR manglings in transcripts. Same person as on the Plan Commission."
+      },
+      {
+        "canonical_name": "Ernie Rhodes",
+        "aliases": ["Rhodes"],
+        "role": "Fire Chief",
+        "ward": null,
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED official. doc 1145 (2022-11-08 agenda) 'Ernie Rhodes, Fire Chief'; doc 900 (2025-07-08 minutes) 'Fire Chief Rhodes'. Current."
+      },
+      {
+        "canonical_name": "Paul Mercurio",
+        "aliases": ["Mercurio"],
+        "role": "Assistant Fire Chief",
+        "ward": null,
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED official. doc 1145 (2022-11-08 agenda) 'Paul Mercurio, Assistant Fire Chief'."
+      },
+      {
+        "canonical_name": "Mark Smith",
+        "aliases": ["Mark Smith"],
+        "role": "Police Chief",
+        "ward": null,
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED official. SOURCE BASIS = YouTube transcripts (ASR), not a minutes staff block: doc 2453 (2022-09-13 transcript) 'Chief Mark Smith'; doc 2483 (2025-01-14 transcript) 'Chief Mark Smith'; doc 2466 (2023-12-19 transcript) 'Chief Mark Smith'. Spelling ASR-confirmed across multiple meetings; not yet minutes-grounded. Bare surname 'Smith' withheld as an alias (too ambiguous); resolves on full name only."
+      },
+      {
+        "canonical_name": "Janet Watson",
+        "aliases": ["Watson"],
+        "role": "Finance Director",
+        "ward": null,
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED official, FORMER (preceded Dilber). doc 1026 (2018-08-28 minutes) 'Janet Watson, Finance Director'; doc 970 (2021-08-20 minutes) 'Janet Watson, Finance Director'."
+      },
+      {
+        "canonical_name": "Kayla Pacanowski",
+        "aliases": ["Pacanowski"],
+        "role": "Finance Director",
+        "ward": null,
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED official, FORMER. doc 1008 (2019-08-27 minutes) 'Kayla Pacanowski, Interim Finance Director'; doc 970 (2021-08-20 minutes) 'Kayla Pacanowski, Assistant Finance Director'."
+      },
+      {
+        "canonical_name": "Susan Istenes",
+        "aliases": ["Istenes"],
+        "role": "Planning Director",
+        "ward": null,
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED official, FORMER (preceded Krane). doc 1009 (2019-08-13 minutes) 'Susan Istenes, Planning Director'."
+      },
+      {
+        "canonical_name": "Stephanie Karr",
+        "aliases": ["Karr"],
+        "role": "City Attorney",
+        "ward": null,
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED official (outside counsel, alternate/former acting City Attorney). doc 992 (2020-09-08 minutes) 'City Attorney Stephanie Karr'. Same person as the Stephanie Karr on the Plan Commission (alternate attorney)."
+      },
+      {
+        "canonical_name": "Craig Owens",
+        "slug": "craig-owens-city-manager",
+        "aliases": ["Owens"],
+        "role": "City Manager",
+        "ward": null,
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED official, FORMER (preceded Gipson). doc 1061 (2016-11-15 minutes) 'Craig Owens - City Manager'. Slug PINNED distinct from the Plan Commission 'Craig Owens' (commissioner): likely the same person but kept UNMERGED pending confirmation (operator decision 2026-06-30). Merge later by repointing if confirmed."
       }
     ],
     "schools": [
@@ -230,6 +357,126 @@
         "term_start": "2026-04-15", "term_start_basis": "cited",
         "term_end": null, "term_end_basis": null,
         "source": "doc 438 (oath 2026-04-15, term 2026-2029); doc 609 (election win). New member Apr 2026."
+      },
+      {
+        "canonical_name": "Nisha Patel",
+        "aliases": ["Nisha Patel", "Dr. Nisha Patel", "Dr. Patel", "Patel"],
+        "role": "Superintendent",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED official (not elected). doc 438 (2026-04-15 minutes, 'Also Present') 'Dr. Nisha Patel-Superintendent'; earliest doc 176 (2021-12-15 minutes) 'Dr. Nisha Patel - Superintendent'. Current. DISTINCT person from councilmember Becky Patel; surname 'Patel' is body-scoped so it resolves to Patel within schools only."
+      },
+      {
+        "canonical_name": "Milena Garganigo",
+        "aliases": ["Garganigo"],
+        "role": "Assistant Superintendent of Teaching & Learning",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED official. doc 438 (2026-04-15 minutes) 'Dr. Milena Garganigo-Assistant Superintendent of Teaching & Learning'; in role since at least doc 176 (2021-12-15). Current."
+      },
+      {
+        "canonical_name": "Kelly Sollberger",
+        "aliases": ["Sollberger"],
+        "role": "Assistant Superintendent of Human Resources",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED official. doc 438 (2026-04-15 minutes) 'Dr. Kelly Sollberger-Assistant Superintendent of Human Resources'. Current."
+      },
+      {
+        "canonical_name": "Cameron Poole",
+        "aliases": ["Poole"],
+        "role": "Assistant Superintendent of Equity and Student Services",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED official. doc 438 (2026-04-15 minutes) 'Dr. Cameron Poole-Assistant Superintendent of Equity and Student Services'. Current."
+      },
+      {
+        "canonical_name": "John Brazeal",
+        "aliases": ["Brazeal"],
+        "role": "Chief Financial Officer",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED official. doc 438 (2026-04-15 minutes) 'John Brazeal-Chief Financial Officer'; doc 426 (2021-07-01 audit) 'John Brazeal, Chief Financial Officer'. Current (CFO since at least 2021)."
+      },
+      {
+        "canonical_name": "Gina Tarte",
+        "aliases": ["Tarte"],
+        "role": "Chief Communications Officer",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED official. doc 438 (2026-04-15 minutes) 'Gina Tarte-Chief Communications Officer'. Current."
+      },
+      {
+        "canonical_name": "Luke Heitert",
+        "aliases": ["Heitert"],
+        "role": "Chief Technology Officer",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED official. doc 438 (2026-04-15 minutes) 'Luke Heitert-Chief Technology Officer'; doc 443 (2026-03-11 minutes) 'Luke Heitert, Chief Technology Officer'. Current."
+      },
+      {
+        "canonical_name": "Heike Janis",
+        "aliases": ["Janis"],
+        "role": "Executive Assistant to Superintendent/Board of Education",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED staff. doc 501 (2026-01-21 minutes) 'Heike Janis-Executive Assistant to Superintendent/Board of Education'; doc 438 (2026-04-15 minutes) 'Heike Janis-Executive Assistant'. Current."
+      },
+      {
+        "canonical_name": "Robyn Haug",
+        "aliases": ["Haug"],
+        "role": "Director of Assessment and Professional Development",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED staff (presents the Assessment Report). doc 442 (2026-02-19 minutes) 'Dr. Robyn Haug, Director of Assessment and Professional[Development]'. Title truncated in source; current."
+      },
+      {
+        "canonical_name": "Sean Doherty",
+        "aliases": ["Doherty", "Sean Doherty", "Sean N. Doherty"],
+        "role": "Superintendent",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED official, FORMER (preceded Patel; retirement honored doc 2535, 2021-09). doc 257 (2019-07-01 budget) 'Sean N. Doherty, Ed.D ... Superintendent'; doc 260 (2021-07-01) 'Sean Doherty, Ed.D. Superintendent'."
+      },
+      {
+        "canonical_name": "Mary Jo Gruber",
+        "aliases": ["Gruber", "Mary Jo Gruber"],
+        "role": "Chief Financial Officer",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED official, FORMER (preceded Brazeal). doc 257 (2019-07-01 budget) 'Mary Jo Gruber, CPA, CGMA, SFO ... Chief Financial Officer'; doc 210 (2020-11-18 minutes) 'Ms. Mary Jo Gruber - Chief Financial Officer'."
+      },
+      {
+        "canonical_name": "Chris Tennill",
+        "aliases": ["Tennill"],
+        "role": "Chief Communications Officer",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED official, FORMER (preceded Tarte). doc 176 (2021-12-15 minutes) 'Chris Tennill, Chief Communications Officer'."
+      },
+      {
+        "canonical_name": "Tony Arnold",
+        "aliases": ["Arnold"],
+        "role": "Assistant Superintendent of Human Resources",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED official, FORMER (preceded Sollberger). doc 176 (2021-12-15 minutes) 'Dr. Tony Arnold, Assistant Superintendent of Human Resources'."
+      },
+      {
+        "canonical_name": "Robyn Wiens",
+        "aliases": ["Wiens"],
+        "role": "Assistant Superintendent Student Services",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED official, FORMER. doc 176 (2021-12-15 minutes) 'Dr. Robyn Wiens, Assistant Superintendent Student Services'."
+      },
+      {
+        "canonical_name": "Timothy Dilg",
+        "aliases": ["Dilg"],
+        "role": "Assistant Superintendent",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED official, FORMER. doc 257 (2019-07-01 budget) 'Timothy Dilg, Ed.D. Assistant Superintendent'."
       }
     ],
     "plan-commission": [
@@ -448,6 +695,46 @@
         "term_start": null, "term_start_basis": null,
         "term_end": null, "term_end_basis": null,
         "source": "City's published 2026 PC-ARB roster (operator-confirmed). Current member; no moved/seconded motion in the cited record yet."
+      },
+      {
+        "canonical_name": "Anna Krane",
+        "aliases": ["Krane", "Ana Cray", "Honor Crane"],
+        "role": "Director of Planning & Development",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED staff (not a commissioner). doc 1245 (2026-06-01 PC minutes, 'Also in attendance') 'Anna Krane, Director of Planning & Development'. Current. Same person as on the City Council roster."
+      },
+      {
+        "canonical_name": "Ryan Helle",
+        "aliases": ["Helle", "Ryan Helle", "Brian Helley"],
+        "role": "Planner",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED staff. doc 1246 (2026-05-18 PC minutes) 'Ryan Helle, Planner'; staff contact 'rhelle@claytonmo.gov'. Current. 'Brian Helley' = ASR mangling in transcripts. Same person as on the Board of Adjustment."
+      },
+      {
+        "canonical_name": "Hobie Kropp",
+        "aliases": ["Kropp"],
+        "role": "Planning Technician",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED staff. doc 1245 (2026-06-01 PC minutes) 'Hobie Kropp, Planning Technician'. Current. Same person as on the Board of Adjustment."
+      },
+      {
+        "canonical_name": "Kevin O'Keefe",
+        "aliases": ["O'Keefe", "OKeefe"],
+        "role": "City Attorney",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED official (outside counsel). doc 1245 (2026-06-01 PC minutes) 'Kevin O'Keefe, City Attorney'. Current. Same person as on the City Council and Board of Adjustment."
+      },
+      {
+        "canonical_name": "Stephanie Karr",
+        "aliases": ["Karr"],
+        "role": "City Attorney",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED official (outside counsel, alternate). doc 1246 (2026-05-18 PC minutes) 'Stephanie Karr, City Attorney'. Same person as on the City Council roster."
       }
     ],
     "board-of-adjustment": [
@@ -570,6 +857,54 @@
         "term_start": null, "term_start_basis": null,
         "term_end": null, "term_end_basis": null,
         "source": "City's published 2026 Board of Adjustment roster (operator-confirmed). Current member; no moved/seconded motion in the cited record yet (so no dossier entries until one appears)."
+      },
+      {
+        "canonical_name": "Ryan Helle",
+        "aliases": ["Helle", "Ryan Helle"],
+        "role": "Planner",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED staff. doc 1782 (2026-03-05 BoA minutes, 'OTHER ATTENDEES') 'RYAN HELLE, PLANNER'. Current. Same person as on the Plan Commission."
+      },
+      {
+        "canonical_name": "Thomas Morgan",
+        "aliases": ["Morgan"],
+        "role": "Planning Technician",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED staff. doc 1782 (2026-03-05 BoA minutes) 'THOMAS MORGAN, PLANNING TECHNICIAN'."
+      },
+      {
+        "canonical_name": "Hobie Kropp",
+        "aliases": ["Kropp"],
+        "role": "Planning Technician",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED staff. doc 1785 (2025-10-09 BoA minutes) and doc 1787 (2025-06-05 BoA minutes) 'HOBIE KROPP, PLANNING TECHNICIAN'. Same person as on the Plan Commission."
+      },
+      {
+        "canonical_name": "Kevin O'Keefe",
+        "aliases": ["O'Keefe", "OKeefe"],
+        "role": "City Attorney",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED official (outside counsel). doc 1782 (2026-03-05 BoA minutes) and doc 1787 (2025-06-05 BoA minutes) 'KEVIN O'KEEFE, CITY ATTORNEY'. Current. Same person as on the City Council and Plan Commission."
+      },
+      {
+        "canonical_name": "Kyle Cronin",
+        "aliases": ["Cronin"],
+        "role": "City Attorney",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "APPOINTED official (outside counsel, alternate). doc 1785 (2025-10-09 BoA minutes) 'KYLE CRONIN, CITY ATTORNEY'."
+      },
+      {
+        "canonical_name": "Rebecca Brewer",
+        "aliases": ["Brewer"],
+        "role": "Court Reporter",
+        "term_start": null, "term_start_basis": null,
+        "term_end": null, "term_end_basis": null,
+        "source": "Contracted court reporter / recording official (swears in BoA speakers). doc 1782 (2026-03-05 BoA minutes) 'REBECCA BREWER, COURT REPORTER' and 'Rebecca Brewer swore in all those present wishing to speak'."
       }
     ]
   }
