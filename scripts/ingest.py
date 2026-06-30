@@ -786,11 +786,16 @@ def ingest_from_manifest(manifest_path: Path, entity_path: str = DEFAULT_ENTITY_
         total_skipped,
         total_failed,
     )
-    # Exit non-zero on any failure so CI surfaces it (matches ingest_directory).
-    # Without this a wholesale failure — e.g. the embedder unable to load — logs
-    # "N failed" but the step still reports success, hiding that nothing landed.
-    if total_failed > 0:
-        logger.warning("%d document(s) failed to ingest. Check errors above.", total_failed)
+    # Surface any failure as a CI annotation (visible without reading the log) but only
+    # ABORT on a WHOLESALE failure — nothing landed, e.g. the embedder couldn't load.
+    # A few bad docs (an empty/no-speech transcript) must not exit non-zero: under the
+    # workflow's `set -e` that would skip every downstream step (persist, timestamps,
+    # summaries, chapters) for the docs that DID ingest. Partial failures are expected
+    # at corpus scale and are logged + annotated, not fatal.
+    if total_failed:
+        print(f"::warning::{total_failed} document(s) failed to ingest; see errors above")
+    if total_failed and (total_new + total_updated) == 0:
+        logger.error("ingest failed wholesale: 0 succeeded, %d failed", total_failed)
         sys.exit(1)
 
 
