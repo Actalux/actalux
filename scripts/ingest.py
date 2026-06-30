@@ -786,6 +786,12 @@ def ingest_from_manifest(manifest_path: Path, entity_path: str = DEFAULT_ENTITY_
         total_skipped,
         total_failed,
     )
+    # Exit non-zero on any failure so CI surfaces it (matches ingest_directory).
+    # Without this a wholesale failure — e.g. the embedder unable to load — logs
+    # "N failed" but the step still reports success, hiding that nothing landed.
+    if total_failed > 0:
+        logger.warning("%d document(s) failed to ingest. Check errors above.", total_failed)
+        sys.exit(1)
 
 
 def main() -> None:

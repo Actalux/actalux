@@ -71,6 +71,15 @@ jobs:
       - name: Install dependencies (incl. the Modal client)
         run: uv sync --no-dev --group diarization
 
+      # bge-small-en-v1.5 is immutable, so a static key restores forever. Same key
+      # as ingest.yml so every workflow shares one warm cache — the embedder never
+      # re-downloads from HF (which rate-limits a fresh runner with 429).
+      - name: Cache embedding model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-bge-small-en-v1-5
+
       - name: Install yt-dlp, ffmpeg, Cloudflare WARP
         run: |
           sudo apt-get update -qq
