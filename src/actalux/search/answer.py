@@ -16,6 +16,7 @@ the eval.
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from supabase import Client
@@ -41,8 +42,13 @@ def enrich_results(client: Client, results: list[SearchResult]) -> list[dict[str
     stable citation_id when the chunk has one, else the numeric chunk id, so both
     the displayed hash and the /chunk/{ref} link route on the durable identity.
     """
-    docs = get_documents(client, [r.document_id for r in results])
-    citation_ids = get_chunk_citation_ids(client, [r.chunk_id for r in results])
+    # The two lookups are independent round-trips; run them concurrently so enrich
+    # costs ~one round-trip, not two (same threadpool pattern as hybrid search).
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        docs_future = pool.submit(get_documents, client, [r.document_id for r in results])
+        cites_future = pool.submit(get_chunk_citation_ids, client, [r.chunk_id for r in results])
+        docs = docs_future.result()
+        citation_ids = cites_future.result()
     enriched: list[dict[str, Any]] = []
     for r in results:
         doc = docs.get(r.document_id, {})

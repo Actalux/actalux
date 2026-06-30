@@ -2391,6 +2391,10 @@ def ask_stream(
 
         client = _get_db()
         try:
+            # Per-stage timing on one log line, so real prod latency is readable in
+            # `fly logs` (local benches miss the Fly->Supabase/ZeroEntropy/OpenRouter
+            # network hops). ttft = time to the first streamed sentence.
+            t = time.perf_counter()
             standalone = condense_question(
                 prior,
                 question,
@@ -2398,11 +2402,18 @@ def ask_stream(
                 cfg.condense_model,
                 base_url=cfg.openrouter_base_url,
             )
+            ms_condense = (time.perf_counter() - t) * 1000
             if standalone.strip() != question:
                 yield event({"type": "meta", "standalone": standalone})
+            t = time.perf_counter()
             embedding = _embed_query(standalone)
+            ms_embed = (time.perf_counter() - t) * 1000
             entity_id, entity_ids = _resolve_scope(view.entity, scope)
             filters = SearchFilters(entity_id=entity_id, entity_ids=entity_ids)
+            t = time.perf_counter()
+            expansions = _search_expansions(standalone, view.entity.get("place_id"))
+            ms_expand = (time.perf_counter() - t) * 1000
+            t = time.perf_counter()
             enriched, route = assemble_evidence(
                 client,
                 standalone,
@@ -2410,10 +2421,12 @@ def ask_stream(
                 filters=filters,
                 reranker=_reranker(),
                 max_results=10,
-                expansions=_search_expansions(standalone, view.entity.get("place_id")),
+                expansions=expansions,
             )
-            logger.info("ask-stream route=%s for: %s", route, standalone)
+            ms_assemble = (time.perf_counter() - t) * 1000
             summary: Summary | None = None
+            t_synth = time.perf_counter()
+            ms_ttft: float | None = None
             for item in generate_summary_stream(
                 standalone,
                 enriched,
@@ -2424,9 +2437,25 @@ def ask_stream(
                 if isinstance(item, Summary):
                     summary = item
                 else:
+                    if ms_ttft is None:
+                        ms_ttft = (time.perf_counter() - t_synth) * 1000
                     yield event(
                         {"type": "sentence", "html": _render_citation_links(item, enriched) + " "}
                     )
+            ms_synth = (time.perf_counter() - t_synth) * 1000
+            logger.info(
+                "ask-stream route=%s condense=%.0f embed=%.0f expand=%.0f assemble=%.0f "
+                "ttft=%.0f synth=%.0f total=%.0f ms for: %s",
+                route,
+                ms_condense,
+                ms_embed,
+                ms_expand,
+                ms_assemble,
+                ms_ttft if ms_ttft is not None else ms_synth,
+                ms_synth,
+                ms_condense + ms_embed + ms_expand + ms_assemble + ms_synth,
+                standalone,
+            )
         except (SearchError, SummaryError):
             logger.exception("Ask stream failed for: %s", question)
             yield event(
