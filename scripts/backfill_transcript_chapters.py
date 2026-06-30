@@ -25,7 +25,7 @@ import sys
 import time
 
 from actalux.config import load_config
-from actalux.db import fetch_all_rows, get_client
+from actalux.db import fetch_all_rows, get_client, update_document_fields
 from actalux.errors import SummaryError
 from actalux.search.summarize import generate_chapters
 
@@ -114,7 +114,7 @@ def main() -> int:
             logger.error("doc %d chapters failed: %s", doc_id, exc)
             failed += 1
             continue
-        client.table("documents").update({"chapters": chapters}).eq("id", doc_id).execute()
+        update_document_fields(client, doc_id, {"chapters": chapters})
         written += 1
         logger.info("doc %d -> %d chapters (%s ...)", doc_id, len(chapters), chapters[0]["title"])
         if args.sleep > 0:

@@ -594,10 +594,24 @@ def delete_chunks_for_document(client: Client, doc_id: int) -> None:
     client.table("chunks").delete().eq("document_id", doc_id).execute()
 
 
-# Retries for the version cutover (demote old -> point at new). It runs right after
-# a possibly-slow chunk insert and can hit the same free-tier statement timeout; if
-# lost, both versions stay current. Retry on timeout before surfacing.
-_SUPERSEDE_RETRIES = 3
+# Retries for a single-row write that can hit the free-tier statement timeout. A
+# chunks UPDATE re-touches the HNSW index under MVCC (delete+insert), so even a
+# one-row update is as timeout-prone as an insert; the version cutover runs right
+# after a slow insert. Retry on timeout (the intermittent failure) before surfacing.
+_WRITE_RETRIES = 4
+
+
+def _run_with_timeout_retry(op: Callable[[], Any], *, retries: int = _WRITE_RETRIES) -> Any:
+    """Run a DB write ``op`` (a 0-arg callable that executes the request), retrying on
+    the free-tier statement timeout (57014). Non-timeout errors propagate immediately;
+    a timeout on the final attempt propagates."""
+    for attempt in range(retries):
+        try:
+            return op()
+        except APIError as err:
+            if not _is_statement_timeout(err) or attempt == retries - 1:
+                raise
+            time.sleep(0.5)
 
 
 def supersede_document(client: Client, old_id: int, new_id: int) -> None:
@@ -606,14 +620,9 @@ def supersede_document(client: Client, old_id: int, new_id: int) -> None:
     Retries on the free-tier statement timeout so a transient slow update doesn't
     leave two current versions of the same meeting.
     """
-    for attempt in range(_SUPERSEDE_RETRIES):
-        try:
-            client.table("documents").update({"replaces_id": new_id}).eq("id", old_id).execute()
-            return
-        except APIError as err:
-            if not _is_statement_timeout(err) or attempt == _SUPERSEDE_RETRIES - 1:
-                raise
-            time.sleep(0.5)
+    _run_with_timeout_retry(
+        lambda: client.table("documents").update({"replaces_id": new_id}).eq("id", old_id).execute()
+    )
 
 
 # --- Supersession resolution -----------------------------------------------
@@ -848,8 +857,31 @@ def backfill_document_source_ref(client: Client, doc_id: int, source_ref: str) -
 
 
 def set_chunk_start_seconds(client: Client, chunk_id: int, start_seconds: int) -> None:
-    """Set a chunk's video start offset (writer -- needs the service key under RLS)."""
-    client.table("chunks").update({"start_seconds": start_seconds}).eq("id", chunk_id).execute()
+    """Set a chunk's video start offset (writer -- needs the service key under RLS).
+
+    Retries on the free-tier statement timeout: a chunks UPDATE re-touches the HNSW
+    index (MVCC delete+insert), so the timestamp backfill's per-chunk updates hit the
+    same 57014 timeout the chunk insert does.
+    """
+    _run_with_timeout_retry(
+        lambda: (
+            client.table("chunks")
+            .update({"start_seconds": start_seconds})
+            .eq("id", chunk_id)
+            .execute()
+        )
+    )
+
+
+def update_document_fields(client: Client, doc_id: int, fields: dict[str, Any]) -> None:
+    """Update a documents row's ``fields`` (e.g. summary, chapters), timeout-resilient.
+
+    The post-ingest summary/chapter backfills update documents row-by-row over the whole
+    corpus; on the slow free tier any one can hit the statement timeout, so retry.
+    """
+    _run_with_timeout_retry(
+        lambda: client.table("documents").update(fields).eq("id", doc_id).execute()
+    )
 
 
 # --- Resilient bulk insert ---------------------------------------------------

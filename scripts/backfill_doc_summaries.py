@@ -22,7 +22,7 @@ import sys
 import time
 
 from actalux.config import load_config
-from actalux.db import fetch_all_rows, get_client
+from actalux.db import fetch_all_rows, get_client, update_document_fields
 from actalux.errors import SummaryError
 from actalux.search.summarize import generate_doc_summary
 
@@ -120,7 +120,7 @@ def main() -> int:
             continue
 
         try:
-            client.table("documents").update({"summary": summary}).eq("id", doc_id).execute()
+            update_document_fields(client, doc_id, {"summary": summary})
             written += 1
             logger.info("doc %d -> %s", doc_id, summary[:100])
         except Exception:

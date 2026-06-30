@@ -8,7 +8,7 @@ from postgrest.exceptions import APIError
 
 from actalux.db import (
     _CHUNK_INSERT_BATCH,
-    _SUPERSEDE_RETRIES,
+    _WRITE_RETRIES,
     backfill_document_source_ref,
     delete_chunks_for_document,
     delete_document,
@@ -21,6 +21,7 @@ from actalux.db import (
     insert_rows_resilient,
     resolve_chunk_ref,
     resolve_source_anchor,
+    set_chunk_start_seconds,
     supersede_document,
 )
 from actalux.models import Chunk, Document
@@ -675,7 +676,7 @@ class TestSupersedeDocument:
         client = _SupersedeClient(fail_timeouts=99)
         with pytest.raises(APIError):
             supersede_document(client, old_id=10, new_id=20)
-        assert client.rec["attempts"] == _SUPERSEDE_RETRIES
+        assert client.rec["attempts"] == _WRITE_RETRIES
 
     def test_non_timeout_propagates_immediately(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("actalux.db.time.sleep", lambda *_: None)
@@ -720,3 +721,52 @@ class TestInsertRowsResilient:
         client = _BatchInsertClient()
         assert insert_rows_resilient(client, "diarization_turns", []) == []
         assert client.batch_sizes == []
+
+
+class _UpdateTimeoutTable:
+    """Times out (57014) for the first ``fail_n`` update executes, then succeeds."""
+
+    def __init__(self, rec: dict) -> None:
+        self._rec = rec
+
+    def update(self, payload: dict) -> "_UpdateTimeoutTable":
+        self._rec["payload"] = payload
+        return self
+
+    def eq(self, col: str, val: object) -> "_UpdateTimeoutTable":
+        return self
+
+    def execute(self):
+        self._rec["attempts"] += 1
+        if self._rec["attempts"] <= self._rec["fail_n"]:
+            raise APIError(
+                {"message": "canceling statement due to statement timeout", "code": "57014"}
+            )
+        return _Result([])
+
+
+class _UpdateTimeoutClient:
+    def __init__(self, fail_n: int) -> None:
+        self.rec = {"attempts": 0, "fail_n": fail_n, "payload": None}
+
+    def table(self, _name: str) -> _UpdateTimeoutTable:
+        return _UpdateTimeoutTable(self.rec)
+
+
+class TestSetChunkStartSecondsRetry:
+    """The prod failure path: a chunks UPDATE re-touches the HNSW index and timed out
+    mid-backfill. It must retry on the statement timeout, not crash the run."""
+
+    def test_retries_then_succeeds(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("actalux.db.time.sleep", lambda *_: None)
+        client = _UpdateTimeoutClient(fail_n=2)  # times out twice, then succeeds
+        set_chunk_start_seconds(client, chunk_id=42, start_seconds=99)
+        assert client.rec["attempts"] == 3
+        assert client.rec["payload"] == {"start_seconds": 99}
+
+    def test_raises_after_max(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("actalux.db.time.sleep", lambda *_: None)
+        client = _UpdateTimeoutClient(fail_n=99)
+        with pytest.raises(APIError):
+            set_chunk_start_seconds(client, chunk_id=42, start_seconds=99)
+        assert client.rec["attempts"] == _WRITE_RETRIES
