@@ -18,6 +18,7 @@ from actalux.db import (
     get_chunk_with_context,
     insert_chunks,
     insert_document,
+    insert_rows_resilient,
     resolve_chunk_ref,
     resolve_source_anchor,
     supersede_document,
@@ -691,3 +692,31 @@ class TestDeleteChunksForDocument:
         assert client.calls[0] == "chunks"
         assert "delete" in client.calls
         assert ("document_id", 42) in client.calls
+
+
+class TestInsertRowsResilient:
+    """The generic resilient insert batches by size and halves on a statement timeout,
+    for any table (chunks, diarization_turns, …) — order preserved, data returned."""
+
+    def _rows(self, n: int) -> list[dict]:
+        return [{"document_id": 5, "n": i} for i in range(n)]
+
+    def test_batches_by_size_and_returns_rows_in_order(self) -> None:
+        client = _BatchInsertClient()
+        out = insert_rows_resilient(client, "diarization_turns", self._rows(120), batch_size=50)
+        assert client.batch_sizes == [50, 50, 20]
+        assert [r["id"] for r in out] == sorted(r["id"] for r in out)
+        assert len(out) == 120
+
+    def test_halves_on_timeout_for_arbitrary_table(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("actalux.db.time.sleep", lambda *_: None)
+        client = _TimeoutInsertClient(max_ok=7)  # >7 rows "times out"
+        out = insert_rows_resilient(client, "diarization_turns", self._rows(60), batch_size=50)
+        assert len(out) == 60
+        assert all(size <= 7 for size in client.ok_sizes)  # every committed insert fit
+        assert sum(client.ok_sizes) == 60
+
+    def test_empty_is_noop(self) -> None:
+        client = _BatchInsertClient()
+        assert insert_rows_resilient(client, "diarization_turns", []) == []
+        assert client.batch_sizes == []

@@ -852,13 +852,16 @@ def set_chunk_start_seconds(client: Client, chunk_id: int, start_seconds: int) -
     client.table("chunks").update({"start_seconds": start_seconds}).eq("id", chunk_id).execute()
 
 
-# --- Chunks ---
+# --- Resilient bulk insert ---------------------------------------------------
 
-# Rows per chunk INSERT. Each row carries a 384-dim embedding, so the insert does
-# HNSW index maintenance whose cost scales with the batch size; a large batch trips
-# the Supabase free-tier statement timeout (postgrest 57014). 50 was still too large
-# under sustained backfill load (a single 50-row batch timed out mid-run), so the
-# default is 25 and ``_insert_chunk_rows`` halves further on any timeout it still hits.
+# Default rows per INSERT statement. A large bulk insert does proportional work
+# (HNSW index maintenance for embedding-bearing chunks; a big JSON payload for
+# word-level diarization turns) and trips the Supabase free-tier statement timeout
+# (postgrest 57014) — observed on both the chunks insert AND the diarization_turns
+# insert. Batch, and halve any batch that still times out (see _insert_rows_halving).
+_DEFAULT_INSERT_BATCH = 50
+# Chunks carry a 384-dim embedding (HNSW work per row), so they need a tighter batch
+# than the default: 50 still timed out mid-backfill, 25 holds.
 _CHUNK_INSERT_BATCH = 25
 
 
@@ -867,34 +870,60 @@ def _is_statement_timeout(err: Exception) -> bool:
     return getattr(err, "code", None) == "57014" or "statement timeout" in str(err).lower()
 
 
-def _insert_chunk_rows(client: Client, rows: list[dict[str, Any]]) -> list[int]:
-    """Insert chunk rows, halving and retrying on a free-tier statement timeout.
+def _insert_rows_halving(
+    client: Client, table: str, rows: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Insert rows into ``table``, halving and retrying on a free-tier statement timeout.
 
-    The 384-dim-embedding insert's HNSW index work can exceed the Supabase
-    free-tier statement timeout under load. On a timeout we split the batch and
-    retry each half (down to a single row, which always fits under the timeout),
-    so a one-time backfill completes regardless of how slow the instance is.
-    Order is preserved (left half before right); a single row that still times
-    out — or any non-timeout error — propagates.
+    A large insert's per-statement work can exceed the Supabase free-tier statement
+    timeout under load. On a timeout we split the batch and retry each half (down to a
+    single row, which always fits), so a one-time backfill completes regardless of how
+    slow the instance is. Returns the inserted rows' returned data in order (left half
+    before right). A single row that still times out — or any non-timeout error —
+    propagates.
     """
     try:
-        result = client.table("chunks").insert(rows).execute()
-        return [r["id"] for r in result.data]
+        result = client.table(table).insert(rows).execute()
+        return list(result.data)
     except APIError as err:
         if not _is_statement_timeout(err) or len(rows) <= 1:
             raise
     # Reached only on a timeout with >1 row: let the instance breathe, then halve.
     time.sleep(0.5)
     mid = len(rows) // 2
-    return _insert_chunk_rows(client, rows[:mid]) + _insert_chunk_rows(client, rows[mid:])
+    return _insert_rows_halving(client, table, rows[:mid]) + _insert_rows_halving(
+        client, table, rows[mid:]
+    )
+
+
+def insert_rows_resilient(
+    client: Client,
+    table: str,
+    rows: list[dict[str, Any]],
+    *,
+    batch_size: int = _DEFAULT_INSERT_BATCH,
+) -> list[dict[str, Any]]:
+    """Bulk-insert ``rows`` into ``table`` in timeout-resilient batches; return them in order.
+
+    Each batch is a single INSERT; any batch that trips the free-tier statement timeout
+    is halved and retried (``_insert_rows_halving``). Order is preserved. Use for any
+    insert whose row count/payload can grow large enough to time out (chunks, word-level
+    diarization turns, …).
+    """
+    out: list[dict[str, Any]] = []
+    for start in range(0, len(rows), batch_size):
+        out.extend(_insert_rows_halving(client, table, rows[start : start + batch_size]))
+    return out
+
+
+# --- Chunks ---
 
 
 def insert_chunks(client: Client, chunks: list[Chunk]) -> list[int]:
     """Bulk insert chunks (in batches) and return their IDs in chunk order.
 
-    Inserted in ``_CHUNK_INSERT_BATCH``-row batches, not one statement: see the
-    constant's note for why a single large insert times out on the free tier.
-    Batching keeps each statement under the timeout while preserving insertion order.
+    Inserted in ``_CHUNK_INSERT_BATCH``-row batches via ``insert_rows_resilient`` so a
+    single large insert can't trip the free-tier statement timeout; order preserved.
     """
     if not chunks:
         return []
@@ -914,10 +943,8 @@ def insert_chunks(client: Client, chunks: list[Chunk]) -> list[int]:
             row["citation_id"] = chunk.citation_id
         rows.append(row)
 
-    ids: list[int] = []
-    for start in range(0, len(rows), _CHUNK_INSERT_BATCH):
-        batch = rows[start : start + _CHUNK_INSERT_BATCH]
-        ids.extend(_insert_chunk_rows(client, batch))
+    inserted = insert_rows_resilient(client, "chunks", rows, batch_size=_CHUNK_INSERT_BATCH)
+    ids: list[int] = [r["id"] for r in inserted]
     logger.info("Inserted %d chunks for document %d", len(ids), chunks[0].document_id)
     return ids
 

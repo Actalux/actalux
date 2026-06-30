@@ -23,6 +23,7 @@ from typing import Any
 
 from supabase import Client
 
+from actalux.db import insert_rows_resilient
 from actalux.diarization.align import AttributedTurn, attribute_words
 from actalux.diarization.backend import DiarizationBackend, SpeakerTimeline
 from actalux.glossary.canonicalize import Canonicalization, CorrectionRule, canonicalize_text
@@ -210,12 +211,16 @@ def persist_speaker_layer(
     for table in _LAYER_TABLES:
         service_client.table(table).delete().eq("document_id", document_id).execute()
 
+    # Resilient batched inserts: a long meeting's word-level turns (hundreds of rows,
+    # each carrying a words JSON payload) trip the Supabase free-tier statement timeout
+    # as one statement, exactly like the chunks insert did. insert_rows_resilient batches
+    # and halves on a timeout so the persist completes.
     turn_rows = layer.turn_rows(document_id)
     if turn_rows:
-        service_client.table("diarization_turns").insert(turn_rows).execute()
+        insert_rows_resilient(service_client, "diarization_turns", turn_rows)
     canon_rows = layer.canonicalization_rows(document_id)
     if canon_rows:
-        service_client.table("name_canonicalizations").insert(canon_rows).execute()
+        insert_rows_resilient(service_client, "name_canonicalizations", canon_rows)
     service_client.table("media_assets").insert(
         media_asset_row(
             document_id,

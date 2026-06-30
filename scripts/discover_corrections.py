@@ -41,6 +41,7 @@ from actalux.db import (  # noqa: E402
     get_meeting_records,
     get_name_corrections,
     get_place_by_path,
+    insert_rows_resilient,
 )
 from actalux.glossary.discovery import (  # noqa: E402
     build_vocabulary,
@@ -280,7 +281,7 @@ def main() -> int:
             if p["mangled"] not in live
         ]
         if rows:
-            client.table("name_corrections").insert(rows).execute()
+            insert_rows_resilient(client, "name_corrections", rows)
         logger.info(
             "Inserted %d new 'auto' corrections (skipped %d already present).",
             len(rows),
