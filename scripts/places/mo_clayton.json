@@ -1,0 +1,13 @@
+{
+  "place": "mo/clayton",
+  "place_type": "city",
+  "county": "St. Louis County",
+  "geoid": "2914572",
+  "parent": null,
+  "metadata": {
+    "county_geoid": "29189",
+    "state_geoid": "29",
+    "geoid_vintage": "Census 2020 (benchmark Public_AR_Current, vintage Current_Current)",
+    "geoid_source": "U.S. Census geocoder onelineaddress, point-in-polygon at 10 N Bemiston Ave, Clayton MO 63105 (Clayton City Hall): Incorporated Place 'Clayton city' GEOID 2914572, County 'St. Louis County' GEOID 29189, State 'Missouri' GEOID 29"
+  }
+}
