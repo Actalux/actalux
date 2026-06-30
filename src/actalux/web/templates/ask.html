@@ -58,6 +58,16 @@
     var qEl = document.getElementById('ask-q');
     var send = document.getElementById('ask-send');
 
+    // Enter sends; Shift+Enter inserts a newline (standard chat UX). isComposing
+    // guards IME input (e.g. CJK), where Enter confirms the composition.
+    qEl.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+      e.preventDefault();
+      if (send.disabled) return;  // a previous answer is still streaming
+      if (typeof form.requestSubmit === 'function') form.requestSubmit();
+      else form.dispatchEvent(new Event('submit', { cancelable: true }));
+    });
+
     function esc(s) {
       var d = document.createElement('div');
       d.textContent = s == null ? '' : s;
