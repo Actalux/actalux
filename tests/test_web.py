@@ -135,9 +135,14 @@ class TestStaticPages:
         response = client.get("/privacy")
         assert response.status_code == 200
         assert "Privacy Policy" in response.text
-        # The data-practice claims that must stay grounded in app behavior.
-        assert "no cookies" in response.text.lower()
-        assert "OpenAI" in response.text
+        # The data-practice claims that must stay grounded in app behavior. The page
+        # loads Google Analytics (base.html gtag), so the disclosure and the behavior
+        # are coupled: if GA is removed, this fails and the prose must change too.
+        assert "googletagmanager.com/gtag" in response.text  # the behavior disclosed below
+        assert "Google Analytics" in response.text
+        assert "_ga" in response.text  # GA's first-party cookie is disclosed
+        assert "no cookies" in response.text.lower()  # Actalux still sets none of its own
+        assert "third-party AI provider" in response.text  # search/ask discloses the AI hand-off
         # The core reason this page exists: dossier eligibility.
         assert "private individual" in response.text.lower()
 
