@@ -8,6 +8,7 @@ caption fallback).
 from __future__ import annotations
 
 import json
+import os
 
 import scripts.backfill_chunk_timestamps as mod
 from scripts.backfill_chunk_timestamps import (
@@ -53,13 +54,38 @@ class TestAlignChunkFromSidecar:
 
 
 class TestLoadSegmentSidecar:
-    def test_missing_returns_none(self) -> None:
-        assert load_segment_sidecar("") is None
-        assert load_segment_sidecar("no-such-file.txt") is None
-
-    def test_loads_existing_sidecar(self, tmp_path, monkeypatch) -> None:
+    def test_missing_returns_none(self, tmp_path, monkeypatch) -> None:
         monkeypatch.setattr(mod, "SEGMENTS_DIR", tmp_path)
-        (tmp_path / "Meeting.segments.json").write_text(json.dumps(_SEGMENTS))
-        loaded = load_segment_sidecar("Meeting.txt")
+        assert load_segment_sidecar("", "") is None
+        assert load_segment_sidecar("nope123", "no-such-file.txt") is None
+
+    def test_matches_by_video_id_despite_drifted_source_file(self, tmp_path, monkeypatch) -> None:
+        # The regression: the sidecar stem is <title>_<video_id>, but the doc's stored
+        # source_file has a *different* title (drifted across a re-ingest). Matching by
+        # source_file stem would miss it; matching by video_id finds it.
+        monkeypatch.setattr(mod, "SEGMENTS_DIR", tmp_path)
+        (tmp_path / "Old_Board_Meeting_abc123XYZ00.segments.json").write_text(json.dumps(_SEGMENTS))
+        loaded = load_segment_sidecar("abc123XYZ00", "New Board Meeting Title_abc123XYZ00.txt")
         assert loaded is not None
         assert loaded[1]["start"] == 5.0
+
+    def test_falls_back_to_source_file_stem_without_video_id(self, tmp_path, monkeypatch) -> None:
+        # Older rows predating the video_id column: match by the source_file stem.
+        monkeypatch.setattr(mod, "SEGMENTS_DIR", tmp_path)
+        (tmp_path / "Meeting.segments.json").write_text(json.dumps(_SEGMENTS))
+        loaded = load_segment_sidecar("", "Meeting.txt")
+        assert loaded is not None
+        assert loaded[1]["start"] == 5.0
+
+    def test_multiple_matches_use_newest(self, tmp_path, monkeypatch) -> None:
+        # Two title-drifted sidecars for one meeting accumulate locally; the newest
+        # (the current run's) wins.
+        monkeypatch.setattr(mod, "SEGMENTS_DIR", tmp_path)
+        old = tmp_path / "Old_vid00000001.segments.json"
+        new = tmp_path / "New_vid00000001.segments.json"
+        old.write_text(json.dumps([{"start": 99.0, "end": 100.0, "text": "stale"}]))
+        new.write_text(json.dumps(_SEGMENTS))
+        os.utime(old, (1_000_000, 1_000_000))  # force old to be older than new
+        os.utime(new, (2_000_000, 2_000_000))
+        loaded = load_segment_sidecar("vid00000001", "")
+        assert loaded is not None and loaded[0]["text"].startswith("good evening")

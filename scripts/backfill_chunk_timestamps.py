@@ -46,12 +46,38 @@ def _norm(text: str) -> str:
     return re.sub(r"[^a-z0-9 ]", "", re.sub(r"\s+", " ", text.lower())).strip()
 
 
-def load_segment_sidecar(source_file: str) -> list[dict] | None:
-    """Load a Whisper ``<stem>.segments.json`` sidecar for a transcript, if present."""
-    if not source_file:
-        return None
-    sidecar = SEGMENTS_DIR / f"{Path(source_file).stem}.segments.json"
-    return json.loads(sidecar.read_text()) if sidecar.exists() else None
+def load_segment_sidecar(video_id: str, source_file: str) -> list[dict] | None:
+    """Load a Whisper ``<stem>.segments.json`` sidecar for a transcript, if present.
+
+    Matched by ``video_id`` — the stable per-meeting key. The sidecar stem is
+    ``<title>_<video_id>`` (see ``transcribe_whisperx.meeting_stem``), so a meeting's
+    title — and with it the stem and the stored ``source_file`` — can drift across
+    re-ingests/re-transcribes while the video id does not; matching on the stem would
+    then miss a freshly written sidecar. Falls back to the ``source_file`` stem only
+    for a doc with no ``video_id`` (older rows predating the video_id column).
+    """
+    if video_id:
+        matches = sorted(
+            SEGMENTS_DIR.glob(f"*_{video_id}.segments.json"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        if len(matches) > 1:
+            # A fresh CI run writes one sidecar per meeting; several only accumulate
+            # locally across runs with drifted titles — the newest is the current one.
+            logger.warning(
+                "%d sidecars match video_id %s; using newest (%s)",
+                len(matches),
+                video_id,
+                matches[0].name,
+            )
+        if matches:
+            return json.loads(matches[0].read_text())
+    if source_file:
+        sidecar = SEGMENTS_DIR / f"{Path(source_file).stem}.segments.json"
+        if sidecar.exists():
+            return json.loads(sidecar.read_text())
+    return None
 
 
 def build_timed_index_from_segments(segments: list[dict]) -> tuple[str, list[int]]:
@@ -94,7 +120,7 @@ def main() -> None:
     docs = fetch_all_rows(
         lambda: (
             client.table("documents")
-            .select("id, source_portal, source_file")
+            .select("id, source_portal, source_file, video_id")
             .eq("source_portal", "youtube")
         )
     )
@@ -102,7 +128,7 @@ def main() -> None:
 
     total_aligned = total_chunks = 0
     for d in docs:
-        segments = load_segment_sidecar(d.get("source_file", ""))
+        segments = load_segment_sidecar(d.get("video_id", ""), d.get("source_file", ""))
         if segments is None:
             continue  # no sidecar on disk -> offsets already persisted at transcribe time
         timed_text, char_ms = build_timed_index_from_segments(segments)
