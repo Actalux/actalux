@@ -2,6 +2,7 @@
 {% block title %}{{ person.canonical_name }} — record{% endblock %}
 {% block meta_description %}{{ person.canonical_name }} — every Clayton, MO governing body they have served on, each with a complete cited record drawn verbatim from the official minutes.{% endblock %}
 {% block structured_data %}
+{% from "partials/_breadcrumbs.html" import breadcrumbs_ld %}
 {% set member_of = [] %}
 {% for t in tenures %}{% set _ = member_of.append({"@type": "GovernmentOrganization", "name": t.body_label}) %}{% endfor %}
 <script type="application/ld+json">{{ {
@@ -11,6 +12,10 @@
   "url": site_url ~ request.url.path,
   "memberOf": member_of
 } | tojson }}</script>
+{{ breadcrumbs_ld([
+  {"name": "Home", "path": "/"},
+  {"name": person.canonical_name, "path": request.url.path},
+]) }}
 {% endblock %}
 {% block content %}
 

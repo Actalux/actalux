@@ -4,17 +4,27 @@
    "Citations resolve to the original". `r` is a member_vote_records row. #}
 {% macro member_record(r) %}
 {% set _label = {'voted_aye_on': 'Aye', 'voted_no_on': 'No', 'voted_abstain_on': 'Abstain', 'moved': 'Moved', 'seconded': 'Seconded'} %}
-<a class="cited-record" href="/chunk/{{ r.citation_id }}/source">
-  <div class="cited-record-meta">
-    <span class="kind">{{ _label.get(r.edge_type, r.edge_type) }}</span>
-    {% if r.meeting_date %}<span class="date">{{ r.meeting_date }}</span>{% endif %}
-    {% if r.result %}<span>{{ r.result }}</span>{% endif %}
+<div class="cited-record-group">
+  <a class="cited-record" href="/chunk/{{ r.citation_id }}/source">
+    <div class="cited-record-meta">
+      <span class="kind">{{ _label.get(r.edge_type, r.edge_type) }}</span>
+      {% if r.meeting_date %}<span class="date">{{ r.meeting_date }}</span>{% endif %}
+      {% if r.result %}<span>{{ r.result }}</span>{% endif %}
+    </div>
+    {% if r.motion %}<blockquote class="cited-record-quote">&ldquo;{{ r.motion }}&rdquo;</blockquote>{% endif %}
+    <div class="cited-record-foot">
+      <span class="src-title">{{ r.meeting_title or 'Meeting minutes' }}</span>
+      <span class="hash">#q{{ r.citation_id }}</span>
+      <span class="open-orig">Open the original &rarr;</span>
+    </div>
+  </a>
+  {# The bill/resolution this action was on (shared vote_id); a sibling of the
+     record anchor since <a> cannot nest. r.xrefs is assembled by the handler. #}
+  {% if r.xrefs %}
+  <div class="record-xref">
+    <span class="xref-label">On</span>
+    {% for x in r.xrefs %}<a href="{{ x.url }}">{{ x.name }}</a>{% if not loop.last %}<span>·</span>{% endif %}{% endfor %}
   </div>
-  {% if r.motion %}<blockquote class="cited-record-quote">&ldquo;{{ r.motion }}&rdquo;</blockquote>{% endif %}
-  <div class="cited-record-foot">
-    <span class="src-title">{{ r.meeting_title or 'Meeting minutes' }}</span>
-    <span class="hash">#q{{ r.citation_id }}</span>
-    <span class="open-orig">Open the original &rarr;</span>
-  </div>
-</a>
+  {% endif %}
+</div>
 {% endmacro %}

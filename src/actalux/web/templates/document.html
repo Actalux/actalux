@@ -2,6 +2,7 @@
 {% block title %}{{ document | display_title }}{% endblock %}
 {% block meta_description %}{% if document.summary %}{{ document.summary }}{% else %}{{ document | display_title }} — a Clayton public record, shown with verbatim text and its source citation.{% endif %}{% endblock %}
 {% block structured_data %}
+{% from "partials/_breadcrumbs.html" import breadcrumbs_ld %}
 <script type="application/ld+json">{{ {
   "@context": "https://schema.org",
   "@type": "Article",
@@ -10,6 +11,11 @@
   "datePublished": document.meeting_date,
   "publisher": {"@type": "Organization", "name": "Actalux"}
 } | tojson }}</script>
+{# Body rungs only when the document resolves to a body (some flat docs don't). #}
+{% set crumbs = [{"name": "Home", "path": "/"}] %}
+{% if entity %}{% set _ = crumbs.append({"name": entity.place.display_name, "path": "/" ~ entity.place.state ~ "/" ~ entity.place.slug}) %}{% set _ = crumbs.append({"name": entity.display_name, "path": base}) %}{% endif %}
+{% set _ = crumbs.append({"name": (document | display_title), "path": request.url.path}) %}
+{{ breadcrumbs_ld(crumbs) }}
 {% endblock %}
 {% block content %}
 

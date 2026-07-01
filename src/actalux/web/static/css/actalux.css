@@ -1167,6 +1167,29 @@ img { max-width: 100%; display: block; }
 .cited-record-foot .open-orig { color: var(--accent-ink); margin-left: auto; }
 .cited-record:hover .open-orig { text-decoration: underline; }
 
+/* A cited record plus its cross-links (member<->matter). The group carries the
+   divider so the anchor and its links read as one entry; an inner anchor cannot
+   contain the links (nested <a> is invalid), so they are a sibling caption. */
+.cited-record-group { border-bottom: 1px solid var(--rule); }
+.cited-record-group:last-child { border-bottom: none; }
+.cited-record-group .cited-record { border-bottom: none; padding-bottom: var(--s-2); }
+.record-xref {
+  display: flex; gap: var(--s-2) var(--s-3); align-items: baseline; flex-wrap: wrap;
+  padding: 0 0 var(--s-4);
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--muted);
+}
+.record-xref .xref-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.record-xref a { color: var(--accent-ink); }
+.record-xref a:hover { text-decoration: underline; }
+
 /* ===== Long-form page (methodology, etc.) ===== */
 .prose {
   max-width: var(--col-reading);

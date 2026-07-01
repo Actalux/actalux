@@ -12,7 +12,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from actalux.graph.store import body_members, member_by_slug, person_dossier, place_lexicon
+from actalux.graph.store import (
+    body_members,
+    matters_by_vote,
+    member_by_slug,
+    members_by_vote,
+    person_dossier,
+    place_lexicon,
+    publishable_person_slugs,
+)
 
 
 class _Resp:
@@ -270,3 +278,76 @@ def test_person_dossier_spans_bodies_with_cited_counts() -> None:
 
 def test_person_dossier_unknown_returns_none() -> None:
     assert person_dossier(_clayton_graph(), "nobody") is None
+
+
+# ---- Cross-links (member <-> matter), keyed on the shared vote_id ------------
+
+
+def test_matters_by_vote_groups_matters_per_vote() -> None:
+    """Each vote_id maps to the matter(s) it concerned; a combined motion (one vote,
+    two matters) yields a list, and rows with no vote_id / slug are dropped."""
+    client = _FakeClient(
+        matter_vote_records=[
+            {"entity_id": 2, "vote_id": 10, "subject_slug": "bill-1", "subject_name": "Bill 1"},
+            # a second matter on the SAME vote (combined motion)
+            {"entity_id": 2, "vote_id": 10, "subject_slug": "bill-2", "subject_name": "Bill 2"},
+            {"entity_id": 2, "vote_id": 11, "subject_slug": "res-9", "subject_name": "Res 9"},
+            # other body / unusable rows are excluded
+            {"entity_id": 3, "vote_id": 99, "subject_slug": "bill-x", "subject_name": "X"},
+            {"entity_id": 2, "vote_id": None, "subject_slug": "bill-y", "subject_name": "Y"},
+            {"entity_id": 2, "vote_id": 12, "subject_slug": None, "subject_name": "Z"},
+        ]
+    )
+    out = matters_by_vote(client, entity_id=2)
+    assert set(out) == {10, 11}
+    assert [m["slug"] for m in out[10]] == ["bill-1", "bill-2"]
+    assert out[11] == [{"slug": "res-9", "name": "Res 9"}]
+
+
+def test_members_by_vote_scopes_to_given_votes() -> None:
+    """Each vote_id maps to the members who acted on it, scoped to the vote_ids asked
+    for; None entries are ignored and an empty list short-circuits (no query)."""
+    client = _FakeClient(
+        member_vote_records=[
+            {
+                "entity_id": 2,
+                "vote_id": 10,
+                "subject_slug": "jane-doe",
+                "subject_name": "Jane Doe",
+                "edge_type": "moved",
+            },
+            {
+                "entity_id": 2,
+                "vote_id": 10,
+                "subject_slug": "rick-roe",
+                "subject_name": "Rick Roe",
+                "edge_type": "voted_aye_on",
+            },
+            # vote 11 is not in the requested set -> excluded
+            {
+                "entity_id": 2,
+                "vote_id": 11,
+                "subject_slug": "jane-doe",
+                "subject_name": "Jane Doe",
+                "edge_type": "seconded",
+            },
+        ]
+    )
+    out = members_by_vote(client, entity_id=2, vote_ids=[10, None])
+    assert set(out) == {10}
+    assert {m["slug"] for m in out[10]} == {"jane-doe", "rick-roe"}
+    assert out[10][0]["edge_type"] == "moved"
+    # An empty / all-None vote_id list returns {} without touching the client.
+    assert members_by_vote(_FakeClient(), entity_id=2, vote_ids=[None]) == {}
+
+
+def test_publishable_person_slugs_filters_unpublishable() -> None:
+    client = _FakeClient(
+        persons=[
+            {"slug": "jane-doe", "publishable": True},
+            {"slug": "rick-roe", "publishable": True},
+            {"slug": "hidden-one", "publishable": False},
+            {"slug": None, "publishable": True},
+        ]
+    )
+    assert publishable_person_slugs(client) == ["jane-doe", "rick-roe"]

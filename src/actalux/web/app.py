@@ -67,8 +67,10 @@ from actalux.graph.store import (
     body_members,
     matter_by_slug,
     matter_records,
+    matters_by_vote,
     member_by_slug,
     member_records,
+    members_by_vote,
     person_dossier,
     place_lexicon,
 )
@@ -948,6 +950,16 @@ def meetings_list(request: Request, view: EntityView = Depends(resolve_entity)) 
 
 _MEMBER_VOTE_TYPES = ("voted_aye_on", "voted_no_on", "voted_abstain_on")
 _MEMBER_ROLE_TYPES = ("moved", "seconded")
+# How each edge_type reads when a member is listed under a matter's action, and the
+# order those role groups are shown in (sponsors first, then the roll call).
+_EDGE_ROLE_LABELS = {
+    "voted_aye_on": "Aye",
+    "voted_no_on": "No",
+    "voted_abstain_on": "Abstain",
+    "moved": "Moved",
+    "seconded": "Seconded",
+}
+_ROLE_ORDER = ("Moved", "Seconded", "Aye", "No", "Abstain")
 
 
 @jurisdiction.get("/members", response_class=HTMLResponse)
@@ -975,6 +987,15 @@ def member_detail(
         raise HTTPException(status_code=404, detail="Unknown member")
     rows = member_records(client, member["id"], view.entity["id"])
     rows.sort(key=lambda r: r.get("meeting_date") or "", reverse=True)
+    # Link each record to the bill/resolution it was on (shared vote_id), so a
+    # member's record cross-links into the matter pages. URLs assembled here (the
+    # macro stays presentation-only), mirroring the person page's member_url.
+    matter_links = matters_by_vote(client, view.entity["id"])
+    for r in rows:
+        r["xrefs"] = [
+            {"url": f"{view.base}/matter/{m['slug']}", "name": m["name"]}
+            for m in matter_links.get(r.get("vote_id"), [])
+        ]
     votes = [r for r in rows if r["edge_type"] in _MEMBER_VOTE_TYPES]
     motions = [r for r in rows if r["edge_type"] in _MEMBER_ROLE_TYPES]
     # For an appointed board with no published term dates (PC/BoA), show the span of
@@ -1023,6 +1044,20 @@ def matter_detail(
     if not rows:
         raise HTTPException(status_code=404, detail="Unknown matter")
     rows.sort(key=lambda r: r.get("meeting_date") or "")
+    # List the members who acted on each action (shared vote_id), each linking to
+    # that member's record — the reverse of the member->matter cross-link above.
+    # Grouped by role (Moved/Seconded/Aye/No/Abstain) so the roll call reads cleanly.
+    member_links = members_by_vote(client, view.entity["id"], [r.get("vote_id") for r in rows])
+    for r in rows:
+        by_role: dict[str, list[dict[str, str]]] = {}
+        for m in member_links.get(r.get("vote_id"), []):
+            role = _EDGE_ROLE_LABELS.get(m["edge_type"], m["edge_type"])
+            by_role.setdefault(role, []).append(
+                {"url": f"{view.base}/member/{m['slug']}", "name": m["name"]}
+            )
+        r["participants"] = [
+            {"role": role, "members": by_role[role]} for role in _ROLE_ORDER if role in by_role
+        ]
     return templates.TemplateResponse(
         request,
         "matter.html",

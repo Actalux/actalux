@@ -1,0 +1,16 @@
+{# BreadcrumbList JSON-LD from an ordered list of {name, path} items, where `path`
+   is a site-relative path and the last item is the current page. `site_url` is an
+   env global, so it resolves inside this macro without importing with context.
+   Emits nothing for an empty/None list. Only whole entries with a name are kept, so
+   a missing place/body (e.g. a document with no resolved body) drops that rung
+   rather than emitting a blank crumb. #}
+{% macro breadcrumbs_ld(items) %}
+{%- set clean = items | selectattr("name") | list if items else [] -%}
+{%- if clean -%}
+{%- set elements = [] -%}
+{%- for it in clean -%}
+{%- set _ = elements.append({"@type": "ListItem", "position": loop.index, "name": it.name, "item": site_url ~ it.path}) -%}
+{%- endfor -%}
+<script type="application/ld+json">{{ {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": elements} | tojson }}</script>
+{%- endif -%}
+{% endmacro %}

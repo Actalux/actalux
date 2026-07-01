@@ -17,10 +17,15 @@ from xml.sax.saxutils import escape
 
 from supabase import Client
 
-from actalux.db import fetch_all_rows, list_entities
-from actalux.graph.store import body_matters, body_members
+from actalux.db import fetch_all_rows, list_entities, list_recent_meeting_documents
+from actalux.graph.store import body_matters, body_members, publishable_person_slugs
 
 SITEMAP_TTL_SECONDS = 3600
+
+# Meeting-record document types (mirrors app.MEETING_PAGE_TYPES; kept local so the
+# sitemap module doesn't import from the web app that includes it). These carry
+# real meeting dates, so every distinct date becomes a /meeting/{date} page.
+_MEETING_TYPES = ("minutes", "transcript")
 
 # Rendered XML cached as {base_url: (xml, generated_at)}.
 _cache: dict[str, tuple[str, float]] = {}
@@ -52,6 +57,7 @@ def collect_locs(client: Client, base_url: str) -> list[tuple[str, str | None]]:
         locs.append((base + body_path, None))
         locs.append((base + body_path + "/members", None))
         locs.append((base + body_path + "/matters", None))
+        locs.append((base + body_path + "/meetings", None))
         for member in body_members(client, entity["id"]):
             if member.get("slug"):
                 locs.append((base + f"{body_path}/member/{member['slug']}", None))
@@ -60,6 +66,20 @@ def collect_locs(client: Client, base_url: str) -> list[tuple[str, str | None]]:
                 locs.append(
                     (base + f"{body_path}/matter/{matter['slug']}", matter.get("meeting_date"))
                 )
+        # One /meeting/{date} page per distinct meeting date (a date can carry both
+        # minutes and a transcript; the page shows every record for it).
+        seen_dates: set[str] = set()
+        for row in list_recent_meeting_documents(
+            client, entity["id"], list(_MEETING_TYPES), limit=1000
+        ):
+            d = row.get("meeting_date")
+            if d and d not in seen_dates:
+                seen_dates.add(d)
+                locs.append((base + f"{body_path}/meeting/{d}", d))
+
+    # Cross-body person spine (global, no place segment). Only publishable persons
+    # resolve to a page; a non-publishable slug 404s, so it must not be listed.
+    locs.extend((base + f"/people/{slug}", None) for slug in publishable_person_slugs(client))
 
     # Every current document detail page (superseded versions excluded). Paged so
     # the newest documents aren't dropped once the corpus exceeds the row cap.

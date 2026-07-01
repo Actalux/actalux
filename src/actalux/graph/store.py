@@ -356,6 +356,19 @@ def person_dossier(client: Client, slug: str) -> dict | None:
     }
 
 
+def publishable_person_slugs(client: Client) -> list[str]:
+    """Every publishable person's slug, for the sitemap's ``/people/{slug}`` spine.
+
+    Global (not place-scoped): the person route aggregates a person's per-body
+    subjects across jurisdictions, so the canonical URL carries no place segment.
+    """
+    rows = fetch_all_rows(
+        lambda: client.table("persons").select("slug").eq("publishable", True),
+        order="slug",
+    )
+    return [r["slug"] for r in rows if r.get("slug")]
+
+
 def place_lexicon(client: Client, place_id: int) -> list[dict[str, Any]]:
     """Every publishable person in a place with its name variants and memberships.
 
@@ -556,6 +569,72 @@ def matter_records(client: Client, subject_id: int, entity_id: int) -> list[dict
         ),
         order="edge_id",
     )
+
+
+# ---- Cross-links (member <-> matter), keyed on vote_id ---------------------
+#
+# In both read views vote_id = votes.id (migrate_030/031 join votes on the durable
+# pair document_id + vote_ref), so a member edge and a matter's 'considered' edge on
+# the SAME vote share vote_id. That shared key is what lets a member's vote link to
+# the bill it was on, and a matter's action list the members who acted on it — from
+# the existing edges, with no schema change.
+
+
+def matters_by_vote(client: Client, entity_id: int) -> dict[int, list[dict[str, str]]]:
+    """Map each vote_id to the matter(s) it concerned, for one body.
+
+    A vote almost always concerns one matter, but a combined motion can be linked to
+    several ('considered' edges are unique per (vote, matter), not per vote), so the
+    value is a list. Bounded by the body's matter-action count, so one paged read
+    backs a whole member page.
+    """
+    rows = fetch_all_rows(
+        lambda: (
+            client.table("matter_vote_records")
+            .select("vote_id,subject_slug,subject_name")
+            .eq("entity_id", entity_id)
+        ),
+        order="edge_id",
+    )
+    out: dict[int, list[dict[str, str]]] = {}
+    for r in rows:
+        vid, slug = r.get("vote_id"), r.get("subject_slug")
+        if vid is None or not slug:
+            continue
+        out.setdefault(vid, []).append({"slug": slug, "name": r["subject_name"]})
+    return out
+
+
+def members_by_vote(
+    client: Client, entity_id: int, vote_ids: list[int | None]
+) -> dict[int, list[dict[str, str]]]:
+    """Map each vote_id to the members who acted on it (voted/moved/seconded).
+
+    Scoped to ``vote_ids`` (a single matter's actions), so the IN list stays small.
+    Each entry carries the member slug/name + the edge_type (aye/no/abstain/moved/
+    seconded) so the caller can label the role.
+    """
+    ids = [v for v in dict.fromkeys(vote_ids) if v is not None]
+    if not ids:
+        return {}
+    rows = fetch_all_rows(
+        lambda: (
+            client.table("member_vote_records")
+            .select("vote_id,subject_slug,subject_name,edge_type")
+            .eq("entity_id", entity_id)
+            .in_("vote_id", ids)
+        ),
+        order="edge_id",
+    )
+    out: dict[int, list[dict[str, str]]] = {}
+    for r in rows:
+        vid, slug = r.get("vote_id"), r.get("subject_slug")
+        if vid is None or not slug:
+            continue
+        out.setdefault(vid, []).append(
+            {"slug": slug, "name": r["subject_name"], "edge_type": r["edge_type"]}
+        )
+    return out
 
 
 def prune_stale_graph(client: Client, current_doc_ids: set[int]) -> int:

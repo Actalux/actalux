@@ -3,17 +3,27 @@
    the record, never a windowed snippet (DESIGN.md "Citations resolve to the
    original"). `r` is a matter_vote_records row. #}
 {% macro matter_record(r) %}
-<a class="cited-record" href="/chunk/{{ r.citation_id }}/source">
-  <div class="cited-record-meta">
-    {% if r.meeting_date %}<span class="date">{{ r.meeting_date }}</span>{% endif %}
-    {% if r.result %}<span class="kind">{{ r.result }}</span>{% endif %}
-    {% if r.vote_count_yes is not none and r.vote_count_no is not none %}<span>{{ r.vote_count_yes }}&ndash;{{ r.vote_count_no }}{% if r.vote_count_abstain %}&ndash;{{ r.vote_count_abstain }}{% endif %}</span>{% endif %}
+<div class="cited-record-group">
+  <a class="cited-record" href="/chunk/{{ r.citation_id }}/source">
+    <div class="cited-record-meta">
+      {% if r.meeting_date %}<span class="date">{{ r.meeting_date }}</span>{% endif %}
+      {% if r.result %}<span class="kind">{{ r.result }}</span>{% endif %}
+      {% if r.vote_count_yes is not none and r.vote_count_no is not none %}<span>{{ r.vote_count_yes }}&ndash;{{ r.vote_count_no }}{% if r.vote_count_abstain %}&ndash;{{ r.vote_count_abstain }}{% endif %}</span>{% endif %}
+    </div>
+    {% if r.motion %}<blockquote class="cited-record-quote">&ldquo;{{ r.motion }}&rdquo;</blockquote>{% endif %}
+    <div class="cited-record-foot">
+      <span class="src-title">{{ r.meeting_title or 'Council minutes' }}</span>
+      <span class="hash">#q{{ r.citation_id }}</span>
+      <span class="open-orig">Open the original &rarr;</span>
+    </div>
+  </a>
+  {# Who acted on this vote, grouped by role, each linking to their record; a
+     sibling of the record anchor since <a> cannot nest. Assembled by the handler. #}
+  {% for group in r.participants %}
+  <div class="record-xref">
+    <span class="xref-label">{{ group.role }}</span>
+    {% for m in group.members %}<a href="{{ m.url }}">{{ m.name }}</a>{% if not loop.last %}<span>·</span>{% endif %}{% endfor %}
   </div>
-  {% if r.motion %}<blockquote class="cited-record-quote">&ldquo;{{ r.motion }}&rdquo;</blockquote>{% endif %}
-  <div class="cited-record-foot">
-    <span class="src-title">{{ r.meeting_title or 'Council minutes' }}</span>
-    <span class="hash">#q{{ r.citation_id }}</span>
-    <span class="open-orig">Open the original &rarr;</span>
-  </div>
-</a>
+  {% endfor %}
+</div>
 {% endmacro %}

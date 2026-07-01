@@ -1,5 +1,15 @@
 {% extends "base.html" %}
 {% block title %}{{ meeting_date | meeting_date_long }} — {{ 'Board Meeting' if entity and entity.type == 'school_district' else 'Meeting' }}{% endblock %}
+{% block structured_data %}
+{% from "partials/_breadcrumbs.html" import breadcrumbs_ld %}
+{% if entity %}{{ breadcrumbs_ld([
+  {"name": "Home", "path": "/"},
+  {"name": entity.place.display_name, "path": "/" ~ entity.place.state ~ "/" ~ entity.place.slug},
+  {"name": entity.display_name, "path": base},
+  {"name": "Meetings", "path": base ~ "/meetings"},
+  {"name": (meeting_date | meeting_date_long), "path": request.url.path},
+]) }}{% endif %}
+{% endblock %}
 {% block content %}
 
 {% set is_school = entity and entity.type == 'school_district' %}

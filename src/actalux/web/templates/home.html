@@ -1,12 +1,18 @@
 {% extends "base.html" %}
 {% block title %}Home{% endblock %}
 {% block structured_data %}
+{% from "partials/_breadcrumbs.html" import breadcrumbs_ld %}
 <script type="application/ld+json">{{ {
   "@context": "https://schema.org",
   "@type": "GovernmentOrganization",
   "name": entity.display_name,
   "url": site_url ~ request.url.path
 } | tojson }}</script>
+{% if entity %}{{ breadcrumbs_ld([
+  {"name": "Home", "path": "/"},
+  {"name": entity.place.display_name, "path": "/" ~ entity.place.state ~ "/" ~ entity.place.slug},
+  {"name": entity.display_name, "path": request.url.path},
+]) }}{% endif %}
 {% endblock %}
 {% block content %}
 

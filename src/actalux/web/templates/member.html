@@ -3,6 +3,7 @@
 {% block title %}{{ member.canonical_name }} — record{% endblock %}
 {% block meta_description %}{{ member.canonical_name }}{% set role = member.metadata.role if member.metadata else none %}{% if role %}, {{ role }},{% endif %} on the {{ entity.display_name }} — complete cited voting record and motions, every entry sourced to the official minutes.{% endblock %}
 {% block structured_data %}
+{% from "partials/_breadcrumbs.html" import breadcrumbs_ld %}
 <script type="application/ld+json">{{ {
   "@context": "https://schema.org",
   "@type": "Person",
@@ -11,6 +12,13 @@
   "url": site_url ~ request.url.path,
   "memberOf": {"@type": "GovernmentOrganization", "name": entity.display_name | default(None, true)}
 } | tojson }}</script>
+{{ breadcrumbs_ld([
+  {"name": "Home", "path": "/"},
+  {"name": entity.place.display_name, "path": "/" ~ entity.place.state ~ "/" ~ entity.place.slug},
+  {"name": entity.display_name, "path": base},
+  {"name": "Members", "path": base ~ "/members"},
+  {"name": member.canonical_name, "path": request.url.path},
+]) }}
 {% endblock %}
 {% block content %}
 

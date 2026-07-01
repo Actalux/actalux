@@ -2,12 +2,20 @@
 {% from "partials/_matter_record.html" import matter_record %}
 {% block title %}{{ matter.canonical_name }}{% endblock %}
 {% block structured_data %}
+{% from "partials/_breadcrumbs.html" import breadcrumbs_ld %}
 <script type="application/ld+json">{{ {
   "@context": "https://schema.org",
   "@type": "Legislation",
   "name": matter.canonical_name,
   "url": site_url ~ request.url.path
 } | tojson }}</script>
+{{ breadcrumbs_ld([
+  {"name": "Home", "path": "/"},
+  {"name": entity.place.display_name, "path": "/" ~ entity.place.state ~ "/" ~ entity.place.slug},
+  {"name": entity.display_name, "path": base},
+  {"name": "Bills & resolutions", "path": base ~ "/matters"},
+  {"name": matter.canonical_name, "path": request.url.path},
+]) }}
 {% endblock %}
 {% block content %}
 
