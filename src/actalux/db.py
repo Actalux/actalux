@@ -110,6 +110,20 @@ def get_document(client: Client, doc_id: int) -> dict[str, Any] | None:
     return result.data[0] if result.data else None
 
 
+def get_document_content(client: Client, doc_id: int) -> str:
+    """The stored ``content`` text for one document, or ``""`` if none/missing.
+
+    Fetches a single row's ``content`` on demand so a batch scan can list
+    documents with a lightweight metadata query and pull each body only when
+    it processes it — selecting ``content`` for a whole corpus at once serializes
+    tens of MB in one query and trips the role ``statement_timeout`` (PG 57014).
+    """
+    result = client.table("documents").select("content").eq("id", doc_id).execute()
+    if not result.data:
+        return ""
+    return result.data[0].get("content") or ""
+
+
 def get_documents(client: Client, doc_ids: list[int]) -> dict[int, dict[str, Any]]:
     """Fetch many documents by ID in one round-trip, keyed by ID.
 

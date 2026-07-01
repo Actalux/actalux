@@ -38,6 +38,7 @@ from actalux.db import (  # noqa: E402
     fetch_all_rows,
     get_client,
     get_document_chunks,
+    get_document_content,
     get_meeting_records,
     get_name_corrections,
     get_place_by_path,
@@ -59,8 +60,14 @@ AUTH_TYPES = ["agenda", "minutes"]
 
 
 def _doc_text(client, doc: dict[str, Any]) -> str:
-    """Full text of a document: the stored ``content``, or its chunks reassembled."""
-    content = (doc.get("content") or "").strip()
+    """Full text of a document: the stored ``content``, or its chunks reassembled.
+
+    ``content`` is fetched on demand when the row was listed without it (the
+    transcript scan lists metadata only — see ``_select_transcripts``), so the
+    body is pulled one document at a time rather than for the whole corpus at once.
+    """
+    content = doc["content"] if "content" in doc else get_document_content(client, doc["id"])
+    content = (content or "").strip()
     if content:
         return content
     chunks = get_document_chunks(client, doc["id"])
@@ -119,9 +126,14 @@ def _aggregate(per_meeting: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def _select_transcripts(client, entity_ids: list[int], args) -> list[dict[str, Any]]:
     def query():
+        # Metadata only — each transcript's `content` is fetched per-document in the
+        # scan loop. Selecting `content` for the whole corpus here serialized tens of
+        # MB in one query and tripped the role statement_timeout (PG 57014), which even
+        # the --manifest path hit because it filters to the run's meetings only after
+        # the fetch.
         q = (
             client.table("documents")
-            .select("id,entity_id,meeting_date,video_id,content")
+            .select("id,entity_id,meeting_date,video_id")
             .eq("document_type", "transcript")
             .is_("replaces_id", "null")
             .in_("entity_id", entity_ids)
