@@ -91,6 +91,23 @@ def current_minutes(client: Client, entity_ids: list[int]) -> list[dict[str, Any
     )
 
 
+def current_documents(client: Client, entity_ids: list[int]) -> list[dict[str, Any]]:
+    """Current (non-superseded) documents of ANY type for the given bodies.
+
+    Broader than ``current_minutes``: matter mentions scan agendas, staff reports, and
+    transcripts too (a bill is discussed in the agenda and the meeting, not only voted
+    on in the minutes), so the mention projector iterates all current documents.
+    """
+    return fetch_all_rows(
+        lambda: (
+            client.table("documents")
+            .select("id,entity_id,meeting_date")
+            .is_("replaces_id", "null")
+            .in_("entity_id", entity_ids)
+        )
+    )
+
+
 def document_votes(client: Client, doc_id: int, entity_id: int) -> list[dict[str, Any]]:
     """One document's votes, each tagged with its body (entity_id) for resolution."""
     rows = client.table("votes").select(_VOTE_FIELDS).eq("document_id", doc_id).execute().data
@@ -655,3 +672,75 @@ def prune_stale_graph(client: Client, current_doc_ids: set[int]) -> int:
         client.table("edges").delete().eq("source_document_id", doc_id).execute()
         client.table("subject_resolution_queue").delete().eq("document_id", doc_id).execute()
     return len(stale)
+
+
+def replace_document_mentions(client: Client, doc_id: int, mentions: list[dict]) -> None:
+    """Idempotently rebuild one document's matter mentions (delete-then-insert).
+
+    Scoped to ``document_id`` so a re-run reproduces exactly the current derivation for
+    this document and nothing else — the same contract as ``replace_document_graph``.
+    """
+    client.table("mentions").delete().eq("document_id", doc_id).execute()
+    if mentions:
+        client.table("mentions").insert(mentions).execute()
+
+
+def prune_stale_mentions(client: Client, current_doc_ids: set[int]) -> int:
+    """Delete mentions on a document no longer in the projected set (superseded or out
+    of scope), mirroring ``prune_stale_graph`` for edges. ``current_doc_ids`` is every
+    document scanned for mentions this run. Returns the number of documents pruned.
+    """
+    mention_docs = {
+        r["document_id"]
+        for r in fetch_all_rows(lambda: client.table("mentions").select("document_id"))
+        if r["document_id"] is not None
+    }
+    stale = mention_docs - current_doc_ids
+    for doc_id in stale:
+        client.table("mentions").delete().eq("document_id", doc_id).execute()
+    return len(stale)
+
+
+def matter_mention_records(client: Client, subject_id: int) -> list[dict[str, Any]]:
+    """Cited mentions of a matter, enriched with the referencing document's date/title/
+    type, newest first.
+
+    Anon-safe: the ``mentions`` RLS policy gates to publishable subjects and documents
+    are anon-readable, so this serves the matter page's "Also referenced in" section.
+    Returns DATA only — the caller assembles labels/links (display stays in the web
+    layer).
+    """
+    rows = fetch_all_rows(
+        lambda: (
+            client.table("mentions")
+            .select("document_id,chunk_id,citation_id,source_quote")
+            .eq("subject_id", subject_id)
+        ),
+        order="id",
+    )
+    if not rows:
+        return []
+    doc_ids = sorted({r["document_id"] for r in rows})
+    docs = {
+        d["id"]: d
+        for d in fetch_all_rows(
+            lambda: (
+                client.table("documents")
+                .select("id,meeting_date,meeting_title,document_type")
+                .in_("id", doc_ids)
+            )
+        )
+    }
+    enriched = []
+    for r in rows:
+        doc = docs.get(r["document_id"]) or {}
+        enriched.append(
+            {
+                **r,
+                "meeting_date": doc.get("meeting_date"),
+                "meeting_title": doc.get("meeting_title"),
+                "document_type": doc.get("document_type"),
+            }
+        )
+    enriched.sort(key=lambda r: r.get("meeting_date") or "", reverse=True)
+    return enriched

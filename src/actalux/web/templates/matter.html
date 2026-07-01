@@ -44,6 +44,33 @@
       <div class="section-head">Timeline</div>
       {% for r in actions %}{{ matter_record(r) }}{% endfor %}
     </section>
+
+    {% if references %}
+    {# Cited occurrences beyond the formal actions — agendas, staff reports, and
+       meeting transcripts where this matter is discussed. Each links to the verbatim
+       passage in its native form. #}
+    <section class="original-block" style="margin-bottom: var(--s-6);">
+      <div class="section-head">Also referenced in ({{ references|length }})</div>
+      <p style="font-size: 13px; color: var(--muted); margin-bottom: var(--s-4);">
+        Where this {{ 'bill' if meta.kind == 'bill' else 'resolution' if meta.kind == 'resolution' else 'matter' }}
+        is discussed beyond the actions above — agendas, staff reports, and meeting
+        transcripts we have gathered. Each links to the verbatim passage.
+      </p>
+      {% for m in references %}
+      <a class="cited-record" href="/chunk/{{ m.citation_id }}/source">
+        <div class="cited-record-meta">
+          {% if m.meeting_date %}<span class="date">{{ m.meeting_date }}</span>{% endif %}
+        </div>
+        {% if m.source_quote %}<blockquote class="cited-record-quote">&ldquo;{{ m.source_quote | truncate(240, true, '…') }}&rdquo;</blockquote>{% endif %}
+        <div class="cited-record-foot">
+          <span class="src-title">{{ m | display_title }}</span>
+          <span class="hash">#q{{ m.citation_id }}</span>
+          <span class="open-orig">Open the original &rarr;</span>
+        </div>
+      </a>
+      {% endfor %}
+    </section>
+    {% endif %}
   </article>
 </div>
 

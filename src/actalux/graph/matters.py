@@ -17,6 +17,7 @@ database. Every edge is ``status='cited'`` and carries the vote's durable identi
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 from actalux.graph.project import quote_hash
@@ -72,22 +73,27 @@ def extract_matter_refs(motion: str) -> list[MatterRef]:
     return list(refs.values())
 
 
-def collect_matters(votes: list[dict]) -> dict[str, MatterRef]:
-    """Slug -> MatterRef across many votes, keeping the richest title seen.
+def collect_matter_refs(texts: Iterable[str]) -> dict[str, MatterRef]:
+    """Slug -> MatterRef across many texts, keeping the richest title seen.
 
-    The title appears mainly in the introduction motion; other motions ("postpone
-    Bill No. 7156") omit it. So across all references to a matter, keep the longest
-    title so the matter directory has a usable label.
+    The title appears mainly in the introduction ("Bill No. 7156, an Ordinance ...");
+    other references ("postpone Bill No. 7156") omit it. So across all references to a
+    matter, keep the longest title so the matter directory has a usable label.
     """
     best: dict[str, MatterRef] = {}
-    for vote in votes:
-        for ref in extract_matter_refs(vote.get("motion") or ""):
+    for text in texts:
+        for ref in extract_matter_refs(text or ""):
             cur = best.get(ref.slug)
             if cur is None:
                 best[ref.slug] = ref
             elif ref.title and (cur.title is None or len(ref.title) > len(cur.title)):
                 best[ref.slug] = ref
     return best
+
+
+def collect_matters(votes: list[dict]) -> dict[str, MatterRef]:
+    """Slug -> MatterRef across many votes (over each vote's motion text)."""
+    return collect_matter_refs(vote.get("motion") or "" for vote in votes)
 
 
 def derive_matter_edges(votes: list[dict], matter_ids: dict[str, int]) -> list[dict]:
@@ -129,3 +135,45 @@ def derive_matter_edges(votes: list[dict], matter_ids: dict[str, int]) -> list[d
                 }
             )
     return edges
+
+
+def derive_document_matter_mentions(
+    doc_id: int, chunks: list[dict], matter_ids: dict[str, int]
+) -> list[dict]:
+    """`mentions`-table rows for one document: each chunk that references a minted
+    matter's bill/resolution number is a cited occurrence of that matter.
+
+    ``matter_ids`` maps a matter slug to its already-minted subject id, so a chunk
+    whose number resolves to no real matter (a stray regex hit) yields nothing —
+    which is why this never mints junk matters. A chunk with no ``citation_id`` is
+    skipped: the mentions key ``(subject_id, document_id, citation_id)`` requires it
+    (connections-graph §4.2). Deduped per (matter, chunk); ``source_quote`` is the
+    verbatim chunk text so ``quote_hash`` re-resolves against chunk content (§4.4).
+    """
+    mentions: list[dict] = []
+    seen: set[tuple[int, str]] = set()
+    for chunk in chunks:
+        citation_id = chunk.get("citation_id")
+        if not citation_id:
+            continue
+        text = chunk.get("content") or ""
+        for ref in extract_matter_refs(text):
+            subject_id = matter_ids.get(ref.slug)
+            if subject_id is None:
+                continue
+            key = (subject_id, citation_id)
+            if key in seen:
+                continue
+            seen.add(key)
+            mentions.append(
+                {
+                    "subject_id": subject_id,
+                    "document_id": doc_id,
+                    "chunk_id": chunk.get("id"),
+                    "citation_id": citation_id,
+                    "source_quote": text,
+                    "quote_hash": quote_hash(text),
+                    "projection_complete": True,
+                }
+            )
+    return mentions

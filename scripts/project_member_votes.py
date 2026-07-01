@@ -34,15 +34,22 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from actalux.config import load_config  # noqa: E402
-from actalux.db import get_client, get_entity_by_path  # noqa: E402
-from actalux.graph.matters import collect_matters, derive_matter_edges  # noqa: E402
+from actalux.db import get_client, get_document_chunks, get_entity_by_path  # noqa: E402
+from actalux.graph.matters import (  # noqa: E402
+    collect_matters,
+    derive_document_matter_mentions,
+    derive_matter_edges,
+)
 from actalux.graph.project import derive_document_edges  # noqa: E402
 from actalux.graph.store import (  # noqa: E402
+    current_documents,
     current_minutes,
     document_votes,
     load_roster,
     prune_stale_graph,
+    prune_stale_mentions,
     replace_document_graph,
+    replace_document_mentions,
     upsert_matters,
 )
 
@@ -70,6 +77,35 @@ def _resolve_scope(client) -> tuple[int, dict[int, str]]:
     if place_id is None:
         raise SystemExit("No in-scope bodies resolved.")
     return place_id, entities
+
+
+def _project_matter_mentions(
+    client, council_eid: int, matter_ids: dict[str, int], apply: bool, doc_filter: set[int] | None
+) -> tuple[int, int, int]:
+    """Project matter mentions across all current council documents.
+
+    A mention is a cited occurrence of a minted matter (bill/resolution number) in any
+    current council document — minutes, agenda, staff report, or transcript — so a
+    matter's page can show where it was discussed beyond the formal roll-call votes.
+    Rebuilt per document (delete-then-insert); a full run prunes mentions left on
+    superseded/out-of-scope docs. Returns (mention_count, docs_scanned, docs_pruned).
+    """
+    docs = current_documents(client, [council_eid])
+    if doc_filter is not None:
+        docs = [d for d in docs if d["id"] in doc_filter]
+    total = 0
+    scanned: set[int] = set()
+    for doc in docs:
+        scanned.add(doc["id"])
+        chunks = get_document_chunks(client, doc["id"])
+        mentions = derive_document_matter_mentions(doc["id"], chunks, matter_ids)
+        total += len(mentions)
+        if apply:
+            replace_document_mentions(client, doc["id"], mentions)
+    pruned = 0
+    if apply and doc_filter is None:
+        pruned = prune_stale_mentions(client, scanned)
+    return total, len(scanned), pruned
 
 
 def main() -> int:
@@ -161,6 +197,22 @@ def main() -> int:
         dict(edge_types),
         pruned,
     )
+
+    # Matter mentions (council only): every current council doc, references to minted
+    # matters. Runs after minting so matter_ids is populated (synthetic in a dry run).
+    if council_eid is not None and matter_ids:
+        doc_filter = set(args.doc) if args.doc else None
+        m_total, m_docs, m_pruned = _project_matter_mentions(
+            client, council_eid, matter_ids, args.apply, doc_filter
+        )
+        logger.info(
+            "%s %d matter mentions across %d council docs. Stale mention docs pruned: %d.",
+            verb,
+            m_total,
+            m_docs,
+            m_pruned,
+        )
+
     if not args.apply:
         logger.info("Dry run. Re-run with --apply to write.")
     return 0

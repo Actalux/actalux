@@ -14,6 +14,7 @@ from typing import Any
 
 from actalux.graph.store import (
     body_members,
+    matter_mention_records,
     matters_by_vote,
     member_by_slug,
     members_by_vote,
@@ -339,6 +340,55 @@ def test_members_by_vote_scopes_to_given_votes() -> None:
     assert out[10][0]["edge_type"] == "moved"
     # An empty / all-None vote_id list returns {} without touching the client.
     assert members_by_vote(_FakeClient(), entity_id=2, vote_ids=[None]) == {}
+
+
+def test_matter_mention_records_enriches_and_sorts_newest_first() -> None:
+    client = _FakeClient(
+        mentions=[
+            {
+                "id": 1,
+                "subject_id": 42,
+                "document_id": 10,
+                "chunk_id": 5,
+                "citation_id": "q1",
+                "source_quote": "reads Bill No. 7156",
+            },
+            {
+                "id": 2,
+                "subject_id": 42,
+                "document_id": 11,
+                "chunk_id": 9,
+                "citation_id": "q2",
+                "source_quote": "agenda: Bill No. 7156",
+            },
+            {
+                "id": 3,
+                "subject_id": 99,
+                "document_id": 12,
+                "chunk_id": 1,
+                "citation_id": "q3",
+                "source_quote": "other matter",
+            },
+        ],  # fmt: skip
+        documents=[
+            {
+                "id": 10,
+                "meeting_date": "2024-05-14",
+                "meeting_title": "Regular Meeting",
+                "document_type": "minutes",
+            },
+            {
+                "id": 11,
+                "meeting_date": "2024-06-02",
+                "meeting_title": "Agenda",
+                "document_type": "agenda",
+            },
+        ],  # fmt: skip
+    )
+    out = matter_mention_records(client, subject_id=42)
+    assert [r["citation_id"] for r in out] == ["q2", "q1"]  # newest (2024-06-02) first
+    assert out[0]["document_type"] == "agenda"
+    assert out[1]["meeting_title"] == "Regular Meeting"
 
 
 def test_publishable_person_slugs_filters_unpublishable() -> None:

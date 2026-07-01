@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from actalux.graph.matters import (
+    collect_matter_refs,
     collect_matters,
+    derive_document_matter_mentions,
     derive_matter_edges,
     extract_matter_refs,
 )
@@ -97,3 +99,44 @@ def test_derive_matter_edges_dedups_per_matter_vote() -> None:
     votes = [_vote("r1", "amend Bill No. 7156 and re-refer Bill No. 7156")]
     edges = derive_matter_edges(votes, {"bill-7156": 42})
     assert len(edges) == 1
+
+
+def test_collect_matter_refs_over_arbitrary_texts() -> None:
+    # collect_matters is now a thin wrapper; the general helper reads raw strings.
+    texts = ["agenda item: Bill No. 7156, an Ordinance ...", "no matter here", "Resolution 24-3"]
+    refs = collect_matter_refs(texts)
+    assert set(refs) == {"bill-7156", "resolution-24-3"}
+
+
+def _chunk(cid: str, content: str, chunk_id: int = 1) -> dict:
+    return {"id": chunk_id, "citation_id": cid, "content": content}
+
+
+def test_derive_matter_mentions_links_known_matters() -> None:
+    chunks = [
+        _chunk("q1", "City Attorney reads Bill No. 7156, first reading.", 1),
+        _chunk("q2", "In response to a question about Bill No. 7156, staff explained ...", 2),
+        _chunk("q3", "Approval of the minutes.", 3),  # no matter
+    ]
+    mentions = derive_document_matter_mentions(853, chunks, {"bill-7156": 42})
+    assert len(mentions) == 2  # one per referencing chunk (distinct citation_ids)
+    m = mentions[0]
+    assert m["subject_id"] == 42
+    assert m["document_id"] == 853
+    assert (m["citation_id"], m["chunk_id"]) == ("q1", 1)
+    assert m["source_quote"].startswith("City Attorney reads Bill No. 7156")
+    assert m["quote_hash"] and m["projection_complete"] is True
+
+
+def test_derive_matter_mentions_drops_unknown_and_uncited() -> None:
+    chunks = [
+        _chunk("q1", "discussion of Bill No. 9999"),  # not a minted matter
+        {"id": 2, "citation_id": None, "content": "Bill No. 7156 mentioned"},  # no citation_id
+    ]
+    assert derive_document_matter_mentions(853, chunks, {"bill-7156": 42}) == []
+
+
+def test_derive_matter_mentions_dedups_matter_per_chunk() -> None:
+    # a bill named twice in one chunk -> one mention (keyed on subject + citation_id).
+    chunks = [_chunk("q1", "Bill No. 7156 introduced; later, Bill No. 7156 postponed.")]
+    assert len(derive_document_matter_mentions(853, chunks, {"bill-7156": 42})) == 1

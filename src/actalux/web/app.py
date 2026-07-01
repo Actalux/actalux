@@ -66,6 +66,7 @@ from actalux.graph.store import (
     body_matters,
     body_members,
     matter_by_slug,
+    matter_mention_records,
     matter_records,
     matters_by_vote,
     member_by_slug,
@@ -1058,10 +1059,19 @@ def matter_detail(
         r["participants"] = [
             {"role": role, "members": by_role[role]} for role in _ROLE_ORDER if role in by_role
         ]
+    # "Also referenced in": cited mentions of this matter in other documents (agendas,
+    # staff reports, transcripts) beyond the formal actions above. Drop mentions whose
+    # citation is already shown in the vote timeline so the section is genuinely net-new.
+    vote_citation_ids = {r.get("citation_id") for r in rows}
+    references = [
+        m
+        for m in matter_mention_records(client, matter["id"])
+        if m.get("citation_id") not in vote_citation_ids
+    ]
     return templates.TemplateResponse(
         request,
         "matter.html",
-        _page(view, matter=matter, actions=rows, active="topic-matters"),
+        _page(view, matter=matter, actions=rows, references=references, active="topic-matters"),
     )
 
 
