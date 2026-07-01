@@ -13,8 +13,10 @@ from __future__ import annotations
 from typing import Any
 
 from actalux.graph.store import (
+    body_matters,
     body_members,
     matter_mention_records,
+    matter_mention_rollup,
     matters_by_vote,
     member_by_slug,
     members_by_vote,
@@ -401,3 +403,62 @@ def test_publishable_person_slugs_filters_unpublishable() -> None:
         ]
     )
     assert publishable_person_slugs(client) == ["jane-doe", "rick-roe"]
+
+
+# subject 1 = a voted matter (also mentioned); subject 2 = a mention-only matter (agenda,
+# never voted); one mention sits on another body's document and must be excluded.
+def _matters_client() -> _FakeClient:
+    return _FakeClient(
+        matter_vote_records=[
+            {
+                "edge_id": 1,
+                "subject_id": 1,
+                "subject_slug": "bill-7000",
+                "subject_name": "Bill No. 7000",
+                "subject_metadata": {"kind": "bill"},
+                "meeting_date": "2024-03-01",
+                "entity_id": 7,
+            }
+        ],
+        mentions=[
+            {"id": 1, "subject_id": 1, "document_id": 100},  # voted matter, also mentioned
+            {"id": 2, "subject_id": 2, "document_id": 101},  # mention-only matter
+            {"id": 3, "subject_id": 2, "document_id": 102},  # mention-only, 2nd reference
+            {"id": 4, "subject_id": 2, "document_id": 200},  # OTHER body -> excluded
+        ],
+        documents=[
+            {"id": 100, "entity_id": 7, "meeting_date": "2024-02-01"},
+            {"id": 101, "entity_id": 7, "meeting_date": "2024-04-01"},
+            {"id": 102, "entity_id": 7, "meeting_date": "2024-05-01"},
+            {"id": 200, "entity_id": 9, "meeting_date": "2024-06-01"},
+        ],
+        subjects=[
+            {
+                "id": 2,
+                "slug": "bill-7050",
+                "canonical_name": "Bill No. 7050",
+                "metadata": {"kind": "bill"},
+                "type": "matter",
+                "publishable": True,
+            }
+        ],
+    )
+
+
+def test_matter_mention_rollup_scopes_to_body() -> None:
+    rollup = matter_mention_rollup(_matters_client(), entity_id=7)
+    assert rollup[1] == {"references": 1, "latest_date": "2024-02-01"}
+    # subject 2 has 3 mentions but the one on entity 9 is excluded -> 2, latest 2024-05-01.
+    assert rollup[2] == {"references": 2, "latest_date": "2024-05-01"}
+
+
+def test_body_matters_unions_voted_and_mention_only() -> None:
+    matters = body_matters(_matters_client(), entity_id=7)
+    by_slug = {m["slug"]: m for m in matters}
+    assert set(by_slug) == {"bill-7000", "bill-7050"}
+    # voted matter: has an action + also carries its reference count.
+    assert (by_slug["bill-7000"]["actions"], by_slug["bill-7000"]["references"]) == (1, 1)
+    # mention-only matter: no vote, surfaced via its references.
+    assert (by_slug["bill-7050"]["actions"], by_slug["bill-7050"]["references"]) == (0, 2)
+    # sorted newest-first: mention-only's latest (2024-05-01) beats the vote (2024-03-01).
+    assert [m["slug"] for m in matters] == ["bill-7050", "bill-7000"]

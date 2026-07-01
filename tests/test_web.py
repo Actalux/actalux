@@ -1438,6 +1438,16 @@ _MATTER_TIMELINE_ROW = {
     "vote_count_abstain": 0,
     "citation_id": "b7156aa0",
 }
+# A cited mention of a matter beyond any vote (e.g. an agenda-only bill's first reading).
+_MATTER_MENTION_ROW = {
+    "document_id": 55,
+    "chunk_id": 900,
+    "citation_id": "agz1",
+    "source_quote": "First reading of Bill No. 7156 on the agenda.",
+    "meeting_date": "2024-04-02",
+    "meeting_title": "April 2, 2024 — Agenda",
+    "document_type": "agenda",
+}
 
 
 _MATTER_ENTITY = {**_FAKE_COUNCIL, "place_id": 10}
@@ -1477,10 +1487,27 @@ class TestMatterPages:
     @patch("actalux.web.app.get_entity_by_path", return_value=_MATTER_ENTITY)
     @patch("actalux.web.app.matter_by_slug", return_value=_MATTER_SUBJECT)
     @patch("actalux.web.app.matter_records", return_value=[])
-    def test_matter_no_actions_404(self, m_rec, m_by, m_ent, m_db) -> None:
-        # a matter with no cited action in this body is withheld (404), not an empty page.
+    @patch("actalux.web.app.matter_mention_records", return_value=[])
+    def test_matter_no_actions_and_no_mentions_404(self, m_men, m_rec, m_by, m_ent, m_db) -> None:
+        # A matter with neither a cited action nor a mention in this body is withheld (404).
         r = client.get("/mo/clayton/council/matter/bill-7156")
         assert r.status_code == 404
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity_by_path", return_value=_MATTER_ENTITY)
+    @patch("actalux.web.app.matter_by_slug", return_value=_MATTER_SUBJECT)
+    @patch("actalux.web.app.matter_records", return_value=[])
+    @patch("actalux.web.app.matter_mention_records", return_value=[_MATTER_MENTION_ROW])
+    @patch("actalux.web.app.members_by_vote", return_value={})
+    def test_matter_mention_only_renders(self, m_mem, m_men, m_rec, m_by, m_ent, m_db) -> None:
+        # A never-voted matter (minted from an agenda) has no actions but has references:
+        # it renders "Also referenced in" with no Timeline, rather than 404.
+        r = client.get("/mo/clayton/council/matter/bill-7156")
+        assert r.status_code == 200
+        assert "Also referenced in" in r.text
+        assert "/chunk/agz1/source" in r.text
+        assert "No recorded council vote yet" in r.text
+        assert "Timeline" not in r.text
 
 
 # Council + PC entities for the global person page (career timeline across bodies).

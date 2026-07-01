@@ -97,11 +97,13 @@ def current_documents(client: Client, entity_ids: list[int]) -> list[dict[str, A
     Broader than ``current_minutes``: matter mentions scan agendas, staff reports, and
     transcripts too (a bill is discussed in the agenda and the meeting, not only voted
     on in the minutes), so the mention projector iterates all current documents.
+    ``document_type`` is included so minting can restrict its source to the authoritative
+    doc types (agenda/minutes) while mentions still scan everything.
     """
     return fetch_all_rows(
         lambda: (
             client.table("documents")
-            .select("id,entity_id,meeting_date")
+            .select("id,entity_id,meeting_date,document_type")
             .is_("replaces_id", "null")
             .in_("entity_id", entity_ids)
         )
@@ -526,11 +528,51 @@ def upsert_matters(client: Client, place_id: int, matters: dict[str, Any]) -> di
     return {r["slug"]: r["id"] for r in result.data}
 
 
-def body_matters(client: Client, entity_id: int) -> list[dict[str, Any]]:
-    """Matters acted on by a body, each with its action count + latest date.
+def matter_mention_rollup(client: Client, entity_id: int) -> dict[int, dict[str, Any]]:
+    """Per-matter mention count + latest mention date for one body, keyed by subject_id.
 
-    Reads the matter_vote_records view (anon/RLS path) and rolls up per matter, so
-    only matters with at least one cited council action appear. Sorted newest first.
+    Rolls up the ``mentions`` table (cited occurrences of a matter across a body's
+    documents) so a matter referenced in agendas/discussion but never voted still has a
+    presence to surface. Each mention is scoped to the body via its document. Returns
+    ``{subject_id: {"references": int, "latest_date": str | None}}``.
+    """
+    mentions = fetch_all_rows(
+        lambda: client.table("mentions").select("subject_id,document_id"), order="id"
+    )
+    if not mentions:
+        return {}
+    doc_ids = sorted({m["document_id"] for m in mentions})
+    dates: dict[int, str | None] = {}
+    for i in range(0, len(doc_ids), 200):
+        rows = (
+            client.table("documents")
+            .select("id,meeting_date")
+            .in_("id", doc_ids[i : i + 200])
+            .eq("entity_id", entity_id)
+            .execute()
+            .data
+        )
+        for d in rows:
+            dates[d["id"]] = d.get("meeting_date")
+    rollup: dict[int, dict[str, Any]] = {}
+    for m in mentions:
+        if m["document_id"] not in dates:
+            continue  # mention on another body's document
+        r = rollup.setdefault(m["subject_id"], {"references": 0, "latest_date": None})
+        r["references"] += 1
+        md = dates[m["document_id"]]
+        if (md or "") > (r["latest_date"] or ""):
+            r["latest_date"] = md
+    return rollup
+
+
+def body_matters(client: Client, entity_id: int) -> list[dict[str, Any]]:
+    """Matters with a cited presence in a body: action count, reference count, latest date.
+
+    Unions two sources so a bill is listed whether it was voted or only scheduled:
+    the matter_vote_records view (matters acted on) and the mentions rollup (matters
+    referenced in agendas/discussion). A never-voted matter carries ``actions == 0`` and
+    ``references > 0``. Sorted newest first (latest action or mention).
     """
     rows = fetch_all_rows(
         lambda: (
@@ -556,6 +598,32 @@ def body_matters(client: Client, entity_id: int) -> list[dict[str, Any]]:
             m["actions"] += 1
             if (r["meeting_date"] or "") > (m["latest_date"] or ""):
                 m["latest_date"] = r["meeting_date"]
+
+    mentions = matter_mention_rollup(client, entity_id)
+    mention_only = [sid for sid in mentions if sid not in by_id]
+    for i in range(0, len(mention_only), 200):
+        subs = (
+            client.table("subjects")
+            .select("id,slug,canonical_name,metadata")
+            .in_("id", mention_only[i : i + 200])
+            .eq("type", "matter")
+            .eq("publishable", True)
+            .execute()
+            .data
+        )
+        for s in subs:
+            mr = mentions[s["id"]]
+            by_id[s["id"]] = {
+                "subject_id": s["id"],
+                "slug": s["slug"],
+                "canonical_name": s["canonical_name"],
+                "metadata": s.get("metadata") or {},
+                "actions": 0,
+                "references": mr["references"],
+                "latest_date": mr["latest_date"],
+            }
+    for sid, m in by_id.items():
+        m.setdefault("references", mentions.get(sid, {}).get("references", 0))
     return sorted(by_id.values(), key=lambda m: m["latest_date"] or "", reverse=True)
 
 

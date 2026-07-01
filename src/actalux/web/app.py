@@ -1042,9 +1042,20 @@ def matter_detail(
     if not matter:
         raise HTTPException(status_code=404, detail="Unknown matter")
     rows = matter_records(client, matter["id"], view.entity["id"])
-    if not rows:
-        raise HTTPException(status_code=404, detail="Unknown matter")
     rows.sort(key=lambda r: r.get("meeting_date") or "")
+    # "Also referenced in": cited mentions of this matter in other documents (agendas,
+    # staff reports, transcripts) beyond the formal actions above. Drop mentions whose
+    # citation is already shown in the vote timeline so the section is genuinely net-new.
+    vote_citation_ids = {r.get("citation_id") for r in rows}
+    references = [
+        m
+        for m in matter_mention_records(client, matter["id"])
+        if m.get("citation_id") not in vote_citation_ids
+    ]
+    # A never-voted matter (minted from an agenda) has no actions but has references; only
+    # a matter with neither is genuinely empty (shouldn't happen for a minted subject).
+    if not rows and not references:
+        raise HTTPException(status_code=404, detail="Unknown matter")
     # List the members who acted on each action (shared vote_id), each linking to
     # that member's record — the reverse of the member->matter cross-link above.
     # Grouped by role (Moved/Seconded/Aye/No/Abstain) so the roll call reads cleanly.
@@ -1059,15 +1070,6 @@ def matter_detail(
         r["participants"] = [
             {"role": role, "members": by_role[role]} for role in _ROLE_ORDER if role in by_role
         ]
-    # "Also referenced in": cited mentions of this matter in other documents (agendas,
-    # staff reports, transcripts) beyond the formal actions above. Drop mentions whose
-    # citation is already shown in the vote timeline so the section is genuinely net-new.
-    vote_citation_ids = {r.get("citation_id") for r in rows}
-    references = [
-        m
-        for m in matter_mention_records(client, matter["id"])
-        if m.get("citation_id") not in vote_citation_ids
-    ]
     return templates.TemplateResponse(
         request,
         "matter.html",

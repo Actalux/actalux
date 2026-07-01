@@ -3,12 +3,22 @@
 from __future__ import annotations
 
 from actalux.graph.matters import (
+    MatterRef,
     collect_matter_refs,
     collect_matters,
     derive_document_matter_mentions,
     derive_matter_edges,
     extract_matter_refs,
+    select_mintable_matters,
 )
+
+
+def _bill(num: str, title: str | None = None) -> MatterRef:
+    return MatterRef("bill", num, f"Bill No. {num}", f"bill-{num}", title)
+
+
+def _res(num: str) -> MatterRef:
+    return MatterRef("resolution", num, f"Resolution No. {num}", f"resolution-{num.lower()}", None)
 
 
 def test_extract_bill_with_title() -> None:
@@ -140,3 +150,53 @@ def test_derive_matter_mentions_dedups_matter_per_chunk() -> None:
     # a bill named twice in one chunk -> one mention (keyed on subject + citation_id).
     chunks = [_chunk("q1", "Bill No. 7156 introduced; later, Bill No. 7156 postponed.")]
     assert len(derive_document_matter_mentions(853, chunks, {"bill-7156": 42})) == 1
+
+
+# Voted bills calibrate the number family: 4-digit, 6478..7161 (mirrors Clayton's real
+# distribution used to design the guard).
+_VOTED = {"bill-6478": _bill("6478"), "bill-7161": _bill("7161"), "resolution-22-04": _res("22-04")}
+
+
+def test_mintable_keeps_voted_and_in_family_new_bills() -> None:
+    candidates = {
+        "bill-6600": _bill("6600"),  # in range -> keep
+        "bill-7162": _bill("7162"),  # just above max, within margin -> keep (recent bill)
+    }
+    out = select_mintable_matters(_VOTED, candidates)
+    assert set(out) == {"bill-6478", "bill-7161", "resolution-22-04", "bill-6600", "bill-7162"}
+
+
+def test_mintable_drops_out_of_family_junk_bills() -> None:
+    junk = {
+        "bill-190": _bill("190"),  # 3-digit, wrong length
+        "bill-881": _bill("881"),  # 3-digit
+        "bill-1413": _bill("1413"),  # 4-digit but below min
+        "bill-2026": _bill("2026"),  # a year
+        "bill-2761": _bill("2761"),  # below min
+        "bill-67455": _bill("67455"),  # 5-digit OCR mash
+    }
+    out = select_mintable_matters(_VOTED, junk)
+    assert set(out) == set(_VOTED)  # nothing new minted
+
+
+def test_mintable_resolution_requires_hyphenated_form() -> None:
+    out = select_mintable_matters(
+        _VOTED, {"resolution-2023-12": _res("2023-12"), "resolution-45": _res("45")}
+    )
+    assert "resolution-2023-12" in out  # distinctive YY-NN form
+    assert "resolution-45" not in out  # bare number -> stray hit, dropped
+
+
+def test_mintable_no_voted_bills_mints_no_new_bills() -> None:
+    # Without a voted baseline the family can't be calibrated -> mint no new bills, but a
+    # distinctively-formatted resolution is still safe.
+    candidates = {"bill-7000": _bill("7000"), "resolution-24-01": _res("24-01")}
+    out = select_mintable_matters({}, candidates)
+    assert set(out) == {"resolution-24-01"}
+
+
+def test_mintable_merges_richer_title_onto_voted_matter() -> None:
+    voted = {"bill-6600": _bill("6600", None)}
+    candidates = {"bill-6600": _bill("6600", "an Ordinance amending the zoning code")}
+    out = select_mintable_matters(voted, candidates)
+    assert out["bill-6600"].title == "an Ordinance amending the zoning code"

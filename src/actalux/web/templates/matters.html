@@ -11,9 +11,9 @@
   <article class="doc-page">
     <h1>Bills &amp; resolutions</h1>
     <p class="lede" style="margin-bottom: var(--s-5);">
-      Every bill and resolution the council acted on, drawn from the minutes. Select one
-      for its cited timeline of council actions. These are the records we have gathered —
-      not a claim of a complete record.
+      Every bill and resolution in the records we have gathered — those the council acted
+      on, plus those referenced on agendas or in discussion. Select one for its cited
+      timeline and source passages. Not a claim of a complete record.
     </p>
 
     {% if matters %}
@@ -24,7 +24,7 @@
         <h3 class="doc-title">{{ m.canonical_name }}{% if meta.title %} &mdash; {{ meta.title|truncate(110) }}{% endif %}</h3>
         <div class="card-meta">
           <span class="kind">{{ 'Bill' if meta.kind == 'bill' else 'Resolution' if meta.kind == 'resolution' else 'Matter' }}</span>
-          <span>{{ m.actions }} action{{ 's' if m.actions != 1 }}</span>
+          {% if m.actions %}<span>{{ m.actions }} action{{ 's' if m.actions != 1 }}</span>{% else %}<span>{{ m.references }} reference{{ 's' if m.references != 1 }}</span>{% endif %}
           {% if m.latest_date %}<span class="date">latest {{ m.latest_date }}</span>{% endif %}
         </div>
       </div>

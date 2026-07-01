@@ -31,10 +31,11 @@
     <h1>{{ matter.canonical_name }}</h1>
     {% if meta.title %}<p class="lede" style="margin-bottom: var(--s-4);">{{ meta.title }}</p>{% endif %}
     <p style="font-family: var(--mono); font-size: 11px; color: var(--muted); margin-bottom: var(--s-5);">
-      {{ actions|length }} cited action{{ 's' if actions|length != 1 }}
+      {% if actions %}{{ actions|length }} cited action{{ 's' if actions|length != 1 }}{% else %}No recorded council vote yet{% endif %}
       · <a href="{{ base }}/matters" style="color: var(--accent-ink);">All bills &amp; resolutions</a>
     </p>
 
+    {% if actions %}
     <p style="font-size: 13px; color: var(--muted); margin-bottom: var(--s-5);">
       Every action is drawn verbatim from the council minutes and links to its source
       passage. These are the records we have gathered — not a claim of a complete record.
@@ -44,6 +45,13 @@
       <div class="section-head">Timeline</div>
       {% for r in actions %}{{ matter_record(r) }}{% endfor %}
     </section>
+    {% else %}
+    <p style="font-size: 13px; color: var(--muted); margin-bottom: var(--s-5);">
+      This {{ 'bill' if meta.kind == 'bill' else 'resolution' if meta.kind == 'resolution' else 'matter' }}
+      appears in the records we have gathered — on the agenda or in discussion — but we have
+      no cited council vote on it. Each reference below links to its source passage.
+    </p>
+    {% endif %}
 
     {% if references %}
     {# Cited occurrences beyond the formal actions — agendas, staff reports, and

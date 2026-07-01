@@ -96,6 +96,63 @@ def collect_matters(votes: list[dict]) -> dict[str, MatterRef]:
     return collect_matter_refs(vote.get("motion") or "" for vote in votes)
 
 
+# Recent bills not yet voted sit just above the highest voted number (bill numbers are
+# assigned sequentially), so the plausible window extends this far past the voted max.
+BILL_NUMBER_MARGIN = 100
+
+
+def select_mintable_matters(
+    voted: dict[str, MatterRef],
+    candidates: dict[str, MatterRef],
+    *,
+    bill_margin: int = BILL_NUMBER_MARGIN,
+) -> dict[str, MatterRef]:
+    """Merge trusted voted matters with never-voted candidates that look real.
+
+    ``voted`` (slug -> MatterRef from vote motions) is authoritative — a numbered motion
+    the body acted on — so every voted matter is minted. ``candidates`` (slug -> MatterRef
+    from authoritative agenda/minutes text) also catches bills only *scheduled*, never
+    voted — but raw document text yields stray hits too (a year like "2026", a 5-digit
+    OCR mash, a 3-digit page number). A candidate not already voted is minted only if its
+    number looks like a real matter *for this place*, judged against the place's own voted
+    matters — no hardcoded ranges, so the guard travels to any jurisdiction:
+
+    - bill: same digit-length as the voted bills AND within ``[min_voted, max_voted +
+      bill_margin]``.
+    - resolution: only the distinctive hyphenated "YY-NN" / "YYYY-NN" form; a bare number
+      is too easily a stray hit.
+
+    With no voted bills to calibrate against, no new bills are minted (conservative).
+    Titles merge richest-wins across both sources. Returns the full mintable set.
+    """
+    merged: dict[str, MatterRef] = dict(voted)
+    # A voted matter may carry a richer title in the agenda/minutes text than in its motion.
+    for slug, ref in candidates.items():
+        cur = merged.get(slug)
+        if cur is not None and ref.title and (cur.title is None or len(ref.title) > len(cur.title)):
+            merged[slug] = ref
+
+    bill_numbers = [
+        int(r.number) for r in voted.values() if r.kind == "bill" and r.number.isdigit()
+    ]
+    lengths = {len(str(n)) for n in bill_numbers}
+    lo = min(bill_numbers) if bill_numbers else None
+    hi = max(bill_numbers) if bill_numbers else None
+
+    for slug, ref in candidates.items():
+        if slug in voted:
+            continue
+        if ref.kind == "bill":
+            if lo is None or hi is None or not ref.number.isdigit():
+                continue
+            n = int(ref.number)
+            if len(ref.number) in lengths and lo <= n <= hi + bill_margin:
+                merged[slug] = ref
+        elif ref.kind == "resolution" and "-" in ref.number:
+            merged[slug] = ref
+    return merged
+
+
 def derive_matter_edges(votes: list[dict], matter_ids: dict[str, int]) -> list[dict]:
     """matter->vote 'considered' edges for one document's votes.
 

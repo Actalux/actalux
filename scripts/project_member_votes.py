@@ -36,9 +36,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from actalux.config import load_config  # noqa: E402
 from actalux.db import get_client, get_document_chunks, get_entity_by_path  # noqa: E402
 from actalux.graph.matters import (  # noqa: E402
+    collect_matter_refs,
     collect_matters,
     derive_document_matter_mentions,
     derive_matter_edges,
+    select_mintable_matters,
 )
 from actalux.graph.project import derive_document_edges  # noqa: E402
 from actalux.graph.store import (  # noqa: E402
@@ -63,6 +65,12 @@ logger = logging.getLogger(__name__)
 PLACE = ("mo", "clayton")
 BODIES = ("schools", "council", "plan-commission", "board-of-adjustment")
 
+# Doc types whose text is authoritative enough to MINT a matter from (a bill on an agenda
+# is real even if never voted). Transcripts are excluded — ASR mis-hears numbers, and a
+# minted matter is an assertion, so minting stays on published text; transcripts still
+# contribute mentions to already-minted matters.
+MATTER_MINT_TYPES = ("agenda", "minutes")
+
 
 def _resolve_scope(client) -> tuple[int, dict[int, str]]:
     """Return (place_id, {entity_id: body_slug}) for the in-scope bodies."""
@@ -77,6 +85,21 @@ def _resolve_scope(client) -> tuple[int, dict[int, str]]:
     if place_id is None:
         raise SystemExit("No in-scope bodies resolved.")
     return place_id, entities
+
+
+def _mint_candidates_from_docs(client, council_eid: int) -> dict:
+    """Bill/resolution refs found in a body's authoritative agenda/minutes text.
+
+    Agenda-only bills — scheduled or introduced but never voted — live here, not in the
+    vote motions, so scanning this text is what lets them become matters. Raw text also
+    yields stray hits (a year, a page number, an OCR mash); ``select_mintable_matters``
+    filters those against the place's own voted-bill numbering. Returns slug -> MatterRef.
+    """
+    texts: list[str] = []
+    for doc in current_documents(client, [council_eid]):
+        if doc.get("document_type") in MATTER_MINT_TYPES:
+            texts.extend(c.get("content") or "" for c in get_document_chunks(client, doc["id"]))
+    return collect_matter_refs(texts)
 
 
 def _project_matter_mentions(
@@ -128,9 +151,11 @@ def main() -> int:
     else:
         docs = current_minutes(client, list(entities))
 
-    # Matter pre-pass (council only): scan council motions for bill/resolution numbers
-    # and mint a matter subject per number, so per-doc derivation can attach matter
-    # edges. Council votes are cached here to avoid a second read in the loop below.
+    # Matter pre-pass (council only): mint a matter subject per bill/resolution number so
+    # per-doc derivation can attach matter edges. Voted motions are authoritative; a full
+    # run ALSO mints agenda-only bills from the authoritative agenda/minutes text (guarded
+    # by select_mintable_matters). A --doc run stays vote-only — a scoped inspection, not
+    # the place-wide mint. Council votes are cached here to avoid a second read below.
     council_eid = next((eid for eid, body in entities.items() if body == "council"), None)
     council_votes: dict[int, list] = {}
     matter_ids: dict[str, int] = {}
@@ -138,14 +163,21 @@ def main() -> int:
         for doc in docs:
             if doc["entity_id"] == council_eid:
                 council_votes[doc["id"]] = document_votes(client, doc["id"], council_eid)
-        matters = collect_matters([v for vs in council_votes.values() for v in vs])
+        voted = collect_matters([v for vs in council_votes.values() for v in vs])
+        if args.doc:
+            matters = voted
+        else:
+            candidates = _mint_candidates_from_docs(client, council_eid)
+            matters = select_mintable_matters(voted, candidates)
         if args.apply:
             matter_ids = upsert_matters(client, place_id, matters)
         else:  # dry run: synthetic ids so matter edges still derive for the count
             matter_ids = {slug: -(i + 1) for i, slug in enumerate(matters)}
         logger.info(
-            "Matters: %d council bills/resolutions (%s).",
+            "Matters: %d council bills/resolutions (%d voted + %d agenda-only) (%s).",
             len(matters),
+            len(voted),
+            len(matters) - len(voted),
             "upserted" if args.apply else "dry run",
         )
 
