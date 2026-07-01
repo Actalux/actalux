@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import re
+import sys
 import threading
 import time
 from collections import Counter
@@ -132,6 +133,19 @@ from actalux.web.text_snippets import (
     paragraphize_prose,
     reflow_transcript,
 )
+
+# App INFO logs (e.g. the per-request ask-stream timing) need an explicit handler:
+# uvicorn configures only its own loggers, and Python's last-resort handler drops
+# anything below WARNING, so without this our logger.info(...) never reaches the
+# container's stdout. Scope it to the actalux package so third-party INFO stays
+# quiet, and don't propagate (avoids a double line if a root handler is ever added).
+_pkg_logger = logging.getLogger("actalux")
+if not _pkg_logger.handlers:
+    _handler = logging.StreamHandler(sys.stdout)
+    _handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s:%(message)s"))
+    _pkg_logger.addHandler(_handler)
+    _pkg_logger.setLevel(logging.INFO)
+    _pkg_logger.propagate = False
 
 logger = logging.getLogger(__name__)
 
