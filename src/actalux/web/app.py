@@ -72,7 +72,6 @@ from actalux.graph.store import (
     person_dossier,
     place_lexicon,
 )
-from actalux.ingest.embedder import load_model
 from actalux.models import Correction, chunk_hash_id
 from actalux.search.answer import assemble_evidence, enrich_results
 from actalux.search.hybrid import SearchFilters, hybrid_search
@@ -162,14 +161,17 @@ _embedder_ready = threading.Event()
 
 
 def _warm_embedder() -> None:
-    """Load the bge-small model so the first /search|/ask request doesn't pay it.
+    """Run one real embed so the first /search|/ask request doesn't pay the model.
 
-    Cold model load is ~8s (measured, task #19); warming it in the background at
-    startup moves that cost off the first user's request. Best-effort: a failure
-    here just means the model loads lazily on first use, as before.
+    Both constructing bge-small AND its first encode are one-time ~8s costs
+    (measured, task #19): loading the model alone leaves the first encode cold, so
+    the first query still paid ~8s even with a warm-up that only called load_model.
+    A real embed_query warms the whole path. Best-effort — a failure just means the
+    model loads lazily on first use, as before; the readiness flag is set either
+    way so a failed warm-up can't wedge the machine unhealthy.
     """
     try:
-        load_model()
+        embed_query("warm up the embedding model")
     except Exception:
         logger.warning("embedder warm-up failed; will load lazily on first use", exc_info=True)
     finally:

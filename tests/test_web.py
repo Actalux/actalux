@@ -1282,19 +1282,30 @@ class TestAskLatencyPhaseA:
         # Non-reasoning model => _completion_kwargs won't attach reasoning_effort.
         assert not cfg.condense_model.split("/")[-1].lower().startswith(("gpt-5", "o1", "o3", "o4"))
 
-    def test_warm_embedder_calls_load_model(self) -> None:
-        from actalux.web.app import _warm_embedder
+    def test_warm_embedder_runs_a_real_embed_and_marks_ready(self) -> None:
+        # Warm-up must exercise the full embed path (load AND first encode) — the
+        # first encode is itself a one-time ~8s cost — and set the readiness flag.
+        from actalux.web import app as app_module
 
-        with patch("actalux.web.app.load_model") as m:
-            _warm_embedder()
+        with (
+            patch("actalux.web.app.embed_query") as m,
+            patch.object(app_module, "_embedder_ready", threading.Event()) as ready,
+        ):
+            app_module._warm_embedder()
         m.assert_called_once()
+        assert ready.is_set()
 
-    def test_warm_embedder_swallows_load_errors(self) -> None:
-        from actalux.web.app import _warm_embedder
+    def test_warm_embedder_swallows_errors_but_still_marks_ready(self) -> None:
+        # A warm-up failure must not propagate (the model loads lazily later) and
+        # must still mark the machine ready, so a broken load can't wedge it.
+        from actalux.web import app as app_module
 
-        # A load failure must not propagate — the model just loads lazily later.
-        with patch("actalux.web.app.load_model", side_effect=RuntimeError("boom")):
-            _warm_embedder()
+        with (
+            patch("actalux.web.app.embed_query", side_effect=RuntimeError("boom")),
+            patch.object(app_module, "_embedder_ready", threading.Event()) as ready,
+        ):
+            app_module._warm_embedder()
+        assert ready.is_set()
 
 
 _MEMBER_ENTITY = {**_FAKE_COUNCIL, "place_id": 10}
