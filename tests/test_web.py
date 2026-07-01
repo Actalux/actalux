@@ -5,8 +5,9 @@ Tests static pages (no DB required) and verifies template rendering.
 
 from contextlib import contextmanager
 from dataclasses import replace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from actalux.config import load_config
@@ -671,6 +672,20 @@ class TestChunkSourceEndpoint:
     def test_missing_chunk_returns_404(self, mock_ctx, mock_db) -> None:
         response = client.get("/chunk/99999/source")
         assert response.status_code == 404
+
+    def test_rate_limit_blocks_before_db(self) -> None:
+        """The chunk-source route enforces the per-IP cap (scope 'chunk') before it
+        touches the DB — so a crawler flood is turned away without any lookup work."""
+        enforce = Mock(side_effect=HTTPException(status_code=429))
+        render = Mock()
+        with (
+            patch("actalux.web.app._enforce_rate", enforce),
+            patch("actalux.web.app._chunk_source_render_context", render),
+        ):
+            r = client.get("/chunk/9001/source")
+        assert r.status_code == 429
+        render.assert_not_called()
+        assert enforce.call_args.args[1] == "chunk"
 
     @patch("actalux.web.app._get_db")
     @patch("actalux.web.app.get_entity", return_value=_FAKE_ENTITY)

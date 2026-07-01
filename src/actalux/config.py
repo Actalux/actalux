@@ -131,6 +131,11 @@ class Config:
     search_rrf_k: int = 60
     topic_cache_ttl_seconds: int = 3600
     rate_limit_search_per_minute: int = 30
+    # Citation-source pages (/chunk/{ref}/source[-pane]) are cheap single-row
+    # lookups, but a crawler following the many citation links on budget/matter/
+    # member pages can still flood them. 60/min is well above any human's clicking
+    # while throttling a rogue crawler to a trickle (robots.txt disallows /chunk/).
+    rate_limit_chunk_per_minute: int = 60
     rate_limit_corrections_per_hour: int = 5
     # JSON API (v1). The key is optional: unset -> the API is open (read-only,
     # rate-limited); set -> a valid X-API-Key header is required. Lets the API

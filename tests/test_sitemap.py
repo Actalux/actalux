@@ -14,6 +14,14 @@ def test_robots_txt_points_at_sitemap() -> None:
     assert "Sitemap: https://actalux.org/sitemap.xml" in txt
 
 
+def test_robots_txt_disallows_dynamic_and_fragment_paths() -> None:
+    """Search-result and per-chunk citation pages are load-heavy and not canonical
+    content; the sitemap lists the document/matter/member pages instead."""
+    txt = sitemap.build_robots_txt("https://actalux.org")
+    assert "Disallow: /*/search\n" in txt
+    assert "Disallow: /chunk/\n" in txt
+
+
 def test_collect_locs_builds_canonical_urls() -> None:
     entities = [{"id": 1, "body_slug": "council", "place": {"state": "mo", "slug": "clayton"}}]
     with (

@@ -99,5 +99,10 @@ def build_robots_txt(base_url: str) -> str:
         # documents/matters/meetings to a /search?q=<title>, so without this a crawler
         # follows one expensive hybrid search per item and saturates the database.
         "Disallow: /*/search\n"
+        # Citation-source pages are per-chunk context fragments, not canonical
+        # content — the document/matter/member pages that contain the citations
+        # are in the sitemap. Budget/matter/member pages carry many /chunk links,
+        # so crawling them all is pure load with nothing worth indexing.
+        "Disallow: /chunk/\n"
         f"Sitemap: {base}/sitemap.xml\n"
     )

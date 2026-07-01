@@ -1864,6 +1864,7 @@ async def chunk_source(request: Request, ref: str, q: str = "", embed: int = 0) 
     the legacy bare-text partial (reader_pane.html) for callers that want only the
     text. A citation into a superseded document is annotated, never blind-redirected.
     """
+    _enforce_rate(request, "chunk", _get_config().rate_limit_chunk_per_minute)
     view, ctx = _chunk_source_render_context(ref)
     template = "partials/reader_pane.html" if embed else "chunk_source.html"
     return templates.TemplateResponse(request, template, _page(view, query=q, **ctx))
@@ -1876,6 +1877,7 @@ async def chunk_source_pane(request: Request, ref: str, q: str = "") -> HTMLResp
     Called by HTMX when the user clicks a search result — the same native-format
     treatment as the full ``/chunk/{ref}/source`` page, minus the page chrome.
     """
+    _enforce_rate(request, "chunk", _get_config().rate_limit_chunk_per_minute)
     view, ctx = _chunk_source_render_context(ref)
     target_hash = chunk_hash_id(ctx["chunk"].get("citation_id") or ctx["chunk"]["id"])
     return templates.TemplateResponse(

@@ -168,7 +168,7 @@
 
   <aside class="doc-toc">
     <span class="label">Actions</span>
-    <a href="{{ base }}/search?q={{ document.meeting_title or '' }}">Find quotes from this doc</a>
+    <a href="{{ base }}/search?q={{ document.meeting_title or '' }}" rel="nofollow">Find quotes from this doc</a>
     {% if original_url %}<a href="{{ original_url | safe_url }}" target="_blank" rel="noopener">{{ 'Watch on YouTube' if is_video else 'Open original' }}</a>{% endif %}
     <a href="https://github.com/Actalux/actalux/issues/new?title=Error+report+doc+{{ document.id }}" target="_blank" rel="noopener">Report an error</a>
 
