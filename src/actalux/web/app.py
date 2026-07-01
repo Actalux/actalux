@@ -153,6 +153,14 @@ TEMPLATE_DIR = Path(__file__).parent / "templates"
 STATIC_DIR = Path(__file__).parent / "static"
 
 
+# Set once the embedder warm-up finishes (success OR failure). /healthz gates on
+# this so Fly holds a freshly started machine out of rotation until the model is
+# warm — the first real query then hits a loaded model instead of paying the ~8s
+# load. Set even on failure so a broken load can't wedge the machine unhealthy
+# (it just falls back to the lazy load, as before).
+_embedder_ready = threading.Event()
+
+
 def _warm_embedder() -> None:
     """Load the bge-small model so the first /search|/ask request doesn't pay it.
 
@@ -164,6 +172,8 @@ def _warm_embedder() -> None:
         load_model()
     except Exception:
         logger.warning("embedder warm-up failed; will load lazily on first use", exc_info=True)
+    finally:
+        _embedder_ready.set()
 
 
 def _warm_db() -> None:
@@ -441,13 +451,18 @@ jurisdiction = APIRouter(prefix="/{state}/{place}/{body}")
 
 
 @app.get("/healthz")
-def healthz() -> dict[str, str]:
-    """Liveness probe for the platform health check.
+def healthz(response: Response) -> dict[str, str]:
+    """Readiness probe for the platform health check.
 
     Deliberately DB- and config-free so a paused Supabase free tier can't mark
-    the app unhealthy and trigger restarts. It only reports that the process is
-    up and serving.
+    the app unhealthy and trigger restarts. Reports 503 "warming" only until the
+    embedder warm-up finishes, so Fly keeps a just-started machine out of rotation
+    until the local model is loaded (removing the ~8s first-query penalty); a
+    failed warm-up still flips this to ok (lazy fallback), so it can't wedge.
     """
+    if not _embedder_ready.is_set():
+        response.status_code = 503
+        return {"status": "warming"}
     return {"status": "ok"}
 
 
@@ -533,7 +548,8 @@ def _run_search(
             query_embedding,
             filters,
             reranker=_reranker(),
-            expansions=_search_expansions(q, view.entity.get("place_id")),
+            # Deferred so the base search overlaps the expansion LLM (see hybrid_search).
+            expansions=lambda: _search_expansions(q, view.entity.get("place_id")),
         )
     except SearchError:
         logger.exception("Search failed for query: %s", q)
@@ -2009,7 +2025,8 @@ async def summarize(
             filters=filters,
             reranker=_reranker(),
             max_results=10,
-            expansions=_search_expansions(q, view.entity.get("place_id")),
+            # Deferred so the base search overlaps the expansion LLM (see hybrid_search).
+            expansions=lambda: _search_expansions(q, view.entity.get("place_id")),
         )
         logger.info("summarize route=%s for query: %s", route, q)
         summary = generate_summary(
@@ -2308,7 +2325,8 @@ def ask_post(
             filters=filters,
             reranker=_reranker(),
             max_results=10,
-            expansions=_search_expansions(standalone, view.entity.get("place_id")),
+            # Deferred so the base search overlaps the expansion LLM (see hybrid_search).
+            expansions=lambda: _search_expansions(standalone, view.entity.get("place_id")),
         )
         logger.info("ask route=%s for: %s", route, standalone)
         summary = generate_summary(
@@ -2431,9 +2449,20 @@ def ask_stream(
             ms_embed = (time.perf_counter() - t) * 1000
             entity_id, entity_ids = _resolve_scope(view.entity, scope)
             filters = SearchFilters(entity_id=entity_id, entity_ids=entity_ids)
-            t = time.perf_counter()
-            expansions = _search_expansions(standalone, view.entity.get("place_id"))
-            ms_expand = (time.perf_counter() - t) * 1000
+            # Query expansion is deferred into assemble_evidence (hybrid_search) so
+            # its LLM hop overlaps the base retrieval. expand_ms records the
+            # provider's own wall time for visibility — it OVERLAPS assemble and so
+            # is not added to the total below. It stays 0 on the finance route
+            # (the provider is never invoked there).
+            expand_ms = {"ms": 0.0}
+
+            def _expansions() -> list[tuple[str, list[float]]]:
+                t0 = time.perf_counter()
+                try:
+                    return _search_expansions(standalone, view.entity.get("place_id"))
+                finally:
+                    expand_ms["ms"] = (time.perf_counter() - t0) * 1000
+
             t = time.perf_counter()
             enriched, route = assemble_evidence(
                 client,
@@ -2442,9 +2471,10 @@ def ask_stream(
                 filters=filters,
                 reranker=_reranker(),
                 max_results=10,
-                expansions=expansions,
+                expansions=_expansions,
             )
             ms_assemble = (time.perf_counter() - t) * 1000
+            ms_expand = expand_ms["ms"]
             summary: Summary | None = None
             t_synth = time.perf_counter()
             ms_ttft: float | None = None
@@ -2465,7 +2495,9 @@ def ask_stream(
                     )
             ms_synth = (time.perf_counter() - t_synth) * 1000
             logger.info(
-                "ask-stream route=%s condense=%.0f embed=%.0f expand=%.0f assemble=%.0f "
+                # expand~ overlaps assemble (deferred into hybrid_search), so it is
+                # reported for visibility but NOT summed into total.
+                "ask-stream route=%s condense=%.0f embed=%.0f expand~=%.0f assemble=%.0f "
                 "ttft=%.0f synth=%.0f total=%.0f ms for: %s",
                 route,
                 ms_condense,
@@ -2474,7 +2506,7 @@ def ask_stream(
                 ms_assemble,
                 ms_ttft if ms_ttft is not None else ms_synth,
                 ms_synth,
-                ms_condense + ms_embed + ms_expand + ms_assemble + ms_synth,
+                ms_condense + ms_embed + ms_assemble + ms_synth,
                 standalone,
             )
         except (SearchError, SummaryError):

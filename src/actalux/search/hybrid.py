@@ -49,6 +49,14 @@ AGENDA_RANK_PENALTY = 5
 # break search). Built by the web layer from config; None = RRF-only.
 Reranker = Callable[[str, list["SearchResult"]], list["SearchResult"]]
 
+# Query-expansion variants as (phrasing, embedding) pairs, or a provider that
+# yields them. Passing a provider (instead of a materialized list) lets
+# hybrid_search launch the base query's searches before resolving expansions, so
+# the provider's LLM hop overlaps those in-flight searches instead of blocking
+# them — see _gather_with_deferred_expansions.
+Expansions = list[tuple[str, list[float]]]
+ExpansionsProvider = Callable[[], Expansions]
+
 
 @dataclass(frozen=True)
 class SearchResult:
@@ -90,7 +98,7 @@ def hybrid_search(
     *,
     reranker: Reranker | None = None,
     rerank_pool_size: int = RERANK_POOL_SIZE,
-    expansions: list[tuple[str, list[float]]] | None = None,
+    expansions: Expansions | ExpansionsProvider | None = None,
 ) -> list[SearchResult]:
     """Run hybrid search: semantic + keyword, combined with RRF.
 
@@ -105,7 +113,10 @@ def hybrid_search(
     keyword candidate lists, all fused together, so a record phrased unlike the
     user's query ("Proposition O" vs "bond measure") can still surface. Variant
     searches run concurrently and are best-effort — a failed one is dropped, never
-    fatal; reranking always uses the user's original `query`.
+    fatal; reranking always uses the user's original `query`. `expansions` may also
+    be a *provider* callable, in which case the base search starts before the
+    provider (its LLM hop) is resolved, overlapping the two (see
+    _gather_with_deferred_expansions); the fused result is identical either way.
     """
     if not query.strip():
         return []
@@ -113,8 +124,13 @@ def hybrid_search(
     f = filters or SearchFilters()
     start = time.monotonic()
 
-    variants: list[tuple[str, list[float]]] = [(query, query_embedding), *(expansions or [])]
-    semantic_lists, keyword_lists = _gather_candidate_lists(client, variants, f)
+    if callable(expansions):
+        semantic_lists, keyword_lists = _gather_with_deferred_expansions(
+            client, (query, query_embedding), expansions, f
+        )
+    else:
+        variants: list[tuple[str, list[float]]] = [(query, query_embedding), *(expansions or [])]
+        semantic_lists, keyword_lists = _gather_candidate_lists(client, variants, f)
 
     fuse_count = max(max_results, rerank_pool_size) if reranker is not None else max_results
     results = _fuse_ranked_lists(semantic_lists, keyword_lists, fuse_count)
@@ -130,9 +146,10 @@ def hybrid_search(
 
     elapsed_ms = (time.monotonic() - start) * 1000
     logger.info(
-        "Hybrid search: %d variant(s), %d semantic + %d keyword rows -> %d results "
+        "Hybrid search: %d semantic + %d keyword list(s), %d + %d rows -> %d results "
         "(rerank=%s, %.0fms)",
-        len(variants),
+        len(semantic_lists),
+        len(keyword_lists),
         sum(len(s) for s in semantic_lists),
         sum(len(k) for k in keyword_lists),
         len(results),
@@ -166,6 +183,48 @@ def _gather_candidate_lists(
     with ThreadPoolExecutor(max_workers=min(_MAX_SEARCH_WORKERS, 2 * len(variants))) as pool:
         sem_futures = [pool.submit(_semantic_search, client, emb, filters) for _, emb in variants]
         kw_futures = [pool.submit(_keyword_search, client, q, filters) for q, _ in variants]
+        for i, (sem_future, kw_future) in enumerate(zip(sem_futures, kw_futures)):
+            is_primary = i == 0
+            sem = _resolve_search_future(sem_future, is_primary, i)
+            if sem is not None:
+                semantic_lists.append(sem)
+            kw = _resolve_search_future(kw_future, is_primary, i)
+            if kw is not None:
+                keyword_lists.append(kw)
+    return semantic_lists, keyword_lists
+
+
+def _gather_with_deferred_expansions(
+    client: Client,
+    base: tuple[str, list[float]],
+    provider: ExpansionsProvider,
+    filters: SearchFilters,
+) -> tuple[list[list[dict[str, Any]]], list[list[dict[str, Any]]]]:
+    """Gather candidate lists while overlapping a deferred expansion ``provider``.
+
+    The base query's semantic + keyword round-trips are submitted first, so they
+    are already in flight while ``provider`` is resolved — the provider's LLM hop
+    (the slow part of query expansion) overlaps the base searches rather than
+    blocking them, which is the whole point of accepting a provider. The variant
+    round-trips are then submitted and everything is resolved exactly as in
+    ``_gather_candidate_lists``: the base is primary (its errors propagate) and the
+    expansion variants are best-effort (a failed one is dropped). A provider that
+    itself fails degrades to base-only retrieval — expansion never breaks a search.
+    """
+    base_q, base_emb = base
+    with ThreadPoolExecutor(max_workers=_MAX_SEARCH_WORKERS) as pool:
+        sem_futures = [pool.submit(_semantic_search, client, base_emb, filters)]
+        kw_futures = [pool.submit(_keyword_search, client, base_q, filters)]
+        try:
+            variants = provider() or []
+        except Exception:
+            logger.warning("expansion provider failed; using single-query retrieval", exc_info=True)
+            variants = []
+        sem_futures += [pool.submit(_semantic_search, client, emb, filters) for _, emb in variants]
+        kw_futures += [pool.submit(_keyword_search, client, q, filters) for q, _ in variants]
+
+        semantic_lists: list[list[dict[str, Any]]] = []
+        keyword_lists: list[list[dict[str, Any]]] = []
         for i, (sem_future, kw_future) in enumerate(zip(sem_futures, kw_futures)):
             is_primary = i == 0
             sem = _resolve_search_future(sem_future, is_primary, i)

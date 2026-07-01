@@ -24,7 +24,14 @@ from supabase import Client
 from actalux.db import get_chunk_citation_ids, get_documents
 from actalux.models import chunk_hash_id
 from actalux.search.finance import build_finance_evidence, finance_intent
-from actalux.search.hybrid import Reranker, SearchFilters, SearchResult, hybrid_search
+from actalux.search.hybrid import (
+    Expansions,
+    ExpansionsProvider,
+    Reranker,
+    SearchFilters,
+    SearchResult,
+    hybrid_search,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -85,14 +92,16 @@ def assemble_evidence(
     reranker: Reranker | None = None,
     max_results: int = 10,
     finance_routing: bool = True,
-    expansions: list[tuple[str, list[float]]] | None = None,
+    expansions: Expansions | ExpansionsProvider | None = None,
 ) -> tuple[list[dict[str, Any]], str]:
     """Build the citeable evidence for an answer, and report which path served it.
 
     Tries structured finance first (when ``finance_routing`` is on and the query
     is a figure-shaped finance ask with matching rows); otherwise runs hybrid
     retrieval over the text chunks. ``expansions`` are optional query-expansion
-    variants passed through to ``hybrid_search`` to widen recall on the text path.
+    variants (or a provider callable) passed through to ``hybrid_search`` to widen
+    recall on the text path; a provider is resolved only inside ``hybrid_search``,
+    so a finance-routed query returns before it runs (no expansion LLM call).
     Returns ``(evidence, route_label)``.
     """
     if finance_routing:

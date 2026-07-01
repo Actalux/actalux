@@ -3,6 +3,7 @@
 Tests static pages (no DB required) and verifies template rendering.
 """
 
+import threading
 from contextlib import contextmanager
 from dataclasses import replace
 from unittest.mock import Mock, patch
@@ -11,9 +12,15 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from actalux.config import load_config
-from actalux.web.app import _pdf_available, _render_citation_links, app, templates
+from actalux.web.app import _embedder_ready, _pdf_available, _render_citation_links, app, templates
 
 client = TestClient(app, raise_server_exceptions=False)
+
+# The bare TestClient doesn't run the app lifespan (no embedder warm-up), so the
+# readiness event stays unset and /healthz would report "warming". Tests exercise
+# the normal warm, serving state — mark it ready. The warming path is tested
+# explicitly (see test_healthz_reports_warming_until_ready) by patching a fresh event.
+_embedder_ready.set()
 
 
 def _open_api_cfg():
@@ -77,6 +84,17 @@ class TestStaticPages:
         response = client.get("/healthz")
         assert response.status_code == 200
         assert response.json() == {"status": "ok"}
+
+    def test_healthz_reports_warming_until_ready(self) -> None:
+        # Before the embedder warm-up finishes, /healthz returns 503 so Fly keeps
+        # the machine out of rotation (the first query then hits a warm model). A
+        # fresh, unset event stands in for a still-warming process.
+        from actalux.web import app as app_module
+
+        with patch.object(app_module, "_embedder_ready", threading.Event()):
+            response = client.get("/healthz")
+        assert response.status_code == 503
+        assert response.json() == {"status": "warming"}
 
     @patch("actalux.web.app._get_db")
     @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)

@@ -638,7 +638,8 @@ def api_search(
             filters,
             max_results=limit,
             reranker=build_reranker(),
-            expansions=search_expansions(q, entity.get("place_id")),
+            # Deferred so the base search overlaps the expansion LLM (see hybrid_search).
+            expansions=lambda: search_expansions(q, entity.get("place_id")),
         )
     except SearchError:
         results = []

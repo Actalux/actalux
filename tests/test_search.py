@@ -337,6 +337,46 @@ class TestHybridSearchExpansion:
             hybrid_search(client, "q", [0.0], SearchFilters(), expansions=[("v", [1.0])])
 
 
+class TestHybridSearchDeferredExpansion:
+    """A callable `expansions` provider fuses identically to an eager list, while
+    letting hybrid_search start the base search before the provider resolves."""
+
+    def test_provider_variants_fuse_like_eager_list(self) -> None:
+        target = _row(608, 60)
+        client = _RowFakeClient(
+            semantic={(0.0,): [], (1.0,): [target]},
+            keyword={"bond measure": [], "Proposition O": []},
+        )
+        results = hybrid_search(
+            client,
+            "bond measure",
+            [0.0],
+            SearchFilters(),
+            expansions=lambda: [("Proposition O", [1.0])],
+        )
+        assert [r.chunk_id for r in results] == [608]
+
+    def test_provider_returning_empty_is_base_only(self) -> None:
+        client = _RowFakeClient(semantic={(0.0,): []}, keyword={"q": []})
+        hybrid_search(client, "q", [0.0], SearchFilters(), expansions=lambda: [])
+        assert len(client.calls) == 2  # base semantic + keyword only
+
+    def test_provider_failure_degrades_to_base(self) -> None:
+        # A provider that raises must not break a search the base query can serve.
+        client = _RowFakeClient(semantic={(0.0,): [_row(1)]}, keyword={"q": []})
+
+        def boom() -> list[tuple[str, list[float]]]:
+            raise RuntimeError("expansion LLM down")
+
+        results = hybrid_search(client, "q", [0.0], SearchFilters(), expansions=boom)
+        assert [r.chunk_id for r in results] == [1]
+
+    def test_provider_primary_error_still_propagates(self) -> None:
+        client = _RowFakeClient(errors={"semantic:(0.0,)"})
+        with pytest.raises(SearchError):
+            hybrid_search(client, "q", [0.0], SearchFilters(), expansions=lambda: [("v", [1.0])])
+
+
 def _sr(chunk_id: int, dtype: str) -> SearchResult:
     return SearchResult(
         chunk_id=chunk_id,

@@ -7,6 +7,7 @@ and cached for the lifetime of the process.
 from __future__ import annotations
 
 import logging
+import threading
 from typing import TYPE_CHECKING
 
 from actalux.errors import EmbeddingError
@@ -19,23 +20,32 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _model: SentenceTransformer | None = None
+# Guards the one-time model load: the startup warm-up thread and a first request
+# can both reach load_model() before _model is set. Without this lock they each
+# start their own ~8s load, contending — the "first query paid ~10s" symptom.
+_model_lock = threading.Lock()
 
 
 def load_model(model_name: str = "BAAI/bge-small-en-v1.5") -> SentenceTransformer:
-    """Load the embedding model. Caches globally after first call."""
+    """Load the embedding model. Caches globally after first call (thread-safe)."""
     global _model
     if _model is not None:
         return _model
 
-    try:
-        from sentence_transformers import SentenceTransformer
+    with _model_lock:
+        if _model is not None:  # another thread loaded it while we waited
+            return _model
+        try:
+            from sentence_transformers import SentenceTransformer
 
-        logger.info("Loading embedding model: %s", model_name)
-        _model = SentenceTransformer(model_name)
-        logger.info("Model loaded successfully (dim=%d)", _model.get_sentence_embedding_dimension())
-        return _model
-    except Exception as exc:
-        raise EmbeddingError(f"Failed to load embedding model {model_name}: {exc}") from exc
+            logger.info("Loading embedding model: %s", model_name)
+            _model = SentenceTransformer(model_name)
+            logger.info(
+                "Model loaded successfully (dim=%d)", _model.get_sentence_embedding_dimension()
+            )
+            return _model
+        except Exception as exc:
+            raise EmbeddingError(f"Failed to load embedding model {model_name}: {exc}") from exc
 
 
 def embed_chunks(chunks: list[Chunk], model_name: str = "BAAI/bge-small-en-v1.5") -> list[Chunk]:
