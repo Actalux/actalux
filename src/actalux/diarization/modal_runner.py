@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     # our domain type. The remote container loads this module to find
     # ``diarize_remote`` and must not import ``actalux`` — its image carries only
     # torch + pyannote, never the package.
-    from actalux.diarization.backend import SpeakerTimeline
+    from actalux.diarization.backend import ClusterEmbedding, SpeakerTimeline
 
 PYANNOTE_MODEL = "pyannote/speaker-diarization-3.1"
 # The embedding half of the 3.1 pipeline, loaded directly. The Phase 0 spike
@@ -58,40 +58,101 @@ image = (
 )
 
 
-def _extract_cluster_embeddings(annotation, waveform, sample_rate, embedder, device) -> list[dict]:  # noqa: ANN001 - pyannote/torch types not importable locally
-    """Per-cluster L2-normalized voice embeddings over each cluster's own speech.
+def _decode_16k_mono(audio_bytes: bytes):  # noqa: ANN202 - torch tensor type not importable locally
+    """Decode arbitrary audio to a 16 kHz mono waveform tensor; return (waveform, sr).
 
-    Concatenates a cluster's turns (capped for determinism + memory), embeds the
-    speech with the pinned wespeaker model, and L2-normalizes so cosine == dot
-    product. Clusters with too little speech (NaN-prone) are dropped. The vectors
-    are anonymous — they name no one; enrollment (officials-only) is downstream.
+    MP3 frame padding makes pyannote's file cropper miscount samples ("got N instead
+    of expected M"); a decoded tensor has exact sample counts. The tensor is read
+    fully into memory, so it outlives the temp file.
+    """
+    import os
+    import subprocess
+    import tempfile
+
+    import torchaudio
+
+    with tempfile.TemporaryDirectory() as tmp:
+        src = os.path.join(tmp, "audio.in")
+        wav = os.path.join(tmp, "audio.wav")
+        with open(src, "wb") as f:
+            f.write(audio_bytes)
+        subprocess.run(
+            ["ffmpeg", "-nostdin", "-loglevel", "error", "-i", src,
+             "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", "-y", wav],
+            check=True,
+        )  # fmt: skip
+        return torchaudio.load(wav)
+
+
+def _load_embedder(token: str, device):  # noqa: ANN001, ANN202 - pyannote/torch types not importable locally
+    """Load the pinned wespeaker speaker-embedding model onto ``device``.
+
+    The HF-token kwarg was renamed across pyannote versions (use_auth_token ->
+    token); pass whichever this build's signature accepts.
+    """
+    import inspect
+
+    from pyannote.audio.pipelines.speaker_verification import PretrainedSpeakerEmbedding
+
+    emb_kwargs: dict = {"device": device}
+    sig = inspect.signature(PretrainedSpeakerEmbedding.__init__)
+    if "use_auth_token" in sig.parameters:
+        emb_kwargs["use_auth_token"] = token
+    elif "token" in sig.parameters:
+        emb_kwargs["token"] = token
+    return PretrainedSpeakerEmbedding(EMBED_MODEL, **emb_kwargs)
+
+
+def _embed_spans(waveform, sample_rate, spans, embedder, device):  # noqa: ANN001, ANN202 - pyannote/torch types not importable locally
+    """L2-normalized voice embedding over the given ``[(start_s, end_s), ...]`` spans.
+
+    Concatenates the spans in order (capped for determinism + memory), embeds with
+    the wespeaker model, and L2-normalizes so cosine == dot product. Returns
+    ``(vector, seconds)`` with ``vector`` a ``list[float]``, or ``(None, seconds)``
+    when the speech is too short / degenerate to embed reliably (NaN-prone).
     """
     import numpy as np
     import torch
 
+    slices, secs = [], 0.0
+    for start_s, end_s in spans:
+        if secs >= EMBED_MAX_SECONDS:
+            break
+        a, b = int(start_s * sample_rate), int(end_s * sample_rate)
+        if b > a:
+            slices.append(waveform[:, a:b])
+            secs += (b - a) / sample_rate
+    if not slices or secs < EMBED_MIN_SECONDS:
+        return None, secs
+    speech = torch.cat(slices, dim=1).unsqueeze(0).to(device)  # (1, channel, samples)
+    vec = np.asarray(embedder(speech), dtype=np.float64).reshape(-1)
+    norm = float(np.linalg.norm(vec))
+    if norm == 0 or not np.isfinite(norm):
+        return None, secs
+    return [float(x) for x in (vec / norm).tolist()], secs
+
+
+def _extract_cluster_embeddings(annotation, waveform, sample_rate, embedder, device) -> list[dict]:  # noqa: ANN001 - pyannote/torch types not importable locally
+    """Per-cluster L2-normalized voice embeddings over each cluster's own speech.
+
+    The vectors are anonymous — they name no one; enrollment (officials-only) is
+    downstream. Clusters too short to embed reliably are dropped.
+    """
     rows: list[dict] = []
     for label in sorted(annotation.labels()):
-        slices, secs = [], 0.0
-        for seg, _, lab in annotation.itertracks(yield_label=True):
-            if lab != label or secs >= EMBED_MAX_SECONDS:
-                continue
-            a, b = int(seg.start * sample_rate), int(seg.end * sample_rate)
-            if b > a:
-                slices.append(waveform[:, a:b])
-                secs += (b - a) / sample_rate
-        if not slices or secs < EMBED_MIN_SECONDS:
+        spans = [
+            (seg.start, seg.end)
+            for seg, _, lab in annotation.itertracks(yield_label=True)
+            if lab == label
+        ]
+        vector, seconds = _embed_spans(waveform, sample_rate, spans, embedder, device)
+        if vector is None:
             continue
-        speech = torch.cat(slices, dim=1).unsqueeze(0).to(device)  # (1, channel, samples)
-        vec = np.asarray(embedder(speech), dtype=np.float64).reshape(-1)
-        norm = float(np.linalg.norm(vec))
-        if norm == 0 or not np.isfinite(norm):
-            continue
-        vec = vec / norm  # L2-normalize (cosine similarity == dot product)
         rows.append(
             {
                 "cluster_label": label,
-                "vector": [float(x) for x in vec.tolist()],
-                "seconds": round(secs, 2),
+                "vector": vector,
+                "seconds": round(seconds, 2),
                 "model": EMBED_MODEL,
             }
         )
@@ -117,13 +178,9 @@ def diarize_remote(
     voiceprints are extracted ON DEMAND for a specific meeting, never persisted for
     un-confirmed speakers (a private citizen's voice is never stored — see the plan).
     """
-    import inspect
     import os
-    import subprocess
-    import tempfile
 
     import torch
-    import torchaudio
     from pyannote.audio import Pipeline
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -133,20 +190,7 @@ def diarize_remote(
     if torch.cuda.is_available():
         pipeline.to(device)
 
-    # Decode to 16 kHz mono PCM with ffmpeg, then hand pyannote an in-memory
-    # waveform. MP3 frame padding makes pyannote's file cropper miscount samples
-    # ("got N instead of expected M"); a decoded tensor has exact sample counts.
-    with tempfile.TemporaryDirectory() as tmp:
-        src = os.path.join(tmp, "audio.in")
-        wav = os.path.join(tmp, "audio.wav")
-        with open(src, "wb") as f:
-            f.write(audio_bytes)
-        subprocess.run(
-            ["ffmpeg", "-nostdin", "-loglevel", "error", "-i", src,
-             "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", "-y", wav],
-            check=True,
-        )  # fmt: skip
-        waveform, sample_rate = torchaudio.load(wav)
+    waveform, sample_rate = _decode_16k_mono(audio_bytes)
 
     kwargs = {"num_speakers": hint_num_speakers} if hint_num_speakers else {}
     result = pipeline({"waveform": waveform, "sample_rate": sample_rate}, **kwargs)
@@ -161,20 +205,51 @@ def diarize_remote(
 
     embeddings: list[dict] = []
     if return_embeddings:
-        from pyannote.audio.pipelines.speaker_verification import PretrainedSpeakerEmbedding
-
-        # The HF-token kwarg was renamed across versions (use_auth_token -> token).
-        emb_kwargs: dict = {"device": device}
-        sig = inspect.signature(PretrainedSpeakerEmbedding.__init__)
-        if "use_auth_token" in sig.parameters:
-            emb_kwargs["use_auth_token"] = token
-        elif "token" in sig.parameters:
-            emb_kwargs["token"] = token
-        embedder = PretrainedSpeakerEmbedding(EMBED_MODEL, **emb_kwargs)
+        embedder = _load_embedder(token, device)
         embeddings = _extract_cluster_embeddings(
             annotation, waveform, sample_rate, embedder, device
         )
     return {"segments": segments, "embeddings": embeddings}
+
+
+@app.function(
+    image=image,
+    gpu="L4",
+    secrets=[modal.Secret.from_name("actalux-hf")],
+    timeout=60 * 60,
+)
+def embed_clusters_remote(audio_bytes: bytes, clusters: list) -> list:
+    """Embed each cluster's STORED turn spans -> L2-normalized voiceprints.
+
+    The enrollment path. A confirmed cluster's turns live in ``diarization_turns``;
+    re-diarizing a meeting would renumber the ``SPEAKER_NN`` labels, so we embed the
+    stored spans directly rather than re-clustering. One GPU load per meeting.
+
+    ``clusters``: ``[{"cluster_label": str, "spans": [[start_s, end_s], ...]}, ...]``.
+    Returns ``[{"cluster_label", "vector": [...]|None, "seconds", "model"}, ...]``
+    (``vector`` is None when the cluster is too short to embed reliably).
+    """
+    import os
+
+    import torch
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    embedder = _load_embedder(os.environ["HF_TOKEN"], device)
+    waveform, sample_rate = _decode_16k_mono(audio_bytes)
+
+    out: list[dict] = []
+    for c in clusters:
+        spans = [(float(a), float(b)) for a, b in c["spans"]]
+        vector, seconds = _embed_spans(waveform, sample_rate, spans, embedder, device)
+        out.append(
+            {
+                "cluster_label": c["cluster_label"],
+                "vector": vector,
+                "seconds": round(seconds, 2),
+                "model": EMBED_MODEL,
+            }
+        )
+    return out
 
 
 class ModalRunner:
@@ -224,6 +299,31 @@ class ModalRunner:
         from actalux.diarization.backend import SpeakerTimeline
 
         return SpeakerTimeline.from_remote(call.get(), self._model)
+
+    def embed_clusters(self, audio_uri: str, clusters: list[dict]) -> dict[str, ClusterEmbedding]:
+        """Embed stored cluster spans for one meeting -> ``{cluster_label: ClusterEmbedding}``.
+
+        ``clusters`` is ``[{"cluster_label": str, "spans": [[start_s, end_s], ...]}]``
+        (the enrollment path: spans come from the stored ``diarization_turns``, so this
+        is robust to re-diarization renumbering). Clusters too short to embed are
+        absent from the result. One GPU load per meeting.
+        """
+        from actalux.diarization.backend import ClusterEmbedding
+
+        audio_bytes = Path(audio_uri).read_bytes()
+        fn = modal.Function.from_name(APP_NAME, "embed_clusters_remote")
+        out: dict[str, ClusterEmbedding] = {}
+        for r in fn.remote(audio_bytes, clusters):
+            if r["vector"] is None:
+                continue
+            label = r["cluster_label"]
+            out[label] = ClusterEmbedding(
+                cluster_label=label,
+                vector=tuple(r["vector"]),
+                seconds=r["seconds"],
+                model=r["model"],
+            )
+        return out
 
     @staticmethod
     def cancel(call: modal.FunctionCall) -> None:

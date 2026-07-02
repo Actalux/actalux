@@ -37,6 +37,27 @@ an independent same-meeting name anchor.**
   citizen's vector. **Guarantee: a private citizen's voiceprint is never written to disk.**
   Consequence: the transcribe-time persistence plumbing (a `SpeakerLayer`/sidecar embedding
   carry) was trimmed as dead code; extraction is on-demand via the flag above.
+- **BOOTSTRAP DECISION — name-anchored first (operator, 2026-07-01).** 0 human-`confirmed`
+  identities exist and no confirmation tool does, so the initial gallery seeds from the
+  name-anchored `inferred_high` rows (rollcall/self_intro/vote_anchor) — deterministic
+  name→voice facts, source-linked + invalidatable (the plan's allowed source), which also
+  serve as the leave-one-meeting-out calibration ground truth. Appointed-official
+  confirmation tooling is the next step (Phase 2b-later).
+- **Phase 2 code — DONE, tested, UNPUSHED / UNDEPLOYED (1208 tests pass).**
+  - `modal_runner.py`: refactored shared helpers (`_decode_16k_mono`, `_load_embedder`,
+    `_embed_spans`); new `embed_clusters_remote` + `ModalRunner.embed_clusters` embed a
+    cluster's STORED `diarization_turns` spans (robust to re-diarization renumbering — the
+    reason enrollment can't just re-diarize), one GPU load per meeting.
+  - `scripts/enroll_voiceprints.py` (dry-run default, `--apply`): selects enrollable
+    official clusters (confirmed OR name-anchored high; never `basis='voiceprint'`), embeds
+    each on demand, upserts to the gallery; skips superseded docs, docs without `video_id`,
+    and clusters below `--min-seconds` (default 10); prunes superseded samples.
+  - **Dry-run verified on prod data: would enroll 81 samples / 16 officials / 74 meetings**
+    (Waldman 23, Lichtenfeld 12, McAndrew 11, Hummell 9, Buse 7 …); 4 sub-10s single-word
+    roll-call clusters correctly skipped; 0 to prune.
+  - Next gated steps: (1) `modal deploy` the updated diarization app (adds
+    `embed_clusters_remote`; also flips normal diarization to pinned 4.0.5 / L4); (2)
+    `enroll_voiceprints.py --apply` to populate the gallery.
 
 ## 1. Why
 
