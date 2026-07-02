@@ -47,14 +47,16 @@ APP_NAME = "actalux-diarization"
 app = modal.App(APP_NAME)
 
 # torch + pyannote live here, not in the repo env. Default PyPI torch ships the
-# CUDA runtime, so it uses the GPU on a GPU-backed function. Versions are PINNED to
-# what the Phase 0 spike validated (pyannote.audio 4.0.5 / torch 2.12.1): the
-# embedding vectors this pipeline emits are the gallery's substrate, so an
-# unpinned upgrade that shifted them would silently invalidate stored voiceprints.
+# CUDA runtime, so it uses the GPU on a GPU-backed function. pyannote.audio + torch
+# are PINNED to what the Phase 0 spike validated (4.0.5 / 2.12.1): the embedding
+# vectors this pipeline emits are the gallery's substrate, so an unpinned upgrade
+# that shifted them would silently invalidate stored voiceprints. torchaudio is
+# left to resolve (it has no 2.12.1 release; the spike ran it unpinned) — it is only
+# used to decode audio to a waveform, which does not affect the embeddings.
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .apt_install("ffmpeg")
-    .pip_install("torch==2.12.1", "torchaudio==2.12.1", "pyannote.audio==4.0.5")
+    .pip_install("torch==2.12.1", "torchaudio", "pyannote.audio==4.0.5")
 )
 
 
