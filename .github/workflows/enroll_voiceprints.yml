@@ -12,6 +12,7 @@ name: enroll-voiceprints
 #
 # Required repository secrets:
 #   SUPABASE_URL / SUPABASE_KEY / SUPABASE_SERVICE_KEY   (read identities + write gallery)
+#   SUPABASE_PAT                                         (apply_migrations --check)
 #   MODAL_TOKEN_ID / MODAL_TOKEN_SECRET                  (invoke the embed GPU app)
 
 on:
@@ -51,6 +52,7 @@ jobs:
       ACTALUX_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       ACTALUX_SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
       ACTALUX_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      ACTALUX_SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
     steps:
