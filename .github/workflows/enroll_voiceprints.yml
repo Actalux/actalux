@@ -1,0 +1,105 @@
+name: enroll-voiceprints
+
+# Populate the officials-only voiceprint gallery: for each name-anchored / confirmed
+# official cluster, re-extract its voice embedding from the meeting audio (on Modal)
+# and upsert it into subject_voiceprints. Runs OFF-SESSION on a GitHub runner because
+# it is long (~2 min/meeting: yt-dlp download + Modal embed) — in-session background
+# jobs get reaped at session boundaries. Resumable: already-enrolled meetings are
+# skipped, so a re-dispatch (or a timeout) picks up where it left off.
+#
+# Manual-trigger only. Prereq: the diarization Modal app must be deployed
+# (modal deploy src/actalux/diarization/modal_runner.py — provides embed_clusters_remote).
+#
+# Required repository secrets:
+#   SUPABASE_URL / SUPABASE_KEY / SUPABASE_SERVICE_KEY   (read identities + write gallery)
+#   MODAL_TOKEN_ID / MODAL_TOKEN_SECRET                  (invoke the embed GPU app)
+
+on:
+  workflow_dispatch:
+    inputs:
+      min_seconds:
+        description: "Minimum speech seconds to enroll a sample"
+        required: false
+        default: "10"
+      confirmed_only:
+        description: "Enroll only human-confirmed clusters (exclude name-anchored)"
+        type: boolean
+        default: false
+      reembed:
+        description: "Re-embed meetings already in the gallery (default: resume/skip them)"
+        type: boolean
+        default: false
+      limit:
+        description: "Cap the number of meetings processed (blank = all remaining)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+# The gallery derives from diarization_turns; never race the transcription/backfill
+# workflows that rewrite them.
+concurrency:
+  group: transcribe
+  cancel-in-progress: false
+
+jobs:
+  enroll-voiceprints:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      ACTALUX_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      ACTALUX_SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      ACTALUX_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv + Python 3.11
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+          enable-cache: true
+
+      - name: Install dependencies (incl. the Modal client)
+        run: uv sync --no-dev --group diarization
+
+      - name: Install yt-dlp, ffmpeg, Cloudflare WARP
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg curl gpg lsb-release
+          curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg \
+            | sudo gpg --yes --dearmor -o /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" \
+            | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
+          sudo apt-get update -qq && sudo apt-get install -y -qq cloudflare-warp
+
+      - name: Connect Cloudflare WARP (proxy mode)
+        run: |
+          sudo systemctl enable --now warp-svc
+          sleep 6
+          warp-cli --accept-tos registration new
+          warp-cli --accept-tos mode proxy
+          warp-cli --accept-tos connect
+          sleep 8
+          warp-cli --accept-tos status
+          curl -s --socks5-hostname 127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/trace \
+            | grep -q "warp=on" || { echo "WARP not active"; exit 1; }
+
+      - name: Verify schema is up to date
+        run: uv run python scripts/apply_migrations.py --check
+
+      - name: Enroll voiceprints (download audio + embed on Modal + upsert gallery)
+        env:
+          MIN_SECONDS: ${{ inputs.min_seconds }}
+          CONFIRMED_ONLY: ${{ inputs.confirmed_only }}
+          REEMBED: ${{ inputs.reembed }}
+          LIMIT: ${{ inputs.limit }}
+        run: |
+          ARGS="--apply --proxy socks5h://127.0.0.1:40000"
+          [ -n "$MIN_SECONDS" ] && ARGS="$ARGS --min-seconds $MIN_SECONDS"
+          [ "$CONFIRMED_ONLY" = "true" ] && ARGS="$ARGS --confirmed-only"
+          [ "$REEMBED" = "true" ] && ARGS="$ARGS --reembed"
+          [ -n "$LIMIT" ] && ARGS="$ARGS --limit $LIMIT"
+          uv run --group diarization python scripts/enroll_voiceprints.py $ARGS
