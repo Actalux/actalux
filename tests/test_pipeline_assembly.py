@@ -148,7 +148,13 @@ class _StubDiarizer:
     def __init__(self, timeline: SpeakerTimeline) -> None:
         self._timeline = timeline
 
-    def run(self, audio_uri: str, *, hint_num_speakers: int | None = None) -> SpeakerTimeline:
+    def run(
+        self,
+        audio_uri: str,
+        *,
+        hint_num_speakers: int | None = None,
+        return_embeddings: bool = False,
+    ) -> SpeakerTimeline:
         return self._timeline
 
 

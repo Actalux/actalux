@@ -32,27 +32,92 @@ if TYPE_CHECKING:
     from actalux.diarization.backend import SpeakerTimeline
 
 PYANNOTE_MODEL = "pyannote/speaker-diarization-3.1"
+# The embedding half of the 3.1 pipeline, loaded directly. The Phase 0 spike
+# (docs/architecture/voiceprint-speaker-id-plan.md §4) showed pyannote 4.x returns
+# a DiarizeOutput and ignores ``return_embeddings``; extracting embeddings
+# ourselves is version-stable and gives us per-cluster aggregation control.
+EMBED_MODEL = "pyannote/wespeaker-voxceleb-resnet34-LM"  # 256-d, cosine
+# Per-cluster embedding: cap the speech fed to the embedder (deterministic, bounds
+# memory on a talkative official) and skip clusters too short to embed reliably
+# (below this the pooling std collapses to NaN).
+EMBED_MAX_SECONDS = 180.0
+EMBED_MIN_SECONDS = 3.0
 APP_NAME = "actalux-diarization"
 
 app = modal.App(APP_NAME)
 
 # torch + pyannote live here, not in the repo env. Default PyPI torch ships the
-# CUDA runtime, so it uses the GPU on a GPU-backed function.
+# CUDA runtime, so it uses the GPU on a GPU-backed function. Versions are PINNED to
+# what the Phase 0 spike validated (pyannote.audio 4.0.5 / torch 2.12.1): the
+# embedding vectors this pipeline emits are the gallery's substrate, so an
+# unpinned upgrade that shifted them would silently invalidate stored voiceprints.
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .apt_install("ffmpeg")
-    .pip_install("torch", "torchaudio", "pyannote.audio>=3.1")
+    .pip_install("torch==2.12.1", "torchaudio==2.12.1", "pyannote.audio==4.0.5")
 )
+
+
+def _extract_cluster_embeddings(annotation, waveform, sample_rate, embedder, device) -> list[dict]:  # noqa: ANN001 - pyannote/torch types not importable locally
+    """Per-cluster L2-normalized voice embeddings over each cluster's own speech.
+
+    Concatenates a cluster's turns (capped for determinism + memory), embeds the
+    speech with the pinned wespeaker model, and L2-normalizes so cosine == dot
+    product. Clusters with too little speech (NaN-prone) are dropped. The vectors
+    are anonymous — they name no one; enrollment (officials-only) is downstream.
+    """
+    import numpy as np
+    import torch
+
+    rows: list[dict] = []
+    for label in sorted(annotation.labels()):
+        slices, secs = [], 0.0
+        for seg, _, lab in annotation.itertracks(yield_label=True):
+            if lab != label or secs >= EMBED_MAX_SECONDS:
+                continue
+            a, b = int(seg.start * sample_rate), int(seg.end * sample_rate)
+            if b > a:
+                slices.append(waveform[:, a:b])
+                secs += (b - a) / sample_rate
+        if not slices or secs < EMBED_MIN_SECONDS:
+            continue
+        speech = torch.cat(slices, dim=1).unsqueeze(0).to(device)  # (1, channel, samples)
+        vec = np.asarray(embedder(speech), dtype=np.float64).reshape(-1)
+        norm = float(np.linalg.norm(vec))
+        if norm == 0 or not np.isfinite(norm):
+            continue
+        vec = vec / norm  # L2-normalize (cosine similarity == dot product)
+        rows.append(
+            {
+                "cluster_label": label,
+                "vector": [float(x) for x in vec.tolist()],
+                "seconds": round(secs, 2),
+                "model": EMBED_MODEL,
+            }
+        )
+    return rows
 
 
 @app.function(
     image=image,
-    gpu="T4",
+    gpu="L4",
     secrets=[modal.Secret.from_name("actalux-hf")],
     timeout=60 * 60,
 )
-def diarize_remote(audio_bytes: bytes, hint_num_speakers: int | None = None) -> list[dict]:
-    """Diarize one audio file on the GPU; return ``[{speaker,start,end}, ...]``."""
+def diarize_remote(
+    audio_bytes: bytes,
+    hint_num_speakers: int | None = None,
+    return_embeddings: bool = False,
+) -> dict:
+    """Diarize one audio file on the GPU; optionally also emit per-cluster embeddings.
+
+    Returns ``{"segments": [{speaker,start,end}, ...], "embeddings": [...]}``. The
+    default transcribe path passes ``return_embeddings=False`` — diarization only,
+    no extra GPU work, behaviour unchanged. Enrollment and matching pass ``True``:
+    voiceprints are extracted ON DEMAND for a specific meeting, never persisted for
+    un-confirmed speakers (a private citizen's voice is never stored — see the plan).
+    """
+    import inspect
     import os
     import subprocess
     import tempfile
@@ -61,9 +126,12 @@ def diarize_remote(audio_bytes: bytes, hint_num_speakers: int | None = None) -> 
     import torchaudio
     from pyannote.audio import Pipeline
 
-    pipeline = Pipeline.from_pretrained(PYANNOTE_MODEL, token=os.environ["HF_TOKEN"])
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    token = os.environ["HF_TOKEN"]
+
+    pipeline = Pipeline.from_pretrained(PYANNOTE_MODEL, token=token)
     if torch.cuda.is_available():
-        pipeline.to(torch.device("cuda"))
+        pipeline.to(device)
 
     # Decode to 16 kHz mono PCM with ffmpeg, then hand pyannote an in-memory
     # waveform. MP3 frame padding makes pyannote's file cropper miscount samples
@@ -86,10 +154,27 @@ def diarize_remote(audio_bytes: bytes, hint_num_speakers: int | None = None) -> 
     # pyannote 3.x returns an Annotation directly; 4.x wraps it in a DiarizeOutput
     # whose Annotation is at ``.speaker_diarization``. Support both.
     annotation = result if hasattr(result, "itertracks") else result.speaker_diarization
-    return [
+    segments = [
         {"speaker": label, "start": float(turn.start), "end": float(turn.end)}
         for turn, _, label in annotation.itertracks(yield_label=True)
     ]
+
+    embeddings: list[dict] = []
+    if return_embeddings:
+        from pyannote.audio.pipelines.speaker_verification import PretrainedSpeakerEmbedding
+
+        # The HF-token kwarg was renamed across versions (use_auth_token -> token).
+        emb_kwargs: dict = {"device": device}
+        sig = inspect.signature(PretrainedSpeakerEmbedding.__init__)
+        if "use_auth_token" in sig.parameters:
+            emb_kwargs["use_auth_token"] = token
+        elif "token" in sig.parameters:
+            emb_kwargs["token"] = token
+        embedder = PretrainedSpeakerEmbedding(EMBED_MODEL, **emb_kwargs)
+        embeddings = _extract_cluster_embeddings(
+            annotation, waveform, sample_rate, embedder, device
+        )
+    return {"segments": segments, "embeddings": embeddings}
 
 
 class ModalRunner:
@@ -105,29 +190,40 @@ class ModalRunner:
         self._model = model
         self._fn = modal.Function.from_name(APP_NAME, "diarize_remote")
 
-    def run(self, audio_uri: str, *, hint_num_speakers: int | None = None) -> SpeakerTimeline:
+    def run(
+        self,
+        audio_uri: str,
+        *,
+        hint_num_speakers: int | None = None,
+        return_embeddings: bool = False,
+    ) -> SpeakerTimeline:
         from actalux.diarization.backend import SpeakerTimeline
 
         audio_bytes = Path(audio_uri).read_bytes()
-        segments = self._fn.remote(audio_bytes, hint_num_speakers)
-        return SpeakerTimeline.from_segments(segments, self._model)
+        payload = self._fn.remote(audio_bytes, hint_num_speakers, return_embeddings)
+        return SpeakerTimeline.from_remote(payload, self._model)
 
     def spawn(
-        self, audio_bytes: bytes, *, hint_num_speakers: int | None = None
+        self,
+        audio_bytes: bytes,
+        *,
+        hint_num_speakers: int | None = None,
+        return_embeddings: bool = False,
     ) -> modal.FunctionCall:
         """Kick off a diarization without blocking; returns a handle for ``collect``.
 
         Lets a backfill spawn every meeting's GPU work up front so it all runs in
         parallel across Modal containers, instead of one blocking ``run`` at a time.
-        Pair with ``collect`` to retrieve the result.
+        Pair with ``collect`` to retrieve the result. ``return_embeddings`` requests
+        per-cluster voiceprints (enrollment / matching), off by default.
         """
-        return self._fn.spawn(audio_bytes, hint_num_speakers)
+        return self._fn.spawn(audio_bytes, hint_num_speakers, return_embeddings)
 
     def collect(self, call: modal.FunctionCall) -> SpeakerTimeline:
         """Block for a spawned diarization's result and map it to ``SpeakerTimeline``."""
         from actalux.diarization.backend import SpeakerTimeline
 
-        return SpeakerTimeline.from_segments(call.get(), self._model)
+        return SpeakerTimeline.from_remote(call.get(), self._model)
 
     @staticmethod
     def cancel(call: modal.FunctionCall) -> None:
@@ -139,13 +235,16 @@ class ModalRunner:
 
 
 @app.local_entrypoint()
-def main(audio_path: str, hint_num_speakers: int = 0) -> None:
+def main(audio_path: str, hint_num_speakers: int = 0, return_embeddings: bool = False) -> None:
     """`modal run modal_runner.py --audio-path FILE` — diarize one local file."""
     from actalux.diarization.backend import SpeakerTimeline
 
     audio_bytes = Path(audio_path).read_bytes()
-    segments = diarize_remote.remote(audio_bytes, hint_num_speakers or None)
-    timeline = SpeakerTimeline.from_segments(segments, PYANNOTE_MODEL)
-    print(f"\nspeakers={timeline.num_speakers}  turns={len(timeline.turns)}")
+    payload = diarize_remote.remote(audio_bytes, hint_num_speakers or None, return_embeddings)
+    timeline = SpeakerTimeline.from_remote(payload, PYANNOTE_MODEL)
+    print(
+        f"\nspeakers={timeline.num_speakers}  turns={len(timeline.turns)}  "
+        f"embeddings={len(timeline.embeddings)}"
+    )
     for turn in timeline.turns[:10]:
         print(f"  {turn.cluster_label}  {turn.start_s:8.1f} - {turn.end_s:8.1f}s")
