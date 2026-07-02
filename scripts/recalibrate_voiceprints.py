@@ -137,6 +137,11 @@ def main() -> None:
     parser.add_argument("--limit", type=int, help="cap the number of meetings processed")
     parser.add_argument("--proxy", help="SOCKS proxy for yt-dlp audio download (WARP in CI)")
     parser.add_argument("--keep-audio", action="store_true", help="don't delete downloaded audio")
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="re-stage even if the place already has a cleared calibration (downgrades it)",
+    )
     args = parser.parse_args()
 
     client = _service_client()
@@ -191,6 +196,26 @@ def main() -> None:
     if not args.apply:
         _dry_run(client, by_doc, docs_to_process, args)
         return
+
+    # Don't silently downgrade a cleared production gallery: the candidate upsert would restamp
+    # cleared rows with this run's candidate calibration_id. Re-staging must be deliberate.
+    if not args.force:
+        cleared = fetch_all_rows(
+            lambda: (
+                client.table("voiceprint_calibration")
+                .select("id,entity_id")
+                .eq("place_id", place_id)
+                .eq("status", "cleared")
+            )
+        )
+        relevant = [
+            c for c in cleared if entity_id is None or c.get("entity_id") in (entity_id, None)
+        ]
+        if relevant:
+            raise ActaluxError(
+                f"{args.state}/{args.place} already has a cleared calibration; re-running would "
+                f"downgrade the cleared gallery to candidate. Pass --force to re-stage."
+            )
 
     _apply(client, place_id, entity_id, docs_by_id, by_doc, docs_to_process, superseded, args)
 
@@ -338,8 +363,10 @@ def _finish(
     # the full-data operating point that would be deployed. Otherwise not_cleared.
     cleared = refit is not None and nested.macro_precision >= args.precision_bar
     status = "candidate" if cleared else "not_cleared"
-    enabled = refit.enabled if refit else set()
-    purity_floor = refit.purity_floor if refit else 0.0
+    # A not_cleared verdict enrolls NOTHING (enabled empty -> no rows upserted -> stale rows for
+    # processed meetings are deleted, leaving no untrustworthy gallery behind).
+    enabled = refit.enabled if cleared else set()
+    purity_floor = refit.purity_floor if cleared else 0.0
 
     report = _confusion_report(nested)
     report["provenance"] = prov

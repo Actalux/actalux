@@ -295,6 +295,11 @@ def select_operating_point(
         if len(filtered) < min_core:
             continue
         sim = build_sim(filtered)
+        # A positive below the purity floor is rejected by Gate B (not matchable), so it counts
+        # as a recall MISS — not silently dropped — or a higher floor would look costless.
+        below_floor_misses = [
+            (s.person_id, None) for s in samples if s.person_id is not None and s.purity < pf
+        ]
         for core_floor in core_floors:
             enabled = enabled_officials(
                 filtered, core_floor=core_floor, min_core=min_core, collapse_bound=collapse_bound
@@ -304,11 +309,10 @@ def select_operating_point(
             for agg in aggregations:
                 for t in thresholds:
                     for mgn in margins:
-                        mtr = score(
-                            leave_one_meeting_out(
-                                filtered, t, mgn, aggregation=agg, allowed=enabled, sim=sim
-                            )
+                        preds = leave_one_meeting_out(
+                            filtered, t, mgn, aggregation=agg, allowed=enabled, sim=sim
                         )
+                        mtr = score(preds + below_floor_misses)
                         if mtr.macro_precision >= precision_bar:
                             key = (mtr.recall, t, mgn)
                             if best_key is None or key > best_key:
@@ -371,7 +375,11 @@ def nested_leave_one_meeting_out(
         gallery = [s for s in train if s.purity >= op.purity_floor]
         for q in held:
             if q.purity < op.purity_floor:
-                continue  # Gate B would reject this cluster -> not matchable -> not scored
+                # Gate B would reject this cluster. A positive is then a recall miss; a negative
+                # is simply never presented to the matcher (not a false-positive opportunity).
+                if q.person_id is not None:
+                    preds.append((q.person_id, None))
+                continue
             preds.append(
                 (
                     q.person_id,
