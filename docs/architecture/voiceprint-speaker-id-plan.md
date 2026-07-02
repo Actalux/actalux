@@ -58,6 +58,19 @@ an independent same-meeting name anchor.**
   - Next gated steps: (1) `modal deploy` the updated diarization app (adds
     `embed_clusters_remote`; also flips normal diarization to pinned 4.0.5 / L4); (2)
     `enroll_voiceprints.py --apply` to populate the gallery.
+- **DEPLOY + APPLY — done 2026-07-02.** Merged branch → master (FF; behavior-preserving,
+  no web change); a `torchaudio==2.12.1` mis-pin failed the first build (no such release) →
+  fixed to unpinned torchaudio (decode-only) + torch 2.12.1 / pyannote 4.0.5, redeployed OK
+  (resolved torch 2.12.1 + torchaudio 2.11.0). Smoke `--apply --limit 2` verified real rows
+  (dim 256, wespeaker, rollcall, officials-only trigger accepted). Full `--apply` running
+  in the background (~2.5 h; ~2 min/meeting: yt-dlp download + Modal embed).
+- **Phase 3 calibration — CODE DONE + unit-tested, UNPUSHED; runs after the gallery fills.**
+  `scripts/voiceprint_calibrate.py` (read-only, writes nothing): leave-one-MEETING-out by
+  `video_id` (version siblings never leak), macro precision by official + recall +
+  confusion pairs, sweeps `(threshold, margin)`, recommends the highest-recall point that
+  meets `--precision-bar` (default 0.98). Negatives (non-official rejection) noted as a
+  transient follow-up probe. 10 unit tests on synthetic vectors. **Open for operator at
+  run time: the precision bar (§9 #2) + aggregation (mean vs best-K).**
 
 ## 1. Why
 
