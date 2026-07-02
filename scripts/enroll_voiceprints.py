@@ -1,29 +1,31 @@
 #!/usr/bin/env python3
-"""Enroll confirmed / name-anchored official voiceprints into the gallery.
+"""Enroll official voiceprints into the gallery for a CLEARED jurisdiction.
 
-For each enrollable cluster — a ``speaker_identities`` row that is human-``confirmed``
-or a name-anchored ``inferred_high`` (roll call / self-intro / vote anchor) — re-extract
-that cluster's voice embedding from the meeting audio and store it in
-``subject_voiceprints``. The embedding comes from the cluster's STORED
-``diarization_turns`` spans, not a fresh diarization: re-diarizing would renumber the
-``SPEAKER_NN`` labels, so the stored spans are the only stable reference to "this voice".
+Steady-state enroller: for each name-anchored / confirmed official cluster in a place, embed
+its turns (on Modal), pool them into one voiceprint (Gate B, contamination-trimmed), and
+store it in ``subject_voiceprints``. Pooling params come from that place's CLEARED
+``voiceprint_calibration`` row — enrollment REFUSES if the place has no cleared calibration,
+so voiceprints are never enrolled for production before the matcher has been calibrated and a
+human has reviewed it (the candidate→cleared gate). Design:
+docs/architecture/voiceprint-recalibration-plan.md.
 
-A private citizen's voiceprint is never extracted or stored: only clusters already
-resolved to a publishable official are enrolled, and officials-only is DB-enforced
-(migrate_040 trigger). Design: docs/architecture/voiceprint-speaker-id-plan.md §5.
+A private citizen's voiceprint is never extracted or stored: only clusters already resolved
+to a publishable official are enrolled, and officials-only is DB-enforced (migrate_040).
 
-Dry-run by default (reports what would be enrolled, no GPU, no writes); ``--apply``
-downloads audio, extracts embeddings on Modal, and upserts. Idempotent — the gallery
-key is ``(person_id, source_document_id, cluster_label)``.
+The initial candidate gallery for a not-yet-cleared place is produced by
+``scripts/recalibrate_voiceprints.py`` (which also emits the calibration row); this script is
+for re-enrolling a place that is already cleared (e.g. after new meetings arrive).
+
+Dry-run by default; ``--apply`` downloads audio, embeds on Modal, and upserts.
 
 Usage:
-    # dry-run (no Modal, no writes)
+    # dry-run
     doppler run --project mac --config dev -- \\
-      uv run python scripts/enroll_voiceprints.py
+      uv run python scripts/enroll_voiceprints.py --state mo --place clayton
 
     # apply (needs the diarization group for the Modal client, and the app deployed)
-    doppler run --project actalux --config dev -- \\
-      uv run --group diarization python scripts/enroll_voiceprints.py --apply
+    doppler run --project actalux --config dev -- uv run --group diarization \\
+      python scripts/enroll_voiceprints.py --state mo --place clayton --apply
 """
 
 from __future__ import annotations
@@ -31,123 +33,44 @@ from __future__ import annotations
 import argparse
 import logging
 from collections import defaultdict
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from supabase import Client
 
 from actalux.config import load_config
-from actalux.db import fetch_all_rows, get_client
+from actalux.db import fetch_all_rows, get_client, get_place_by_path
+from actalux.diarization.enrollment import (
+    NAME_ANCHOR_BASES,
+    EnrollableCluster,
+    cluster_spans,
+    pool_cluster,
+    select_enrollable,
+    span_seconds,
+    superseded_doc_ids,
+    voiceprint_row,
+)
 from actalux.errors import ActaluxError
+
+# Re-exported so tests that import from this module keep resolving the shared helpers.
+__all__ = [
+    "NAME_ANCHOR_BASES",
+    "EnrollableCluster",
+    "cluster_spans",
+    "pool_cluster",
+    "select_enrollable",
+    "span_seconds",
+    "superseded_doc_ids",
+    "voiceprint_row",
+]
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 AUDIO_DIR = Path("data/audio")  # transient; audio is deleted after embedding
-# Name anchors are deterministic (a spoken name -> this voice), so enrolling from an
-# auto inferred_high with one of these bases is safe. basis='voiceprint' is NEVER
-# enrollable — that would let a biometric guess train the gallery (poison loop).
-NAME_ANCHOR_BASES = ("rollcall", "self_intro", "vote_anchor")
-# Quality floor for a stored sample. The embedder itself drops clusters under ~3s
-# (NaN-prone); this is the higher bar for what we keep. Tunable (plan §9 open decision).
 DEFAULT_MIN_ENROLL_SECONDS = 10.0
 # A WARP session is one egress IP; retry across rotated IPs when a proxy is set.
 WARP_DOWNLOAD_RETRIES = 6
-
-
-@dataclass(frozen=True)
-class EnrollableCluster:
-    """A confirmed/name-anchored official cluster eligible to enter the gallery."""
-
-    person_id: int
-    source_subject_id: int
-    source_identity_id: int
-    document_id: int
-    cluster_label: str
-    source_basis: str
-    canonical_name: str
-
-
-def select_enrollable(
-    identities: list[dict[str, Any]],
-    subjects_by_id: dict[int, dict[str, Any]],
-    *,
-    confirmed_only: bool,
-) -> list[EnrollableCluster]:
-    """Filter identity rows to enrollable official clusters.
-
-    Eligible when the cluster maps to a publishable subject with a ``person_id`` and
-    is either human-``confirmed`` or (unless ``confirmed_only``) a name-anchored
-    ``inferred_high`` (``NAME_ANCHOR_BASES``). ``basis='voiceprint'`` is never eligible.
-    """
-    out: list[EnrollableCluster] = []
-    for row in identities:
-        subject_id = row.get("subject_id")
-        if subject_id is None:
-            continue
-        subject = subjects_by_id.get(subject_id)
-        if not subject or not subject.get("publishable") or subject.get("person_id") is None:
-            continue
-        confidence, basis = row.get("confidence"), row.get("basis")
-        if basis == "voiceprint":
-            continue  # never train the gallery on a biometric guess
-        eligible = confidence == "confirmed" or (
-            not confirmed_only and confidence == "inferred_high" and basis in NAME_ANCHOR_BASES
-        )
-        if not eligible:
-            continue
-        out.append(
-            EnrollableCluster(
-                person_id=subject["person_id"],
-                source_subject_id=subject_id,
-                source_identity_id=row["id"],
-                document_id=row["document_id"],
-                # a human-confirmed row may carry no basis; 'manual' is the honest
-                # label and satisfies the source_basis NOT NULL + CHECK (migrate_040).
-                cluster_label=row["cluster_label"],
-                source_basis=basis or "manual",
-                canonical_name=subject.get("canonical_name", "?"),
-            )
-        )
-    return out
-
-
-def cluster_spans(turns: list[dict[str, Any]], cluster_label: str) -> list[list[float]]:
-    """``[[start_s, end_s], ...]`` for one cluster, in time order, from its turn rows."""
-    spans = [
-        [float(t["start_seconds"]), float(t["end_seconds"])]
-        for t in turns
-        if t["cluster_label"] == cluster_label
-    ]
-    return sorted(spans, key=lambda s: s[0])
-
-
-def span_seconds(spans: list[list[float]]) -> float:
-    """Total speech seconds across a cluster's spans (a quality estimate for dry-run)."""
-    return sum(max(0.0, b - a) for a, b in spans)
-
-
-def voiceprint_row(
-    ec: EnrollableCluster, vector: tuple[float, ...], seconds: float, model: str
-) -> dict[str, Any]:
-    """A ``subject_voiceprints`` insert row for one enrolled cluster."""
-    return {
-        "person_id": ec.person_id,
-        "source_subject_id": ec.source_subject_id,
-        "source_document_id": ec.document_id,
-        "source_identity_id": ec.source_identity_id,
-        "cluster_label": ec.cluster_label,
-        "embedding": list(vector),
-        "source_basis": ec.source_basis,
-        "model": model,
-        "seconds": round(seconds, 2),
-    }
-
-
-def superseded_doc_ids(docs: list[dict[str, Any]]) -> set[int]:
-    """Ids of documents that have been superseded (``replaces_id`` set)."""
-    return {d["id"] for d in docs if d.get("replaces_id") is not None}
 
 
 def _service_client() -> Client:
@@ -163,8 +86,59 @@ def _service_client() -> Client:
     return get_client(cfg.supabase_url, key)
 
 
+def _cleared_calibration(
+    client: Client, place_id: int, entity_id: int | None
+) -> dict[str, Any] | None:
+    """Latest CLEARED calibration for the place (entity-specific preferred, else place-wide)."""
+    rows = fetch_all_rows(
+        lambda: (
+            client.table("voiceprint_calibration")
+            .select("*")
+            .eq("place_id", place_id)
+            .eq("status", "cleared")
+        )
+    )
+    if not rows:
+        return None
+    if entity_id is not None:
+        specific = [r for r in rows if r.get("entity_id") == entity_id]
+        if specific:
+            rows = specific
+    else:
+        place_wide = [r for r in rows if r.get("entity_id") is None]
+        if place_wide:
+            rows = place_wide
+    return max(rows, key=lambda r: r.get("calibrated_at") or "")
+
+
+def _place_docs(
+    client: Client, place_id: int, body: str | None
+) -> tuple[dict[int, dict], int | None]:
+    """Documents for a place's entities -> ``({doc_id: doc}, entity_id_for_body|None)``."""
+    entities = fetch_all_rows(
+        lambda: client.table("entities").select("id,body_slug").eq("place_id", place_id)
+    )
+    if body:
+        entities = [e for e in entities if e.get("body_slug") == body]
+    if not entities:
+        raise ActaluxError(f"no entities for place {place_id} (body={body!r})")
+    entity_ids = [e["id"] for e in entities]
+    entity_id_for_body = entities[0]["id"] if body else None
+    docs = fetch_all_rows(
+        lambda: (
+            client.table("documents")
+            .select("id,video_id,replaces_id,meeting_date,entity_id")
+            .in_("entity_id", entity_ids)
+        )
+    )
+    return {d["id"]: d for d in docs}, entity_id_for_body
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Enroll official voiceprints into the gallery.")
+    parser = argparse.ArgumentParser(description="Enroll official voiceprints for a cleared place.")
+    parser.add_argument("--state", required=True, help="place state slug, e.g. mo")
+    parser.add_argument("--place", required=True, help="place slug, e.g. clayton")
+    parser.add_argument("--body", help="restrict to one body_slug (e.g. council); default all")
     parser.add_argument("--apply", action="store_true", help="write to the DB (default: dry-run)")
     parser.add_argument(
         "--confirmed-only",
@@ -175,7 +149,7 @@ def main() -> None:
         "--min-seconds",
         type=float,
         default=DEFAULT_MIN_ENROLL_SECONDS,
-        help="minimum speech seconds to enroll a sample (default: %(default)s)",
+        help="minimum pooled speech seconds to enroll a sample (default: %(default)s)",
     )
     parser.add_argument("--limit", type=int, help="cap the number of meetings processed")
     parser.add_argument("--proxy", help="SOCKS proxy for yt-dlp audio download (WARP in CI)")
@@ -189,10 +163,33 @@ def main() -> None:
     args = parser.parse_args()
 
     client = _service_client()
+    place = get_place_by_path(client, args.state, args.place)
+    if not place:
+        raise ActaluxError(f"no place {args.state}/{args.place}")
+    place_id = place["id"]
 
+    docs_by_id, entity_id_for_body = _place_docs(client, place_id, args.body)
+    cal = _cleared_calibration(client, place_id, entity_id_for_body)
+    if not cal:
+        raise ActaluxError(
+            f"no CLEARED voiceprint_calibration for {args.state}/{args.place}"
+            f"{'/' + args.body if args.body else ''}; run recalibrate_voiceprints.py and have a "
+            f"human promote the candidate to 'cleared' before enrolling."
+        )
+    pool_params = {
+        "trim_fraction": cal["trim_fraction"],
+        "min_coherent_turns": cal["min_coherent_turns"],
+        "purity_floor": cal["purity_floor"],
+    }
+    calibration_id = cal["id"]
+    logger.info("using cleared calibration id=%s (%s)", calibration_id, pool_params)
+
+    doc_ids = sorted(docs_by_id)
     identities = fetch_all_rows(
-        lambda: client.table("speaker_identities").select(
-            "id,document_id,cluster_label,subject_id,confidence,basis"
+        lambda: (
+            client.table("speaker_identities")
+            .select("id,document_id,cluster_label,subject_id,confidence,basis")
+            .in_("document_id", doc_ids)
         )
     )
     subjects_by_id = {
@@ -206,20 +203,7 @@ def main() -> None:
         logger.info("no enrollable clusters found; nothing to do")
         return
 
-    doc_ids = sorted({ec.document_id for ec in enrollable})
-    docs = fetch_all_rows(
-        lambda: (
-            client.table("documents")
-            .select("id,video_id,replaces_id,meeting_date")
-            .in_("id", doc_ids)
-        )
-    )
-    docs_by_id = {d["id"]: d for d in docs}
-    superseded = superseded_doc_ids(docs)
-
-    # Resume support: skip meetings already in the gallery so a killed run picks up
-    # where it left off without re-downloading. A meeting's clusters are enrolled in
-    # one upsert, so "present in the gallery" means "fully done" (never half-done).
+    superseded = superseded_doc_ids(list(docs_by_id.values()))
     already_enrolled: set[int] = set()
     if not args.reembed:
         already_enrolled = {
@@ -229,21 +213,18 @@ def main() -> None:
             )
         }
 
-    # Drop enrollables we can't or shouldn't process, with a reason.
     ready: list[EnrollableCluster] = []
     skipped_superseded = skipped_no_video = skipped_done = 0
     for ec in enrollable:
         doc = docs_by_id.get(ec.document_id, {})
         if ec.document_id in superseded:
             skipped_superseded += 1
-            continue
-        if ec.document_id in already_enrolled:
+        elif ec.document_id in already_enrolled:
             skipped_done += 1
-            continue
-        if not doc.get("video_id"):
+        elif not doc.get("video_id"):
             skipped_no_video += 1
-            continue
-        ready.append(ec)
+        else:
+            ready.append(ec)
 
     by_doc: dict[int, list[EnrollableCluster]] = defaultdict(list)
     for ec in ready:
@@ -252,12 +233,11 @@ def main() -> None:
     if args.limit:
         docs_to_process = docs_to_process[: args.limit]
 
-    persons = {ec.person_id for ec in ready}
     logger.info(
         "enrollable: %d clusters / %d persons / %d meetings "
         "(skipped %d superseded, %d without video_id, %d already enrolled)",
         len(ready),
-        len(persons),
+        len({ec.person_id for ec in ready}),
         len(by_doc),
         skipped_superseded,
         skipped_no_video,
@@ -266,16 +246,11 @@ def main() -> None:
 
     if not args.apply:
         _dry_run_report(client, by_doc, docs_to_process, args.min_seconds)
-        pruned = _count_prunable(client, superseded)
-        logger.info(
-            "DRY RUN — would enroll from %d meeting(s); would prune %d superseded sample(s)",
-            len(docs_to_process),
-            pruned,
-        )
+        logger.info("DRY RUN — would enroll from %d meeting(s)", len(docs_to_process))
         logger.info("re-run with --apply (needs `--group diarization` + a deployed Modal app)")
         return
 
-    _apply(client, by_doc, docs_to_process, docs_by_id, args)
+    _apply(client, by_doc, docs_to_process, docs_by_id, pool_params, calibration_id, args)
     pruned = _prune_superseded(client, superseded)
     logger.info("done: pruned %d superseded sample(s)", pruned)
 
@@ -294,11 +269,10 @@ def _dry_run_report(
     for doc_id in docs_to_process:
         turns = get_diarization_turns(client, doc_id)
         for ec in by_doc[doc_id]:
-            secs = span_seconds(cluster_spans(turns, ec.cluster_label))
-            if secs < min_seconds:
+            if span_seconds(cluster_spans(turns, ec.cluster_label)) < min_seconds:
                 short += 1
-                continue
-            per_person[ec.canonical_name] += 1
+            else:
+                per_person[ec.canonical_name] += 1
     for name, n in sorted(per_person.items(), key=lambda kv: -kv[1]):
         logger.info("  %-28s %d sample(s)", name, n)
     if short:
@@ -312,10 +286,12 @@ def _apply(
     by_doc: dict[int, list[EnrollableCluster]],
     docs_to_process: list[int],
     docs_by_id: dict[int, dict[str, Any]],
+    pool_params: dict[str, Any],
+    calibration_id: int,
     args: argparse.Namespace,
 ) -> None:
-    """Download audio, extract embeddings on Modal, upsert gallery rows — one meeting at a time."""
-    from actalux.diarization.modal_runner import ModalRunner
+    """Download audio, embed turns on Modal, pool (Gate B), upsert gallery rows per meeting."""
+    from actalux.diarization.modal_runner import EMBED_MODEL, ModalRunner
     from actalux.ingest.youtube import download_audio
 
     runner = ModalRunner()
@@ -335,20 +311,20 @@ def _apply(
             logger.exception("audio download failed for doc %d (%s); skipping", doc_id, video_id)
             continue
         try:
-            embeddings = runner.embed_clusters(str(audio), payload)
+            turns_by_label = runner.embed_cluster_turns(str(audio), payload)
         finally:
             if not args.keep_audio:
                 audio.unlink(missing_ok=True)
         rows = []
         for ec in clusters:
-            emb = embeddings.get(ec.cluster_label)
-            if emb is None or emb.seconds < args.min_seconds:
+            pooled = pool_cluster(turns_by_label.get(ec.cluster_label, []), **pool_params)
+            if pooled is None or pooled.seconds < args.min_seconds:
                 continue
-            rows.append(voiceprint_row(ec, emb.vector, emb.seconds, emb.model))
+            rows.append(voiceprint_row(ec, pooled, EMBED_MODEL, calibration_id=calibration_id))
+        # replace-per-meeting so a now-rejected cluster's stale row is removed.
+        client.table("subject_voiceprints").delete().eq("source_document_id", doc_id).execute()
         if rows:
-            client.table("subject_voiceprints").upsert(
-                rows, on_conflict="person_id,source_document_id,cluster_label"
-            ).execute()
+            client.table("subject_voiceprints").insert(rows).execute()
             enrolled += len(rows)
             logger.info("doc %d (%s): enrolled %d sample(s)", doc_id, video_id, len(rows))
     logger.info(
@@ -360,20 +336,6 @@ def _turns(client: Client, doc_id: int) -> list[dict[str, Any]]:
     from actalux.db import get_diarization_turns
 
     return get_diarization_turns(client, doc_id)
-
-
-def _count_prunable(client: Client, superseded: set[int]) -> int:
-    """How many gallery samples sit on superseded documents (dry-run)."""
-    if not superseded:
-        return 0
-    rows = fetch_all_rows(
-        lambda: (
-            client.table("subject_voiceprints")
-            .select("id,source_document_id")
-            .in_("source_document_id", sorted(superseded))
-        )
-    )
-    return len(rows)
 
 
 def _prune_superseded(client: Client, superseded: set[int]) -> int:

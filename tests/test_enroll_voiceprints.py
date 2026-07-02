@@ -76,6 +76,8 @@ def test_span_seconds_sums_durations():
 
 
 def test_voiceprint_row_shape():
+    from actalux.diarization.pooling import Pooled
+
     ec = ev.EnrollableCluster(
         person_id=100,
         source_subject_id=10,
@@ -85,7 +87,8 @@ def test_voiceprint_row_shape():
         source_basis="rollcall",
         canonical_name="Kami Waldman",
     )
-    row = ev.voiceprint_row(ec, (0.1, 0.2, 0.3), 42.0, "wespeaker")
+    pooled = Pooled(vector=(0.1, 0.2, 0.3), purity=0.9, n_turns=5, coherent_turns=4, seconds=42.0)
+    row = ev.voiceprint_row(ec, pooled, "wespeaker", calibration_id=7)
     assert row == {
         "person_id": 100,
         "source_subject_id": 10,
@@ -96,6 +99,10 @@ def test_voiceprint_row_shape():
         "source_basis": "rollcall",
         "model": "wespeaker",
         "seconds": 42.0,
+        "purity": 0.9,
+        "n_turns": 5,
+        "coherent_turns": 4,
+        "calibration_id": 7,
     }
 
 
