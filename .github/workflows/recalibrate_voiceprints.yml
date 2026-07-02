@@ -58,7 +58,9 @@ concurrency:
 jobs:
   recalibrate-voiceprints:
     runs-on: ubuntu-latest
-    timeout-minutes: 240
+    # ~2.8 min/meeting (WARP audio download dominates); a full place (~74 meetings) is ~3.5h.
+    # All DB writes happen in one pass at the end, so a timeout writes nothing (safe but wasteful).
+    timeout-minutes: 330
     env:
       ACTALUX_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       ACTALUX_SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
