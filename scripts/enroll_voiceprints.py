@@ -180,6 +180,12 @@ def main() -> None:
     parser.add_argument("--limit", type=int, help="cap the number of meetings processed")
     parser.add_argument("--proxy", help="SOCKS proxy for yt-dlp audio download (WARP in CI)")
     parser.add_argument("--keep-audio", action="store_true", help="don't delete downloaded audio")
+    parser.add_argument(
+        "--reembed",
+        action="store_true",
+        help="re-embed meetings already in the gallery (default: skip them, so a killed "
+        "run resumes cheaply without re-downloading)",
+    )
     args = parser.parse_args()
 
     client = _service_client()
@@ -211,13 +217,28 @@ def main() -> None:
     docs_by_id = {d["id"]: d for d in docs}
     superseded = superseded_doc_ids(docs)
 
+    # Resume support: skip meetings already in the gallery so a killed run picks up
+    # where it left off without re-downloading. A meeting's clusters are enrolled in
+    # one upsert, so "present in the gallery" means "fully done" (never half-done).
+    already_enrolled: set[int] = set()
+    if not args.reembed:
+        already_enrolled = {
+            r["source_document_id"]
+            for r in fetch_all_rows(
+                lambda: client.table("subject_voiceprints").select("source_document_id")
+            )
+        }
+
     # Drop enrollables we can't or shouldn't process, with a reason.
     ready: list[EnrollableCluster] = []
-    skipped_superseded = skipped_no_video = 0
+    skipped_superseded = skipped_no_video = skipped_done = 0
     for ec in enrollable:
         doc = docs_by_id.get(ec.document_id, {})
         if ec.document_id in superseded:
             skipped_superseded += 1
+            continue
+        if ec.document_id in already_enrolled:
+            skipped_done += 1
             continue
         if not doc.get("video_id"):
             skipped_no_video += 1
@@ -234,12 +255,13 @@ def main() -> None:
     persons = {ec.person_id for ec in ready}
     logger.info(
         "enrollable: %d clusters / %d persons / %d meetings "
-        "(skipped %d superseded, %d without video_id)",
+        "(skipped %d superseded, %d without video_id, %d already enrolled)",
         len(ready),
         len(persons),
         len(by_doc),
         skipped_superseded,
         skipped_no_video,
+        skipped_done,
     )
 
     if not args.apply:
