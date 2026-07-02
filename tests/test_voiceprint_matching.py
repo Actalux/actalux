@@ -6,6 +6,7 @@ from actalux.diarization.matching import (
     Metrics,
     Sample,
     best_operating_point,
+    build_sim,
     enabled_officials,
     nested_leave_one_meeting_out,
     person_scores,
@@ -26,6 +27,15 @@ def test_person_scores_allowed_restricts_gallery():
     gallery = [_s(1, "m1", A), _s(2, "m2", B)]
     scores = person_scores(q, gallery, aggregation="mean", allowed={1})
     assert set(scores) == {1}
+
+
+def test_sim_fast_path_matches_cosine():
+    samples = [_s(1, "m1", A), _s(1, "m2", B), _s(2, "m3", (0.6, 0.8, 0.0))]
+    sim = build_sim(samples)  # assigns idx + precomputes the cosine matrix
+    slow = person_scores(samples[0], samples[1:], aggregation="mean")
+    fast = person_scores(samples[0], samples[1:], aggregation="mean", sim=sim)
+    assert slow.keys() == fast.keys()
+    assert all(abs(slow[k] - fast[k]) < 1e-9 for k in slow)
 
 
 def test_enabled_officials_requires_core_and_min_samples():

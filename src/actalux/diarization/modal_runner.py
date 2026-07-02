@@ -121,6 +121,9 @@ def _embed_spans(waveform, sample_rate, spans, embedder, device):  # noqa: ANN00
         if secs >= EMBED_MAX_SECONDS:
             break
         a, b = int(start_s * sample_rate), int(end_s * sample_rate)
+        # truncate a single long span to the remaining budget (a hard cap, not just a
+        # per-span check) so one long diarization turn cannot blow past EMBED_MAX_SECONDS.
+        b = min(b, a + int((EMBED_MAX_SECONDS - secs) * sample_rate))
         if b > a:
             slices.append(waveform[:, a:b])
             secs += (b - a) / sample_rate

@@ -98,17 +98,16 @@ def _cleared_calibration(
             .eq("status", "cleared")
         )
     )
-    if not rows:
-        return None
     if entity_id is not None:
+        # a body may use its own calibration or the place-wide one — but NEVER another body's.
         specific = [r for r in rows if r.get("entity_id") == entity_id]
-        if specific:
-            rows = specific
+        candidates = specific or [r for r in rows if r.get("entity_id") is None]
     else:
-        place_wide = [r for r in rows if r.get("entity_id") is None]
-        if place_wide:
-            rows = place_wide
-    return max(rows, key=lambda r: r.get("calibrated_at") or "")
+        # place-wide enrollment uses only a place-wide row, never a single body's.
+        candidates = [r for r in rows if r.get("entity_id") is None]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda r: r.get("calibrated_at") or "")
 
 
 def _place_docs(
@@ -195,12 +194,20 @@ def main() -> None:
     subjects_by_id = {
         s["id"]: s
         for s in fetch_all_rows(
-            lambda: client.table("subjects").select("id,person_id,publishable,canonical_name")
+            lambda: (
+                client.table("subjects")
+                .select("id,person_id,publishable,canonical_name")
+                .eq("place_id", place_id)
+            )  # place-scoped: a stale cross-place subject_id can't enroll
         )
     }
     enrollable = select_enrollable(identities, subjects_by_id, confirmed_only=args.confirmed_only)
+    # Gate A carries forward: only enroll officials the cleared calibration enabled (an
+    # incoherent clerk / mislabeled anchor stays out of a cleared gallery).
+    enabled_ids = set((cal.get("report") or {}).get("enabled_person_ids") or [])
+    enrollable = [ec for ec in enrollable if ec.person_id in enabled_ids]
     if not enrollable:
-        logger.info("no enrollable clusters found; nothing to do")
+        logger.info("no enrollable clusters for enabled officials; nothing to do")
         return
 
     superseded = superseded_doc_ids(list(docs_by_id.values()))

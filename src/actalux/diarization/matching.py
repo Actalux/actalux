@@ -1,8 +1,9 @@
 """Voiceprint matcher math — scoring, gating, and leakage-safe calibration.
 
 Pure library (no DB, no GPU): given labeled voiceprint ``Sample``s it scores a query
-against a gallery, applies Gate A enablement (labelqa), and estimates the operating point
-under leave-one-meeting-out (and nested LOMO, which removes operating-point overfit).
+against a gallery, applies Gate A enablement (labelqa) + Gate B purity floor, and estimates
+the operating point under leave-one-meeting-out (and nested LOMO, which removes
+operating-point overfit).
 
 Shared by the calibration CLI (``scripts/voiceprint_calibrate.py``), the recalibration
 harness (``scripts/recalibrate_voiceprints.py``), and — later — the live matcher.
@@ -15,6 +16,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any
 
+import numpy as np
+
 from actalux.diarization.labelqa import coherent_core, collapse_suspects
 
 # Operating-point search grid (cosine on L2-normalized vectors, so scores in [-1, 1]).
@@ -23,25 +26,30 @@ from actalux.diarization.labelqa import coherent_core, collapse_suspects
 DEFAULT_THRESHOLDS = (0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90)
 DEFAULT_MARGINS = (0.0, 0.05, 0.10, 0.15, 0.20)
 DEFAULT_AGGREGATIONS = ("mean", "max")
-# Gate A (label quality) selection grid for enabling an official. core_floor is swept;
-# min_core and collapse_bound are fixed structural safeguards (plan §7).
+# Gate A (label quality) core_floor + Gate B purity_floor are swept and refit; min_core and
+# collapse_bound are fixed structural safeguards (plan §7).
 DEFAULT_CORE_FLOORS = (0.30, 0.40, 0.50)
+DEFAULT_PURITY_FLOORS = (0.0, 0.30, 0.50)
 GATE_A_MIN_CORE = 2
 GATE_A_COLLAPSE_BOUND = 0.85
 
 
-@dataclass(frozen=True)
+@dataclass
 class Sample:
     """One gallery (or negative) voiceprint with its true label + leave-out unit.
 
     ``person_id`` is the true official (``None`` marks a negative — a non-official the
     matcher must reject). ``meeting_key`` is the ``video_id``: the leave-one-out unit, so
-    version-chain siblings (same recording) never leak across the split.
+    version-chain siblings (same recording) never leak across the split. ``purity`` is the
+    Gate-B pooling purity (used to sweep a purity floor); ``idx`` is assigned by
+    ``build_sim`` for the precomputed-similarity fast path.
     """
 
     person_id: int | None
     meeting_key: str
     embedding: tuple[float, ...]
+    purity: float = 1.0
+    idx: int = -1
 
 
 def cosine(a: tuple[float, ...], b: tuple[float, ...]) -> float:
@@ -56,13 +64,38 @@ def as_vector(embedding: Any) -> tuple[float, ...]:
     return tuple(float(x) for x in embedding)
 
 
+def build_sim(samples: list[Sample]) -> list[list[float]]:
+    """Assign each sample an ``idx`` and return the n×n cosine matrix (fast-path substrate).
+
+    The sweep evaluates thousands of (purity, core, threshold, margin, aggregation) points;
+    recomputing 256-d dot products each time is the bottleneck. Precomputing the matrix once
+    (numpy) and indexing it turns each score into an O(1) lookup. Rows are L2-normalized
+    defensively so the matrix is cosine even if an input drifted.
+    """
+    if not samples:
+        return []
+    for i, s in enumerate(samples):
+        s.idx = i
+    mat = np.asarray([s.embedding for s in samples], dtype=np.float64)
+    norms = np.linalg.norm(mat, axis=1, keepdims=True)
+    norms[norms == 0] = 1.0
+    mat = mat / norms
+    return (mat @ mat.T).tolist()
+
+
 def person_scores(
-    query: Sample, gallery: list[Sample], *, aggregation: str, allowed: set[int] | None = None
+    query: Sample,
+    gallery: list[Sample],
+    *,
+    aggregation: str,
+    allowed: set[int] | None = None,
+    sim: list[list[float]] | None = None,
 ) -> dict[int, float]:
     """Aggregate cosine(query, sample) per person over ``gallery`` (already leave-out-filtered).
 
     ``allowed`` restricts the gallery to enabled officials (Gate A); ``None`` means all.
-    Negatives (person_id None) are never in the gallery.
+    ``sim`` (from ``build_sim``) is the precomputed-cosine fast path. Negatives (person_id
+    None) are never in the gallery.
     """
     by_person: dict[int, list[float]] = defaultdict(list)
     for s in gallery:
@@ -70,7 +103,8 @@ def person_scores(
             continue
         if allowed is not None and s.person_id not in allowed:
             continue
-        by_person[s.person_id].append(cosine(query.embedding, s.embedding))
+        c = sim[query.idx][s.idx] if sim is not None else cosine(query.embedding, s.embedding)
+        by_person[s.person_id].append(c)
     if aggregation == "max":
         return {p: max(v) for p, v in by_person.items()}
     # "mean" (default): robust to a single lucky sample.
@@ -85,9 +119,10 @@ def predict(
     *,
     aggregation: str,
     allowed: set[int] | None = None,
+    sim: list[list[float]] | None = None,
 ) -> int | None:
     """The matcher's call: top person if it clears ``threshold`` AND ``margin``, else abstain."""
-    scores = person_scores(query, gallery, aggregation=aggregation, allowed=allowed)
+    scores = person_scores(query, gallery, aggregation=aggregation, allowed=allowed, sim=sim)
     if not scores:
         return None
     ranked = sorted(scores.items(), key=lambda kv: -kv[1])
@@ -105,6 +140,7 @@ def leave_one_meeting_out(
     *,
     aggregation: str,
     allowed: set[int] | None = None,
+    sim: list[list[float]] | None = None,
 ) -> list[tuple[int | None, int | None]]:
     """``(true_person, predicted_person)`` per sample, scoring against other meetings only."""
     out: list[tuple[int | None, int | None]] = []
@@ -113,7 +149,9 @@ def leave_one_meeting_out(
         out.append(
             (
                 q.person_id,
-                predict(q, gallery, threshold, margin, aggregation=aggregation, allowed=allowed),
+                predict(
+                    q, gallery, threshold, margin, aggregation=aggregation, allowed=allowed, sim=sim
+                ),
             )
         )
     return out
@@ -190,12 +228,15 @@ def sweep(
     *,
     aggregation: str,
     allowed: set[int] | None = None,
+    sim: list[list[float]] | None = None,
 ) -> list[tuple[float, float, Metrics]]:
     """Every ``(threshold, margin)`` point with its metrics (one aggregation, fixed gallery)."""
     grid = []
     for t in thresholds:
         for m in margins:
-            preds = leave_one_meeting_out(samples, t, m, aggregation=aggregation, allowed=allowed)
+            preds = leave_one_meeting_out(
+                samples, t, m, aggregation=aggregation, allowed=allowed, sim=sim
+            )
             grid.append((t, m, score(preds)))
     return grid
 
@@ -218,6 +259,7 @@ def best_operating_point(
 class OperatingPoint:
     """A selected matcher configuration + the enabled officials + its in-sample metrics."""
 
+    purity_floor: float
     core_floor: float
     threshold: float
     margin: float
@@ -233,38 +275,45 @@ def select_operating_point(
     margins: tuple[float, ...] = DEFAULT_MARGINS,
     aggregations: tuple[str, ...] = DEFAULT_AGGREGATIONS,
     core_floors: tuple[float, ...] = DEFAULT_CORE_FLOORS,
+    purity_floors: tuple[float, ...] = DEFAULT_PURITY_FLOORS,
     min_core: int = GATE_A_MIN_CORE,
     collapse_bound: float = GATE_A_COLLAPSE_BOUND,
     precision_bar: float,
 ) -> OperatingPoint | None:
-    """Pick (core_floor, threshold, margin, aggregation) maximizing recall@bar via LOMO.
+    """Pick (purity_floor, core_floor, threshold, margin, aggregation) maximizing recall@bar.
 
-    Sweeps Gate-A enablement (core_floor) and matcher params, evaluating each by
-    leave-one-meeting-out on ``samples``. Returns the highest-recall config that clears the
-    precision bar (conservative tie-break: higher threshold, then margin), or ``None`` if
-    nothing clears it. Used both per training fold (nested) and for the full-data refit.
+    Sweeps the Gate-B purity floor, Gate-A enablement, and matcher params, evaluating each by
+    leave-one-meeting-out on ``samples`` (precomputed similarity per purity subset). Returns
+    the highest-recall config that clears the precision bar (conservative tie-break: higher
+    threshold, then margin), or ``None`` if nothing clears it. Used per training fold (nested)
+    and for the full-data refit.
     """
     best: OperatingPoint | None = None
     best_key: tuple[float, float, float] | None = None
-    for core_floor in core_floors:
-        enabled = enabled_officials(
-            samples, core_floor=core_floor, min_core=min_core, collapse_bound=collapse_bound
-        )
-        if not enabled:
+    for pf in purity_floors:
+        filtered = [s for s in samples if s.purity >= pf]
+        if len(filtered) < min_core:
             continue
-        for agg in aggregations:
-            for t in thresholds:
-                for mgn in margins:
-                    mtr = score(
-                        leave_one_meeting_out(samples, t, mgn, aggregation=agg, allowed=enabled)
-                    )
-                    if mtr.macro_precision >= precision_bar:
-                        key = (mtr.recall, t, mgn)
-                        if best_key is None or key > best_key:
-                            best_key, best = (
-                                key,
-                                OperatingPoint(core_floor, t, mgn, agg, enabled, mtr),
+        sim = build_sim(filtered)
+        for core_floor in core_floors:
+            enabled = enabled_officials(
+                filtered, core_floor=core_floor, min_core=min_core, collapse_bound=collapse_bound
+            )
+            if not enabled:
+                continue
+            for agg in aggregations:
+                for t in thresholds:
+                    for mgn in margins:
+                        mtr = score(
+                            leave_one_meeting_out(
+                                filtered, t, mgn, aggregation=agg, allowed=enabled, sim=sim
                             )
+                        )
+                        if mtr.macro_precision >= precision_bar:
+                            key = (mtr.recall, t, mgn)
+                            if best_key is None or key > best_key:
+                                best_key = key
+                                best = OperatingPoint(pf, core_floor, t, mgn, agg, enabled, mtr)
     return best
 
 
@@ -275,16 +324,18 @@ def nested_leave_one_meeting_out(
     margins: tuple[float, ...] = DEFAULT_MARGINS,
     aggregations: tuple[str, ...] = DEFAULT_AGGREGATIONS,
     core_floors: tuple[float, ...] = DEFAULT_CORE_FLOORS,
+    purity_floors: tuple[float, ...] = DEFAULT_PURITY_FLOORS,
     min_core: int = GATE_A_MIN_CORE,
     collapse_bound: float = GATE_A_COLLAPSE_BOUND,
     precision_bar: float,
 ) -> tuple[Metrics, dict[str, Any]]:
     """Honest performance estimate: params/enablement chosen per fold from OTHER meetings.
 
-    Outer loop holds out one meeting; the operating point (enablement + matcher params) is
-    selected on the remaining meetings only, then the held-out meeting's positives AND
-    negatives are scored unfiltered against the training gallery. This removes the
-    lucky-operating-point circularity (plan §5). Returns (overall Metrics, provenance).
+    Outer loop holds out one meeting; the operating point (purity floor + enablement + matcher
+    params) is selected on the remaining meetings only, then the held-out meeting's positives
+    AND negatives are scored unfiltered against the training gallery. A held-out cluster below
+    the chosen purity floor is not matchable (Gate B would reject it), so it is not scored.
+    This removes the lucky-operating-point circularity (plan §5). Returns (Metrics, provenance).
     """
     meetings = sorted({s.meeting_key for s in samples})
     preds: list[tuple[int | None, int | None]] = []
@@ -299,6 +350,7 @@ def nested_leave_one_meeting_out(
             margins=margins,
             aggregations=aggregations,
             core_floors=core_floors,
+            purity_floors=purity_floors,
             min_core=min_core,
             collapse_bound=collapse_bound,
             precision_bar=precision_bar,
@@ -309,16 +361,25 @@ def nested_leave_one_meeting_out(
             continue
         chosen.append(
             {
+                "purity_floor": op.purity_floor,
+                "core_floor": op.core_floor,
                 "threshold": op.threshold,
                 "margin": op.margin,
-                "core_floor": op.core_floor,
                 "n_enabled": float(len(op.enabled)),
             }
         )
+        gallery = [s for s in train if s.purity >= op.purity_floor]
         for q in held:
+            if q.purity < op.purity_floor:
+                continue  # Gate B would reject this cluster -> not matchable -> not scored
             preds.append(
-                (q.person_id, predict(q, train, op.threshold, op.margin,
-                                      aggregation=op.aggregation, allowed=op.enabled))
+                (
+                    q.person_id,
+                    predict(
+                        q, gallery, op.threshold, op.margin,
+                        aggregation=op.aggregation, allowed=op.enabled,
+                    ),
+                )
             )  # fmt: skip
     provenance = {
         "folds": len(meetings),

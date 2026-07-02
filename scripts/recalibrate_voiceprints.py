@@ -160,7 +160,11 @@ def main() -> None:
     subjects_by_id = {
         s["id"]: s
         for s in fetch_all_rows(
-            lambda: client.table("subjects").select("id,person_id,publishable,canonical_name")
+            lambda: (
+                client.table("subjects")
+                .select("id,person_id,publishable,canonical_name")
+                .eq("place_id", place_id)
+            )  # place-scoped: a stale cross-place subject_id can't enroll
         )
     }
     enrollable = select_enrollable(identities, subjects_by_id, confirmed_only=args.confirmed_only)
@@ -257,13 +261,14 @@ def _apply(
     args: argparse.Namespace,
 ) -> None:
     """Embed per-turn on Modal, pool, run nested LOMO, report, and persist the candidate."""
-    from actalux.diarization.modal_runner import EMBED_MODEL, ModalRunner
+    from actalux.diarization.modal_runner import ModalRunner
     from actalux.ingest.youtube import download_audio
 
     runner = ModalRunner()
     retries = WARP_DOWNLOAD_RETRIES if args.proxy else 1
     samples: list[Sample] = []
-    official_rows_by_doc: dict[int, list[dict[str, Any]]] = {}
+    pooled_officials: list[tuple[EnrollableCluster, Any]] = []  # (cluster, Pooled), for persist
+    processed_docs: set[int] = set()
 
     for doc_id in docs_to_process:
         clusters = by_doc[doc_id]
@@ -287,21 +292,24 @@ def _apply(
         finally:
             if not args.keep_audio:
                 audio.unlink(missing_ok=True)
+        # embedded -> this meeting's stale gallery rows will be refreshed or cleared, even if
+        # zero clusters survive pooling (so a now-empty poisoned meeting doesn't keep old rows).
+        processed_docs.add(doc_id)
 
         for ec in clusters:
             pooled = pool_cluster(turns_by_label.get(ec.cluster_label, []), **POOL_PARAMS)
             if pooled is None or pooled.seconds < args.min_seconds:
                 continue
-            samples.append(Sample(ec.person_id, video_id, pooled.vector))
-            official_rows_by_doc.setdefault(doc_id, []).append(
-                voiceprint_row(ec, pooled, EMBED_MODEL, calibration_id=None)
-            )
+            samples.append(Sample(ec.person_id, video_id, pooled.vector, purity=pooled.purity))
+            pooled_officials.append((ec, pooled))
         for lab in neg_labels:  # negatives: scored, NEVER persisted
             pooled = pool_cluster(turns_by_label.get(lab, []), **POOL_PARAMS)
             if pooled is not None and pooled.seconds >= args.min_seconds:
-                samples.append(Sample(None, video_id, pooled.vector))
+                samples.append(Sample(None, video_id, pooled.vector, purity=pooled.purity))
 
-    _finish(client, place_id, entity_id, samples, official_rows_by_doc, superseded, args)
+    _finish(
+        client, place_id, entity_id, samples, pooled_officials, processed_docs, superseded, args
+    )
 
 
 def _finish(
@@ -309,7 +317,8 @@ def _finish(
     place_id: int,
     entity_id: int | None,
     samples: list[Sample],
-    official_rows_by_doc: dict[int, list[dict[str, Any]]],
+    pooled_officials: list[tuple[EnrollableCluster, Any]],
+    processed_docs: set[int],
     superseded: set[int],
     args: argparse.Namespace,
 ) -> None:
@@ -324,14 +333,24 @@ def _finish(
 
     nested, prov = nested_leave_one_meeting_out(samples, precision_bar=args.precision_bar)
     refit = select_operating_point(samples, precision_bar=args.precision_bar)
+
+    # CANDIDATE only if the honest (nested, no-circular) estimate clears the bar; the refit is
+    # the full-data operating point that would be deployed. Otherwise not_cleared.
+    cleared = refit is not None and nested.macro_precision >= args.precision_bar
+    status = "candidate" if cleared else "not_cleared"
+    enabled = refit.enabled if refit else set()
+    purity_floor = refit.purity_floor if refit else 0.0
+
     report = _confusion_report(nested)
     report["provenance"] = prov
+    report["enabled_person_ids"] = sorted(enabled)
     if refit is not None:
         report["refit"] = {
+            "purity_floor": refit.purity_floor,
+            "core_floor": refit.core_floor,
             "threshold": refit.threshold,
             "margin": refit.margin,
             "aggregation": refit.aggregation,
-            "core_floor": refit.core_floor,
             "n_enabled": len(refit.enabled),
             "in_sample_macroP": round(refit.metrics.macro_precision, 4),
             "in_sample_recall": round(refit.metrics.recall, 4),
@@ -346,21 +365,17 @@ def _finish(
         n_neg,
         prov["abstained_folds"],
     )
-    if refit is None:
+    logger.info("verdict: %s (%d officials enabled)", status, len(enabled))
+    if refit is not None:
         logger.info(
-            "no operating point clears the %.2f bar on full data -> not_cleared", args.precision_bar
-        )
-    else:
-        logger.info(
-            "refit operating point: threshold=%.2f margin=%.2f agg=%s core_floor=%.2f enabled=%d",
+            "refit: purity>=%.2f core>=%.2f threshold=%.2f margin=%.2f agg=%s",
+            refit.purity_floor,
+            refit.core_floor,
             refit.threshold,
             refit.margin,
             refit.aggregation,
-            refit.core_floor,
-            len(refit.enabled),
         )
 
-    status = "candidate" if refit is not None else "not_cleared"
     row = {
         "place_id": place_id,
         "entity_id": entity_id,
@@ -370,12 +385,12 @@ def _finish(
         "aggregation": refit.aggregation if refit else None,
         "trim_fraction": POOL_PARAMS["trim_fraction"],
         "min_coherent_turns": POOL_PARAMS["min_coherent_turns"],
-        "purity_floor": POOL_PARAMS["purity_floor"],
+        "purity_floor": refit.purity_floor if refit else None,
         "macro_precision": round(nested.macro_precision, 4),
         "recall": round(nested.recall, 4),
         "fp_count": report["fp_negatives"],
         "n_officials": len({s.person_id for s in samples if s.person_id is not None}),
-        "n_enabled_officials": len(refit.enabled) if refit else 0,
+        "n_enabled_officials": len(enabled),
         "n_negatives": n_neg,
         "gallery_size": n_pos,
         "model": EMBED_MODEL,
@@ -386,26 +401,43 @@ def _finish(
     calibration_id = inserted.data[0]["id"]
     logger.info("wrote voiceprint_calibration id=%s status=%s", calibration_id, status)
 
-    # Persist the candidate gallery: replace-per-meeting so now-rejected (poison) rows go.
-    processed_docs = sorted(official_rows_by_doc)
-    if processed_docs:
-        client.table("subject_voiceprints").delete().in_(
-            "source_document_id", processed_docs
+    # Persist ONLY enabled officials whose pooled purity clears the refit floor (a not_cleared
+    # verdict enrolls nothing). Upsert first, THEN delete stale rows for every processed meeting
+    # -> no empty-gallery window, and no poison / non-enabled / now-rejected row survives.
+    rows = [
+        voiceprint_row(ec, pooled, EMBED_MODEL, calibration_id=calibration_id)
+        for ec, pooled in pooled_officials
+        if ec.person_id in enabled and pooled.purity >= purity_floor
+    ]
+    if rows:
+        client.table("subject_voiceprints").upsert(
+            rows, on_conflict="person_id,source_document_id,cluster_label"
         ).execute()
-    enrolled = 0
-    for rows in official_rows_by_doc.values():
-        for r in rows:
-            r["calibration_id"] = calibration_id
-        if rows:
-            client.table("subject_voiceprints").insert(rows).execute()
-            enrolled += len(rows)
+    stale = _delete_stale(client, processed_docs, calibration_id)
     pruned = _prune_superseded(client, superseded)
     logger.info(
-        "enrolled %d candidate voiceprint(s) across %d meeting(s); pruned %d superseded",
-        enrolled,
-        len(processed_docs),
+        "enrolled %d candidate voiceprint(s); removed %d stale + %d superseded",
+        len(rows),
+        stale,
         pruned,
     )
+
+
+def _delete_stale(client: Client, processed_docs: set[int], calibration_id: int) -> int:
+    """Delete gallery rows for processed meetings not refreshed by this run (poison / rejected)."""
+    if not processed_docs:
+        return 0
+    rows = fetch_all_rows(
+        lambda: (
+            client.table("subject_voiceprints")
+            .select("id,calibration_id")
+            .in_("source_document_id", sorted(processed_docs))
+        )
+    )
+    stale = [r["id"] for r in rows if r.get("calibration_id") != calibration_id]
+    if stale:
+        client.table("subject_voiceprints").delete().in_("id", stale).execute()
+    return len(stale)
 
 
 def _prune_superseded(client: Client, superseded: set[int]) -> int:
