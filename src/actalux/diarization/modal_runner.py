@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     # our domain type. The remote container loads this module to find
     # ``diarize_remote`` and must not import ``actalux`` — its image carries only
     # torch + pyannote, never the package.
-    from actalux.diarization.backend import ClusterEmbedding, SpeakerTimeline
+    from actalux.diarization.backend import SpeakerTimeline
 
 PYANNOTE_MODEL = "pyannote/speaker-diarization-3.1"
 # The embedding half of the 3.1 pipeline, loaded directly. The Phase 0 spike
@@ -134,6 +134,29 @@ def _embed_spans(waveform, sample_rate, spans, embedder, device):  # noqa: ANN00
     return [float(x) for x in (vec / norm).tolist()], secs
 
 
+def _embed_turns(waveform, sample_rate, spans, embedder, device) -> list[dict]:  # noqa: ANN001, ANN202 - pyannote/torch types not importable locally
+    """Embed each of a cluster's turns individually -> ``[{vector, seconds}, ...]``.
+
+    The enrollment path embeds turns SEPARATELY (not a whole-cluster concat) so local
+    pooling (Gate B, ``diarization/pooling.py``) can trim contaminated turns and reject a
+    cluster with no coherent core. Longest turns first, bounded by ``EMBED_MAX_SECONDS`` of
+    cumulative speech (determinism + memory); each turn goes through ``_embed_spans`` so it
+    inherits the same ``EMBED_MIN_SECONDS`` floor and L2 normalization.
+    """
+    ordered = sorted(spans, key=lambda s: s[1] - s[0], reverse=True)
+    out: list[dict] = []
+    total = 0.0
+    for start_s, end_s in ordered:
+        if total >= EMBED_MAX_SECONDS:
+            break
+        vector, secs = _embed_spans(waveform, sample_rate, [(start_s, end_s)], embedder, device)
+        if vector is None:
+            continue
+        out.append({"vector": vector, "seconds": round(secs, 2)})
+        total += secs
+    return out
+
+
 def _extract_cluster_embeddings(annotation, waveform, sample_rate, embedder, device) -> list[dict]:  # noqa: ANN001 - pyannote/torch types not importable locally
     """Per-cluster L2-normalized voice embeddings over each cluster's own speech.
 
@@ -220,16 +243,17 @@ def diarize_remote(
     secrets=[modal.Secret.from_name("actalux-hf")],
     timeout=60 * 60,
 )
-def embed_clusters_remote(audio_bytes: bytes, clusters: list) -> list:
-    """Embed each cluster's STORED turn spans -> L2-normalized voiceprints.
+def embed_cluster_turns_remote(audio_bytes: bytes, clusters: list) -> list:
+    """Embed each cluster's STORED turns individually -> per-turn voiceprints.
 
     The enrollment path. A confirmed cluster's turns live in ``diarization_turns``;
-    re-diarizing a meeting would renumber the ``SPEAKER_NN`` labels, so we embed the
-    stored spans directly rather than re-clustering. One GPU load per meeting.
+    re-diarizing a meeting would renumber the ``SPEAKER_NN`` labels, so we embed the stored
+    spans directly rather than re-clustering. Turns are embedded SEPARATELY (not a
+    whole-cluster concat) so the caller can pool with contamination-trimming + no-core
+    rejection (Gate B). One GPU load per meeting.
 
     ``clusters``: ``[{"cluster_label": str, "spans": [[start_s, end_s], ...]}, ...]``.
-    Returns ``[{"cluster_label", "vector": [...]|None, "seconds", "model"}, ...]``
-    (``vector`` is None when the cluster is too short to embed reliably).
+    Returns ``[{"cluster_label", "turns": [{"vector": [...], "seconds"}, ...], "model"}]``.
     """
     import os
 
@@ -242,12 +266,11 @@ def embed_clusters_remote(audio_bytes: bytes, clusters: list) -> list:
     out: list[dict] = []
     for c in clusters:
         spans = [(float(a), float(b)) for a, b in c["spans"]]
-        vector, seconds = _embed_spans(waveform, sample_rate, spans, embedder, device)
+        turns = _embed_turns(waveform, sample_rate, spans, embedder, device)
         out.append(
             {
                 "cluster_label": c["cluster_label"],
-                "vector": vector,
-                "seconds": round(seconds, 2),
+                "turns": turns,
                 "model": EMBED_MODEL,
             }
         )
@@ -302,29 +325,24 @@ class ModalRunner:
 
         return SpeakerTimeline.from_remote(call.get(), self._model)
 
-    def embed_clusters(self, audio_uri: str, clusters: list[dict]) -> dict[str, ClusterEmbedding]:
-        """Embed stored cluster spans for one meeting -> ``{cluster_label: ClusterEmbedding}``.
+    def embed_cluster_turns(
+        self, audio_uri: str, clusters: list[dict]
+    ) -> dict[str, list[tuple[tuple[float, ...], float]]]:
+        """Embed stored cluster turns for one meeting -> ``{cluster_label: [(vector, seconds)]}``.
 
-        ``clusters`` is ``[{"cluster_label": str, "spans": [[start_s, end_s], ...]}]``
-        (the enrollment path: spans come from the stored ``diarization_turns``, so this
-        is robust to re-diarization renumbering). Clusters too short to embed are
-        absent from the result. One GPU load per meeting.
+        ``clusters`` is ``[{"cluster_label": str, "spans": [[start_s, end_s], ...]}]`` (the
+        enrollment path: spans come from the stored ``diarization_turns``, robust to
+        re-diarization renumbering). Returns per-turn embeddings so the caller pools with
+        Gate B (``diarization/pooling.py``). Clusters with no embeddable turn are absent.
+        One GPU load per meeting.
         """
-        from actalux.diarization.backend import ClusterEmbedding
-
         audio_bytes = Path(audio_uri).read_bytes()
-        fn = modal.Function.from_name(APP_NAME, "embed_clusters_remote")
-        out: dict[str, ClusterEmbedding] = {}
+        fn = modal.Function.from_name(APP_NAME, "embed_cluster_turns_remote")
+        out: dict[str, list[tuple[tuple[float, ...], float]]] = {}
         for r in fn.remote(audio_bytes, clusters):
-            if r["vector"] is None:
-                continue
-            label = r["cluster_label"]
-            out[label] = ClusterEmbedding(
-                cluster_label=label,
-                vector=tuple(r["vector"]),
-                seconds=r["seconds"],
-                model=r["model"],
-            )
+            turns = [(tuple(t["vector"]), float(t["seconds"])) for t in r["turns"]]
+            if turns:
+                out[r["cluster_label"]] = turns
         return out
 
     @staticmethod

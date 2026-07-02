@@ -31,13 +31,15 @@ class Pooled:
     """One enrolled voiceprint plus the provenance of how clean it is.
 
     ``purity`` is the median cosine-to-medoid of the kept turns (1.0 = a single voice;
-    low = the turns disagree). ``coherent_turns`` kept of ``n_turns`` total.
+    low = the turns disagree). ``coherent_turns`` kept of ``n_turns`` total; ``seconds`` is
+    the speech behind the kept turns.
     """
 
     vector: tuple[float, ...]
     purity: float
     n_turns: int
     coherent_turns: int
+    seconds: float
 
 
 def _l2_normalize_rows(mat: np.ndarray) -> np.ndarray:
@@ -118,4 +120,5 @@ def pool_turn_embeddings(
         purity=purity,
         n_turns=n,
         coherent_turns=int(kept.size),
+        seconds=float(durs[kept].sum()),
     )
