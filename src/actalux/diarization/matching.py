@@ -45,8 +45,16 @@ DEFAULT_Z_FLOORS = (1.0, 2.0, 3.0)
 # another embedder), so it is swept rather than pinned to one embedder's scale.
 DEFAULT_COLLAPSE_BOUNDS = (0.80, 0.85, 0.90)
 GATE_A_MIN_CORE = 2
+# An official whose TRAIN samples carry human confirmations from at least this many distinct
+# meetings is enabled on that trusted core even if raw coherence fails (lever B). Two-in-train is
+# the floor a Gate-A positive needs; the confirm CLI targets three confirmed meetings so at least
+# two survive in every leave-one-meeting-out fold.
+GATE_A_CONFIRMED_MIN_MEETINGS = 2
 # Single-config default for enabled_officials; the sweep varies DEFAULT_COLLAPSE_BOUNDS instead.
 GATE_A_COLLAPSE_BOUND = 0.85
+# Held-out recall is reported split by the held-out sample's confidence tier: mixing confirmed
+# (human-verified) positives with possibly-mislabeled inferred ones dilutes the honest read.
+CONFIDENCE_TIERS = ("confirmed", "inferred_high", "other")
 # asnorm cohort guards: too few impostor scores, or a near-zero spread, leaves no z-scale, so the
 # sample falls back to the raw self-coherence test instead of dividing by ~0.
 ASNORM_MIN_COHORT = 3
@@ -64,7 +72,11 @@ class Sample:
     matcher must reject). ``meeting_key`` is the ``video_id``: the leave-one-out unit, so
     version-chain siblings (same recording) never leak across the split. ``purity`` is the
     Gate-B pooling purity (used to sweep a purity floor); ``idx`` is assigned by
-    ``build_sim`` for the precomputed-similarity fast path.
+    ``build_sim`` for the precomputed-similarity fast path. ``confidence`` is the
+    speaker-identity tier the sample was drawn from (``confirmed`` marks a human-verified
+    label): Gate A trusts confirmed samples as a core even when raw coherence fails, and the
+    honest recall estimate is split by the held-out sample's tier. The default is a neutral
+    non-confirmed tier, so a gallery built without confirmations behaves exactly as before.
     """
 
     person_id: int | None
@@ -72,6 +84,7 @@ class Sample:
     embedding: tuple[float, ...]
     purity: float = 1.0
     idx: int = -1
+    confidence: str = "inferred_high"
 
 
 def cosine(a: tuple[float, ...], b: tuple[float, ...]) -> float:
@@ -189,6 +202,7 @@ def enabled_officials(
     z_floor: float | None = None,
     cohort_min: int = ASNORM_MIN_COHORT,
     sigma_eps: float = ASNORM_SIGMA_EPS,
+    confirmed_min_meetings: int = GATE_A_CONFIRMED_MIN_MEETINGS,
 ) -> set[int]:
     """Gate A: officials from ``train`` with a cross-meeting coherent core and no collapse.
 
@@ -201,11 +215,25 @@ def enabled_officials(
     of ``score_norm``: it measures absolute similarity to another person's anchors, which
     normalizing away would defeat. Negatives (person_id None) are ignored, so they never enter the
     impostor cohort. Applied ONLY within training folds (leakage-safe).
+
+    Human confirmations (lever B) enter here as a trusted core: an official whose train samples
+    carry ``confidence='confirmed'`` from at least ``confirmed_min_meetings`` distinct meetings is
+    enabled even if raw coherence fails (a genuine official whose voiceprints scatter across noisy
+    rooms is still that official once a human has vouched across meetings). The confirmation relaxes
+    ONLY the coherence test — the collapse guard is applied first and unchanged, so a confirmed
+    official whose voice near-duplicates a different official's is still excluded: confirming one
+    name can't make a one-voice-two-names collapse into two people, and precision comes first. Only
+    train confirmations count, so the estimate stays fold-safe (a held-out meeting's confirmations
+    never enable an official in its own fold).
     """
     by_person: dict[int, list[tuple[float, ...]]] = defaultdict(list)
+    confirmed_meetings: dict[int, set[str]] = defaultdict(set)
     for s in train:
-        if s.person_id is not None:
-            by_person[s.person_id].append(s.embedding)
+        if s.person_id is None:
+            continue
+        by_person[s.person_id].append(s.embedding)
+        if s.confidence == "confirmed":
+            confirmed_meetings[s.person_id].add(s.meeting_key)
 
     suspects = collapse_suspects(
         [(p, v) for p, vs in by_person.items() for v in vs], collapse_bound=collapse_bound
@@ -213,6 +241,9 @@ def enabled_officials(
     enabled: set[int] = set()
     for person, vecs in by_person.items():
         if person in suspects:
+            continue  # collapse guard first: a confirmation never rescues a two-name voice
+        if len(confirmed_meetings[person]) >= confirmed_min_meetings:
+            enabled.add(person)  # trusted core: human-confirmed across meetings, coherence waived
             continue
         if score_norm == "asnorm":
             cohort = [v for other, ovecs in by_person.items() if other != person for v in ovecs]
@@ -594,30 +625,55 @@ def select_operating_point(
 
 def _score_held_out(
     held: list[Sample], train: list[Sample], op: OperatingPoint
-) -> list[tuple[int | None, int | None]]:
+) -> list[tuple[Sample, int | None]]:
     """Score a held-out meeting's clusters against the training gallery at ``op`` (no refit).
 
-    A held-out cluster below the chosen purity floor is not matchable (Gate B would reject it): a
-    positive becomes a recall miss, a negative is simply never presented to the matcher. This is
-    the leakage-safe scoring step — enablement/params come only from ``train``.
+    Returns ``(held_sample, predicted_person)`` so the caller can read both the true label and the
+    held-out confidence tier off the sample. A held-out cluster below the chosen purity floor is
+    not matchable (Gate B would reject it): a positive becomes a recall miss, a negative is simply
+    never presented to the matcher (dropped from the output). This is the leakage-safe scoring
+    step — enablement/params come only from ``train``.
     """
     gallery = [s for s in train if s.purity >= op.purity_floor]
-    out: list[tuple[int | None, int | None]] = []
+    out: list[tuple[Sample, int | None]] = []
     for q in held:
         if q.purity < op.purity_floor:
             if q.person_id is not None:
-                out.append((q.person_id, None))
+                out.append((q, None))
             continue
-        out.append(
-            (
-                q.person_id,
-                predict(
-                    q, gallery, op.threshold, op.margin,
-                    aggregation=op.aggregation, allowed=op.enabled,
-                ),
-            )
-        )  # fmt: skip
+        pred = predict(
+            q, gallery, op.threshold, op.margin, aggregation=op.aggregation, allowed=op.enabled
+        )
+        out.append((q, pred))
     return out
+
+
+def recall_by_confidence(
+    records: list[tuple[str, int | None, int | None]],
+) -> dict[str, dict[str, Any]]:
+    """Held-out recall split by the held-out POSITIVE's confidence tier (reporting only).
+
+    ``records`` are ``(confidence, true_person, predicted_person)`` for held-out samples across all
+    folds. Only positives (``true`` is not None) count toward recall; negatives never do. Every
+    tier in ``CONFIDENCE_TIERS`` is reported even when empty (``recall`` is None then), so the
+    split is stable to read. Officials only — a record never carries a citizen identifier.
+    """
+    tallies: dict[str, list[int]] = {t: [0, 0] for t in CONFIDENCE_TIERS}  # [recalled, positives]
+    for confidence, true, pred in records:
+        if true is None:
+            continue
+        tier = confidence if confidence in CONFIDENCE_TIERS else "other"
+        tallies[tier][1] += 1
+        if pred == true:
+            tallies[tier][0] += 1
+    return {
+        tier: {
+            "positives": positives,
+            "recalled": recalled,
+            "recall": round(recalled / positives, 4) if positives else None,
+        }
+        for tier, (recalled, positives) in tallies.items()
+    }
 
 
 def nested_lomo_multi_bar(
@@ -645,6 +701,10 @@ def nested_lomo_multi_bar(
     """
     meetings = sorted({s.meeting_key for s in samples})
     preds_by_bar: dict[float, list[tuple[int | None, int | None]]] = {b: [] for b in precision_bars}
+    # (confidence, true, pred) per held-out sample, for the recall-by-tier split (reporting only).
+    records_by_bar: dict[float, list[tuple[str, int | None, int | None]]] = {
+        b: [] for b in precision_bars
+    }
     chosen_by_bar: dict[float, list[dict[str, Any]]] = {b: [] for b in precision_bars}
     abstained_by_bar: dict[float, int] = {b: 0 for b in precision_bars}
     for mk in meetings:
@@ -667,6 +727,7 @@ def nested_lomo_multi_bar(
             if op is None:
                 abstained_by_bar[b] += 1
                 preds_by_bar[b].extend((q.person_id, None) for q in held)
+                records_by_bar[b].extend((q.confidence, q.person_id, None) for q in held)
                 continue
             chosen_by_bar[b].append(
                 {
@@ -680,7 +741,9 @@ def nested_lomo_multi_bar(
                     "z_floor": op.z_floor,
                 }
             )
-            preds_by_bar[b].extend(_score_held_out(held, train, op))
+            scored = _score_held_out(held, train, op)
+            preds_by_bar[b].extend((q.person_id, pred) for q, pred in scored)
+            records_by_bar[b].extend((q.confidence, q.person_id, pred) for q, pred in scored)
     n_positives = sum(1 for s in samples if s.person_id is not None)
     n_negatives = sum(1 for s in samples if s.person_id is None)
     result: dict[float, tuple[Metrics, dict[str, Any]]] = {}
@@ -691,6 +754,7 @@ def nested_lomo_multi_bar(
             "n_positives": n_positives,
             "n_negatives": n_negatives,
             "chosen": chosen_by_bar[b],
+            "recall_by_confidence": recall_by_confidence(records_by_bar[b]),
         }
         result[b] = (score(preds_by_bar[b]), provenance)
     return result

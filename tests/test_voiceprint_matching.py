@@ -33,6 +33,7 @@ from actalux.diarization.matching import (
     nested_lomo_multi_bar,
     pareto_frontier,
     person_scores,
+    recall_by_confidence,
     score,
     select_operating_point,
 )
@@ -436,3 +437,90 @@ def test_full_scale_sweep_stays_within_budget():
     assert set(multi) == set(CURVE_PRECISION_BARS)
     # The full-scale sweep must stay within the ~60s budget (design note perf guard).
     assert elapsed < 60.0
+
+
+# --- lever B: confirmed samples relax Gate A coherence (fold-safe) -----------------------------
+
+
+def _conf(person, meeting, vec):
+    """A human-confirmed sample (the trusted-core tier Gate A relaxes coherence for)."""
+    return Sample(person_id=person, meeting_key=meeting, embedding=vec, confidence="confirmed")
+
+
+def test_enabled_officials_default_tier_never_trips_confirmed_bypass():
+    # An incoherent, UNCONFIRMED official must still be excluded — the default confidence tier
+    # must not accidentally enable it, or a plain (no-confirmation) gallery would change behavior.
+    train = [_s(1, "m1", A), _s(1, "m2", B), _s(1, "m3", C)]  # orthogonal -> no coherent core
+    assert enabled_officials(train, core_floor=0.5, min_core=2, collapse_bound=0.85) == set()
+
+
+def test_enabled_officials_confirmed_core_enables_despite_incoherence():
+    # Same scattered official, now confirmed across three distinct meetings -> enabled on the
+    # trusted core even though raw self-coherence fails at the 0.5 floor.
+    train = [_conf(1, "m1", A), _conf(1, "m2", B), _conf(1, "m3", C)]
+    assert enabled_officials(train, core_floor=0.5, min_core=2, collapse_bound=0.85) == {1}
+
+
+def test_enabled_officials_confirmed_needs_two_distinct_meetings():
+    # Three confirmed samples but all in ONE meeting: the bypass needs >=2 distinct meetings, so
+    # it falls through to the coherence test (which fails on orthogonal vectors) -> not enabled.
+    train = [_conf(1, "m1", A), _conf(1, "m1", B), _conf(1, "m1", C)]
+    assert enabled_officials(train, core_floor=0.5, min_core=2, collapse_bound=0.85) == set()
+
+
+def test_enabled_officials_collapse_still_excludes_confirmed_official():
+    # p1 and p2 are the SAME voice (A) across two confirmed meetings each. The collapse guard runs
+    # first and excludes both: a human confirming one name can't split one voice into two people.
+    train = [
+        _conf(1, "m1", A), _conf(1, "m2", A),
+        _conf(2, "m3", A), _conf(2, "m4", A),
+    ]  # fmt: skip
+    assert enabled_officials(train, core_floor=0.5, min_core=2, collapse_bound=0.85) == set()
+
+
+def test_confirmed_enablement_is_fold_safe():
+    # An official confirmed in exactly two meetings. With both present the bypass enables it;
+    # holding out one meeting (as each nested fold does) leaves a single confirmed meeting in
+    # TRAIN, below the >=2 floor, so a held-out fold can never enable an official from its own
+    # confirmations. (The lone remaining sample also has no coherent core.)
+    both = [_conf(1, "m1", A), _conf(1, "m2", B)]
+    assert enabled_officials(both, core_floor=0.5, min_core=2, collapse_bound=0.85) == {1}
+    train_without_m1 = [s for s in both if s.meeting_key != "m1"]
+    assert (
+        enabled_officials(train_without_m1, core_floor=0.5, min_core=2, collapse_bound=0.85)
+        == set()
+    )
+
+
+def test_recall_by_confidence_splits_tiers_and_ignores_negatives():
+    records = [
+        ("confirmed", 1, 1),  # confirmed positive, recalled
+        ("confirmed", 2, None),  # confirmed positive, missed
+        ("inferred_high", 3, 3),  # inferred_high positive, recalled
+        ("inferred_medium", 4, 4),  # not a named tier -> "other" bucket, recalled
+        ("inferred_high", None, 5),  # a negative (true None) -> never counts toward recall
+    ]
+    out = recall_by_confidence(records)
+    assert out["confirmed"] == {"positives": 2, "recalled": 1, "recall": 0.5}
+    assert out["inferred_high"] == {"positives": 1, "recalled": 1, "recall": 1.0}
+    assert out["other"] == {"positives": 1, "recalled": 1, "recall": 1.0}
+
+
+def test_recall_by_confidence_empty_tier_reports_none():
+    out = recall_by_confidence([])
+    assert set(out) == {"confirmed", "inferred_high", "other"}
+    assert out["confirmed"] == {"positives": 0, "recalled": 0, "recall": None}
+
+
+def test_nested_lomo_provenance_carries_recall_by_confidence():
+    samples = [
+        _s(1, "m1", A), _s(1, "m2", A), _s(1, "m3", A),
+        _s(2, "m4", B), _s(2, "m5", B), _s(2, "m6", B),
+        _s(None, "m7", C),
+    ]  # fmt: skip
+    _m, prov = nested_leave_one_meeting_out(samples, precision_bar=0.9)
+    rbc = prov["recall_by_confidence"]
+    assert set(rbc) == {"confirmed", "inferred_high", "other"}
+    # every positive was drawn at the default inferred_high tier; the negative never counts
+    assert rbc["inferred_high"]["positives"] == 6
+    assert rbc["confirmed"]["positives"] == 0

@@ -30,6 +30,10 @@ class EnrollableCluster:
     cluster_label: str
     source_basis: str
     canonical_name: str
+    # The speaker-identity tier this cluster was drawn from; carried into the calibration
+    # ``Sample`` so Gate A can trust human-``confirmed`` samples as a core. Defaults to a neutral
+    # non-confirmed tier so a caller that omits it (or an older fixture) behaves as before.
+    confidence: str = "inferred_high"
 
 
 def select_enrollable(
@@ -55,6 +59,8 @@ def select_enrollable(
         if not subject or not subject.get("publishable") or subject.get("person_id") is None:
             continue
         confidence, basis = row.get("confidence"), row.get("basis")
+        if confidence == "rejected":
+            continue  # a human-denied cluster never enrolls (survives resolver re-passes)
         if basis == "voiceprint":
             continue  # never train the gallery on a biometric guess
         # A name anchor seeds the gallery at its clean tier: roll call / self-intro publish
@@ -81,6 +87,7 @@ def select_enrollable(
                 # and satisfies the source_basis NOT NULL + CHECK (migrate_040).
                 source_basis=basis or "manual",
                 canonical_name=subject.get("canonical_name", "?"),
+                confidence=confidence or "inferred_high",
             )
         )
     return out

@@ -347,7 +347,15 @@ def _apply(
             pooled = pool_cluster(turns_by_label.get(ec.cluster_label, []), **POOL_PARAMS)
             if pooled is None or pooled.seconds < args.min_seconds:
                 continue
-            samples.append(Sample(ec.person_id, video_id, pooled.vector, purity=pooled.purity))
+            samples.append(
+                Sample(
+                    ec.person_id,
+                    video_id,
+                    pooled.vector,
+                    purity=pooled.purity,
+                    confidence=ec.confidence,
+                )
+            )
             pooled_officials.append((ec, pooled))
         for lab in neg_labels:  # negatives: scored, NEVER persisted
             pooled = pool_cluster(turns_by_label.get(lab, []), **POOL_PARAMS)
@@ -398,6 +406,11 @@ def _finish(
     report = _confusion_report(nested)
     report["provenance"] = prov
     report["enabled_person_ids"] = sorted(enabled)
+    # Honest recall split by the held-out sample's confidence tier: confirmed (human-verified)
+    # positives are the trustworthy read; inferred held-out positives may themselves be mislabeled,
+    # so mixing them would inflate or deflate the estimate. Lifted to the top level for prominence
+    # (it already rides inside `prov`). Reporting only — the verdict/selection below is untouched.
+    report["recall_by_confidence"] = prov["recall_by_confidence"]
     if refit is not None:
         report["refit"] = {
             "purity_floor": refit.purity_floor,
@@ -429,6 +442,15 @@ def _finish(
         prov["abstained_folds"],
     )
     logger.info("verdict: %s (%d officials enabled)", status, len(enabled))
+    for tier, stat in report["recall_by_confidence"].items():
+        if stat["positives"]:
+            logger.info(
+                "  held-out recall [%s]: %.3f (%d/%d)",
+                tier,
+                stat["recall"],
+                stat["recalled"],
+                stat["positives"],
+            )
     if refit is not None:
         logger.info(
             "refit: purity>=%.2f core>=%.2f threshold=%.2f margin=%.2f agg=%s",

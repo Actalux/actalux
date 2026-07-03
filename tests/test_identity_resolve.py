@@ -504,3 +504,27 @@ def test_persist_identities_no_proposals_no_existing_is_noop():
     client = _IdentClient([])
     assert persist_identities(client, 7, []) == 0
     assert client.log == []
+
+
+def test_persist_identities_protects_rejected_clusters():
+    # A human DENIED SPEAKER_00 -> the resolver must never re-propose it (no upsert on it), and it
+    # is not treated as a stale auto row to retract either.
+    proposals = [
+        IdentityProposal("SPEAKER_00", 1, "jane-harris", "inferred_high", "rollcall"),
+        IdentityProposal("SPEAKER_01", 2, "bob-stevens", "inferred_high", "rollcall"),
+    ]
+    client = _IdentClient([{"cluster_label": "SPEAKER_00", "confidence": "rejected"}])
+    written = persist_identities(client, 7, proposals)
+    assert written == 1
+    upserts = [e for e in client.log if e["op"] == "upsert"]
+    assert [r["cluster_label"] for r in upserts[0]["payload"]] == ["SPEAKER_01"]
+    assert not [e for e in client.log if e["op"] == "delete"]  # rejected row is not retracted
+
+
+def test_persist_identities_keeps_rejected_when_no_longer_proposed():
+    # SPEAKER_00 denied and no longer proposed -> kept (not deleted), exactly like a confirmed row.
+    existing = [{"cluster_label": "SPEAKER_00", "confidence": "rejected"}]
+    proposals = [IdentityProposal("SPEAKER_01", 2, "bob-stevens", "inferred_high", "rollcall")]
+    client = _IdentClient(existing)
+    persist_identities(client, 7, proposals)
+    assert not [e for e in client.log if e["op"] == "delete"]

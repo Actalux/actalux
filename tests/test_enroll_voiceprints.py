@@ -127,3 +127,23 @@ def test_superseded_doc_ids():
         {"id": 3, "replaces_id": None},
     ]
     assert ev.superseded_doc_ids(docs) == {2}
+
+
+def test_select_enrollable_excludes_rejected():
+    # A human-denied cluster never enrolls, even with an otherwise-eligible basis/tier.
+    rows = [
+        _identity(1, 5, "SPEAKER_00", 10, "rejected", "rollcall"),
+        _identity(2, 6, "SPEAKER_01", 11, "inferred_high", "rollcall"),  # control: still enrolls
+    ]
+    out = ev.select_enrollable(rows, _subjects(), confirmed_only=False)
+    assert [e.person_id for e in out] == [101]
+
+
+def test_select_enrollable_carries_confidence_tier():
+    # The tier flows onto the EnrollableCluster so the calibration Sample can trust confirmations.
+    rows = [
+        _identity(1, 5, "SPEAKER_00", 10, "confirmed", "manual"),
+        _identity(2, 6, "SPEAKER_01", 11, "inferred_high", "rollcall"),
+    ]
+    out = ev.select_enrollable(rows, _subjects(), confirmed_only=False)
+    assert {e.person_id: e.confidence for e in out} == {100: "confirmed", 101: "inferred_high"}

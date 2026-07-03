@@ -554,15 +554,19 @@ def persist_identities(
     """Reconcile a document's resolved identities via the service client; return rows written.
 
     ``proposals`` must be the COMPLETE current proposal set for the document. This:
-      * never touches a human ``confirmed`` row (manual gold wins),
+      * never touches a human-decided row — ``confirmed`` (manual gold) OR ``rejected`` (a
+        denied hypothesis): a locked cluster is neither retracted nor re-proposed, so a
+        confirmed name is preserved and a denied name is never re-attached on re-pass,
       * retracts stale auto rows — a previously-published cluster the resolver no longer
         proposes (e.g. after a roster/alias change) is deleted, so a wrong public
         identity can't linger,
       * upserts the current proposals on ``(document_id, cluster_label)``.
 
-    Caveat: not atomic — a human could ``confirm`` a row between the read and the upsert
-    and have it overwritten. The durable fix is a DB trigger rejecting overwrite of a
-    confirmed row; in practice the auto pass is a non-concurrent batch.
+    Caveat: not atomic — a human could decide a row between the read and the upsert and
+    have it overwritten. The durable fix is the DB trigger (migrate_035/043) that skips any
+    update moving a confirmed/rejected row off its tier; in practice the auto pass is a
+    non-concurrent batch. The trigger guards the UPDATE (upsert) path; this read-then-write
+    guard also covers the DELETE (retract) path, which the BEFORE UPDATE trigger cannot.
     """
     existing = (
         service_client.table("speaker_identities")
@@ -572,16 +576,21 @@ def persist_identities(
         .data
         or []
     )
-    confirmed = {r["cluster_label"] for r in existing if r.get("confidence") == "confirmed"}
+    # A human decision locks a cluster in both directions: 'confirmed' keeps its name,
+    # 'rejected' keeps a denied name from ever being re-proposed (Option B — the row carries
+    # no citizen identity, only the official it was denied under).
+    locked = {
+        r["cluster_label"] for r in existing if r.get("confidence") in ("confirmed", "rejected")
+    }
     proposed = {p.cluster_label for p in proposals}
     table = service_client.table("speaker_identities")
 
     for row in existing:
         cluster = row["cluster_label"]
-        if cluster not in proposed and cluster not in confirmed:
+        if cluster not in proposed and cluster not in locked:
             table.delete().eq("document_id", document_id).eq("cluster_label", cluster).execute()
 
-    rows = [p.to_row(document_id) for p in proposals if p.cluster_label not in confirmed]
+    rows = [p.to_row(document_id) for p in proposals if p.cluster_label not in locked]
     if rows:
         table.upsert(rows, on_conflict="document_id,cluster_label").execute()
     return len(rows)
