@@ -7,6 +7,7 @@ from typing import Any
 
 from actalux.glossary.canonicalize import CorrectionRule
 from actalux.identity.resolve import (
+    _MIN_SUSTAINED_WORDS,
     IdentityProposal,
     ResolverTurn,
     RosterMember,
@@ -26,6 +27,11 @@ def _members() -> list[RosterMember]:
 
 def _t(cluster: str, text: str) -> ResolverTurn:
     return ResolverTurn(cluster, text)
+
+
+def _long(n_words: int = _MIN_SUSTAINED_WORDS) -> str:
+    """A turn of ``n_words`` filler words — only the word count drives the sustained floor."""
+    return " ".join(["budget"] * n_words)
 
 
 def test_rollcall_clean_bijection_is_high_confidence():
@@ -163,6 +169,215 @@ def test_name_not_in_roster_is_never_invented():
 def test_empty_inputs():
     assert resolve_identities([], _members()) == []
     assert resolve_identities([_t("A", "Jane Harris")], []) == []
+
+
+def test_presenter_intro_anchors_the_introduced_speaker():
+    # Chair introduces a member in handoff position; a different cluster then takes the
+    # floor with sustained speech -> that speaking cluster is anchored to the member.
+    turns = [
+        _t("CHAIR", "For the next item I'd like to introduce Jane Harris"),
+        _t("SPEAKER_02", _long()),
+    ]
+    props = resolve_identities(turns, _members())
+    by_cluster = {p.cluster_label: p for p in props}
+    assert by_cluster["SPEAKER_02"].subject_id == 1
+    assert by_cluster["SPEAKER_02"].basis == "presenter_intro"
+    # Held below the public-display gate (RLS shows only inferred_high/confirmed): a handoff
+    # inferred from free text must not publish a speaker label, only feed review + enrollment.
+    assert by_cluster["SPEAKER_02"].confidence == "inferred_medium"
+    assert "CHAIR" not in by_cluster  # the introducer is never attributed
+
+
+def test_presenter_intro_with_role_tail_still_anchors():
+    # A trailing role word ("treasurer") is stripped, so the name is still the suffix.
+    turns = [
+        _t("CHAIR", "I'd like to introduce Jane Harris, our treasurer"),
+        _t("SPEAKER_02", _long()),
+    ]
+    props = resolve_identities(turns, _members())
+    assert len(props) == 1
+    assert props[0].cluster_label == "SPEAKER_02" and props[0].subject_id == 1
+
+
+def test_presenter_intro_longer_name_extension_does_not_anchor():
+    # A longer name that strictly extends a roster name is a different person -> no anchor.
+    turns = [
+        _t("CHAIR", "I'll turn it over to Jane Harris Smith"),
+        _t("SPEAKER_02", _long()),
+    ]
+    assert resolve_identities(turns, _members()) == []
+
+
+def test_presenter_intro_prefix_extension_does_not_anchor():
+    # Roster "Jane Harris" is only a SUFFIX of the spoken "Mary Jane Harris" -> no anchor.
+    turns = [
+        _t("CHAIR", "I'll turn it over to Mary Jane Harris"),
+        _t("SPEAKER_02", _long()),
+    ]
+    assert resolve_identities(turns, _members()) == []
+
+
+def test_presenter_intro_requires_a_different_cluster_to_take_over():
+    # Same cluster keeps the floor after naming the member -> no handoff happened.
+    turns = [
+        _t("CHAIR", "I'll turn it over to Jane Harris"),
+        _t("CHAIR", _long()),
+    ]
+    assert resolve_identities(turns, _members()) == []
+
+
+def test_presenter_intro_two_names_is_ambiguous():
+    # Two distinct members named in the introducer's turn -> cannot tell who takes over.
+    turns = [
+        _t("CHAIR", "I'll turn it over to Jane Harris and Bob Stevens"),
+        _t("SPEAKER_02", _long()),
+    ]
+    assert resolve_identities(turns, _members()) == []
+
+
+def test_presenter_intro_brief_reply_does_not_anchor():
+    # The incoming cluster speaks well below the sustained floor -> not a presentation.
+    turns = [
+        _t("CHAIR", "I'll turn it over to Jane Harris"),
+        _t("SPEAKER_02", "Thank you very much"),
+    ]
+    assert resolve_identities(turns, _members()) == []
+
+
+def test_presenter_intro_name_early_in_turn_is_not_a_handoff():
+    # The member is named at the START of a long turn (incidental reference), not at the
+    # handoff position near its end -> no anchor even though a cluster then speaks at length.
+    turns = [
+        _t("CHAIR", "Jane Harris asked us last week to review the budget before we begin"),
+        _t("SPEAKER_02", _long()),
+    ]
+    assert resolve_identities(turns, _members()) == []
+
+
+def test_presenter_intro_requires_the_next_speaker_to_hold_the_floor():
+    # Chair hands off, but the immediate next cluster only interjects briefly and a THIRD
+    # cluster presents at length -> the introduced voice can't be pinned -> no anchor.
+    turns = [
+        _t("CHAIR", "I'll turn it over to Jane Harris"),
+        _t("SPEAKER_02", "Okay"),
+        _t("SPEAKER_03", _long()),
+    ]
+    assert resolve_identities(turns, _members()) == []
+
+
+def test_presenter_intro_tie_in_the_window_does_not_anchor():
+    # Two clusters speak the same amount after the handoff -> the presenter can't be pinned.
+    turns = [
+        _t("CHAIR", "I'll turn it over to Jane Harris"),
+        _t("SPEAKER_02", _long()),
+        _t("SPEAKER_03", _long()),
+    ]
+    assert resolve_identities(turns, _members()) == []
+
+
+def test_presenter_intro_trailing_incidental_mention_does_not_anchor():
+    # The name ends the turn but as an incidental thank-you (no connector/honorific before
+    # it), then a different cluster speaks at length -> not a handoff to that member.
+    turns = [
+        _t("CHAIR", "That completes the report, thank you Jane Harris"),
+        _t("SPEAKER_02", _long()),
+    ]
+    assert resolve_identities(turns, _members()) == []
+
+
+def test_presenter_intro_gratitude_closing_with_connector_does_not_anchor():
+    # "...thank you TO Jane Harris" has a connector before the name (passes the boundary),
+    # but no handoff cue -> a gratitude closing must not anchor the next speaker.
+    turns = [
+        _t("CHAIR", "That completes the report, thank you to Jane Harris"),
+        _t("SPEAKER_02", _long()),
+    ]
+    assert resolve_identities(turns, _members()) == []
+
+
+def test_presenter_intro_negated_cue_does_not_anchor():
+    # A negation directly governing the cue flips it -> no handoff.
+    for turn_text in ("I do not recognize Jane Harris", "I did not invite Jane Harris"):
+        turns = [_t("CHAIR", turn_text), _t("SPEAKER_02", _long())]
+        assert resolve_identities(turns, _members()) == [], turn_text
+
+
+def test_presenter_intro_earlier_cue_does_not_license_a_gratitude_close():
+    # A cue word ("Welcome") earlier in the turn must not license a later gratitude closing
+    # that happens to end with a member's name -> the cue must be local to the name.
+    turns = [
+        _t("CHAIR", "Welcome everyone. That completes the report, thank you to Jane Harris"),
+        _t("SPEAKER_02", _long()),
+    ]
+    assert resolve_identities(turns, _members()) == []
+
+
+def test_presenter_intro_noun_and_transfer_lookalikes_do_not_anchor():
+    # Candidate cue words that mis-read in non-handoff senses must NOT anchor: object
+    # transfers ("over to"), noun uses of "call"/"floor", and the applause "a hand for".
+    for turn_text in (
+        "I sent the packet over to Jane Harris",
+        "Those records were turned over to Jane Harris",
+        "The matter is now over to Jane Harris",
+        "I had a phone call with Jane Harris",
+        "Next item is the roll call for Jane Harris",
+        "The next comment is about the floor to Jane Harris",
+        "Let's give a hand for Jane Harris",
+    ):
+        turns = [_t("CHAIR", turn_text), _t("SPEAKER_02", _long())]
+        assert resolve_identities(turns, _members()) == [], turn_text
+
+
+def test_presenter_intro_nonroster_name_does_not_anchor():
+    turns = [
+        _t("CHAIR", "I'll turn it over to Walter Unknown"),
+        _t("SPEAKER_02", _long()),
+    ]
+    assert resolve_identities(turns, _members()) == []
+
+
+def test_presenter_intro_surname_only_does_not_anchor():
+    # A bare surname is too collision-prone to launch an anchor (unlike roll call, which
+    # keeps a surname hit as review-only); a presenter handoff needs a full-name mention.
+    turns = [
+        _t("CHAIR", "I'll turn it over to Harris"),
+        _t("SPEAKER_02", _long()),
+    ]
+    assert resolve_identities(turns, _members()) == []
+
+
+def test_presenter_intro_does_not_borrow_strength_from_a_surname_rollcall():
+    # A surname-only roll call is review-only on its own; pairing it with a strong presenter
+    # introduction for the same member must NOT promote it to the public tier. Confidence and
+    # basis come from one anchor together -> stays non-public inferred_medium presenter_intro.
+    turns = [
+        _t("CLERK", "Harris"),
+        _t("SPEAKER_02", "Here"),
+        _t("CHAIR", "I'd like to introduce Jane Harris"),
+        _t("SPEAKER_02", _long()),
+    ]
+    props = resolve_identities(turns, _members())
+    by_cluster = {p.cluster_label: p for p in props}
+    assert by_cluster["SPEAKER_02"].subject_id == 1
+    assert by_cluster["SPEAKER_02"].confidence == "inferred_medium"
+    assert by_cluster["SPEAKER_02"].basis == "presenter_intro"
+
+
+def test_rollcall_outranks_presenter_intro_for_recorded_basis():
+    # One cluster is reached by both a roll call and a presenter handoff for the same
+    # member -> the stronger roll-call basis is the one recorded.
+    turns = [
+        _t("CLERK", "Jane Harris"),
+        _t("SPEAKER_02", "Here"),
+        _t("CHAIR", "I now recognize Jane Harris"),
+        _t("SPEAKER_02", _long()),
+    ]
+    props = resolve_identities(turns, _members())
+    by_cluster = {p.cluster_label: p for p in props}
+    assert by_cluster["SPEAKER_02"].subject_id == 1
+    assert by_cluster["SPEAKER_02"].basis == "rollcall"
+    # Recorded as a roll call, so it publishes (inferred_high), not the presenter tier.
+    assert by_cluster["SPEAKER_02"].confidence == "inferred_high"
 
 
 def test_rows_to_turns_canonicalizes_names():

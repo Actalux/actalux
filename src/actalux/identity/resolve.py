@@ -6,7 +6,7 @@ the locked decision). Cardinals: never invent a name (a proposal's subject is al
 roster member), precision over recall (an unresolved or ambiguous cluster stays
 anonymous), and only a clean, unambiguous anchor reaches the public display bar.
 
-Two signals, both grounded in spoken-name anchors and both with a valid schema
+Three signals, all grounded in spoken-name anchors and all with a valid schema
 ``basis``:
 
 * **roll call** — a turn that names exactly one member, immediately followed by a short
@@ -14,11 +14,22 @@ Two signals, both grounded in spoken-name anchors and both with a valid schema
   to the named member (the clerk-reads-name -> member-answers pattern).
 * **self-introduction** — "I'm <member>" / "this is <member>" / "my name is <member>"
   within a cluster anchors that cluster to the named member.
+* **presenter introduction** — a turn that introduces exactly one member in handoff
+  position (near its end), immediately followed by a *different* cluster taking the floor
+  with sustained speech, anchors that speaking cluster to the introduced member. This is
+  the only signal that reaches an official who speaks at length but is never in a roll
+  call (an appointed director, the counsel, a staff presenter with a seat).
 
 Confidence is assigned conservatively:
 
-* a clean **1:1** map (one cluster <-> one member, the member claimed by no other
-  cluster) -> ``inferred_high`` (publishable),
+* a clean **1:1** roll-call / self-intro map (one cluster <-> one member, the member
+  claimed by no other cluster) -> ``inferred_high`` (publishable),
+* a clean **presenter-introduction** map -> ``inferred_medium`` — deliberately held BELOW
+  the public-display gate. A handoff is inferred from free ASR text, so unlike a
+  name+response roll call or a self-declaration it can misread ("...thank you to Jane
+  Harris"); keeping it non-public means a misread never mislabels a speaker on the page.
+  It still reaches the review queue and is eligible to seed the voiceprint gallery, whose
+  own gates (label/purity + nested-LOMO calibration) contain any error,
 * a **contested** member (claimed by more than one cluster) -> ``inferred_low`` for both
   (the review queue disambiguates),
 * an **ambiguous** cluster (more than one candidate member) -> no proposal at all
@@ -83,6 +94,57 @@ _TAIL_WORDS = frozenset(
 # name / curated alias) is never trusted enough to publish — it stays review-only.
 _MIN_SURNAME = 4
 
+# --- presenter-introduction anchor: a member is introduced and handed the floor -------
+# A handoff both SHOWS a cue and NAMES the incoming speaker at the END of the introducer's
+# turn ("...I'd like to introduce Jane Harris"). The name is matched only as a full-name
+# suffix, AND a handoff cue must sit in the connector run immediately before it (below) —
+# position alone would let a gratitude closing ("...thank you to Jane Harris") anchor the
+# next speaker. So a name dropped mid-turn, a trailing thank-you, an unrelated earlier cue,
+# or a longer name that contains a member's ("Jane Harris Smith", "Mary Jane Harris") fail.
+# The cues are generic English introduction/recognition verbs whose object is a PERSON
+# (introduce, recognize, welcome, invite, yield) — NONE is jurisdiction-specific, so the
+# signal carries no town's wording. Person-directed verbs are chosen deliberately: they
+# rarely take a thing as object, so "<verb> Jane Harris" really is a handoff. The
+# transfer/particle and noun-colliding candidates are all excluded because they mis-read
+# object transfers and noun uses as handoffs — "over" ("sent the packet over to Jane"),
+# bare "turn"/"hand" ("your turn", "a hand for"), "call" (phone/roll call), "floor" ("the
+# floor"). Precision over recall: a handoff phrased without one of these is missed, never
+# mis-anchored (so "turn it over to <name>", which collides with transfers, is not covered).
+_HANDOFF_CUES = frozenset(
+    """introduce introduces introducing introduced recognize recognizes recognized
+    welcome welcomes welcomed welcoming invite invites invited inviting yield yields
+    yielded""".split()
+)
+# A negation directly governing the cue flips it ("do not recognize Jane Harris"), so a cue
+# whose run is broken on the left by one of these is not a handoff. (Apostrophes are folded
+# by _norm_text, so "don't" -> "dont".) Non-adjacent negation is left to the review queue —
+# presenter_intro is non-public and gate-contained, so this need only catch the clean cases.
+_NEGATIONS = frozenset("not never no cannot cant dont doesnt didnt wont nor".split())
+# Turns after the handoff over which the incoming cluster's speech is summed — diarization
+# fragments a monologue into several turns and brief interjections can interleave.
+_SUSTAINED_WINDOW_TURNS = 6
+# Words the incoming cluster must speak within that window to count as taking the floor to
+# present — well above a one- or two-sentence reply, so a brief answer never anchors. Word
+# count is a self-contained proxy for sustained speech (no per-turn timing needed here);
+# the recalibration harness measures precision/recall to tune it.
+_MIN_SUSTAINED_WORDS = 60
+# Which anchor wins the recorded ``basis`` when one cluster is reached by more than one
+# signal of the SAME tier (below): a name+response roll call and a self-introduction both
+# outrank being introduced by someone else.
+_BASIS_RANK = {"rollcall": 3, "self_intro": 2, "presenter_intro": 1}
+# The publishable tier a single anchor supports, highest first. A bare surname never
+# publishes (review only), whatever its basis; a presenter introduction is held below the
+# public bar (non-public but enrollable); only a strong roll call / self-introduction
+# publishes. A cluster's confidence is the MAX tier of its evidence — never borrowed across
+# pieces, so a surname roll call does not become public just because a presenter
+# introduction for the same person happens to be strong.
+_TIER_HIGH, _TIER_MEDIUM, _TIER_LOW = 3, 2, 1
+_TIER_CONFIDENCE = {
+    _TIER_HIGH: "inferred_high",
+    _TIER_MEDIUM: "inferred_medium",
+    _TIER_LOW: "inferred_low",
+}
+
 
 @dataclass(frozen=True)
 class RosterMember:
@@ -109,8 +171,8 @@ class IdentityProposal:
     cluster_label: str
     subject_id: int
     slug: str  # for review/logging; not a DB column
-    confidence: str  # inferred_high | inferred_low
-    basis: str  # rollcall | self_intro
+    confidence: str  # inferred_high | inferred_medium | inferred_low
+    basis: str  # rollcall | self_intro | presenter_intro
 
     def to_row(self, document_id: int) -> dict[str, Any]:
         """Row for the ``speaker_identities`` table."""
@@ -253,37 +315,155 @@ def _selfintro_hits(
     return out
 
 
+def _distinct_members_named(
+    tokens: list[str], strong: dict[str, int], surname: dict[str, int]
+) -> set[int]:
+    """Distinct roster members named anywhere in ``tokens`` (an ambiguity probe).
+
+    Deliberately LIBERAL — a longest-match left-to-right scan over full names / aliases
+    (``strong``, always multi-token) plus bare surnames. Used only to *reject* a handoff
+    when a second member is named, so over-matching can only make the caller skip (safe).
+    The anchor itself is taken by ``_trailing_member``, which is strict about boundaries.
+    """
+    max_len = max((k.count(" ") + 1 for k in strong), default=0)
+    named: set[int] = set()
+    i, n = 0, len(tokens)
+    while i < n:
+        hit_len = 0
+        for length in range(min(max_len, n - i), 1, -1):  # strong keys are multi-token
+            sid = strong.get(" ".join(tokens[i : i + length]))
+            if sid is not None:
+                named.add(sid)
+                hit_len = length
+                break
+        if hit_len:
+            i += hit_len
+            continue
+        if len(tokens[i]) >= _MIN_SURNAME and tokens[i] in surname:
+            named.add(surname[tokens[i]])
+        i += 1
+    return named
+
+
+def _trailing_member(tokens: list[str], strong: dict[str, int]) -> int | None:
+    """The member introduced at the handoff position of ``tokens``, or ``None``.
+
+    Requires a full-name / alias suffix of the turn (after any trailing role/connector run,
+    "...Jane Harris, councilmember") whose handoff cue is bound LOCALLY to the name: reading
+    left from the name, the contiguous run of connectors/honorifics must contain a cue
+    (``_HANDOFF_CUES``) before any other word breaks it. That locality is what separates a
+    real handoff ("turn it over to Jane Harris") from a gratitude closing that merely ends
+    with a name ("...thank you to Jane Harris"), a longer name that contains a member's
+    ("Mary Jane Harris" — "mary" breaks the run with no cue), and an unrelated earlier cue
+    ("Welcome everyone. ...thank you to Jane Harris"). Only a full name / curated alias
+    anchors — a bare surname is too collision-prone to launch enrollment on.
+    """
+    end = len(tokens)
+    while end > 0 and tokens[end - 1] in _TAIL_WORDS:
+        end -= 1  # strip a trailing role/connector run so the name can still be the suffix
+    max_len = max((k.count(" ") + 1 for k in strong), default=0)
+    for length in range(min(max_len, end), 1, -1):  # longest suffix name first
+        start = end - length
+        sid = strong.get(" ".join(tokens[start:end]))
+        if sid is None:
+            continue
+        # Walk the connector/honorific/cue run immediately left of the name; a cue must
+        # appear before any other word (a name part like "mary", a gratitude "you") ends it.
+        j, saw_cue = start, False
+        while j > 0 and (
+            tokens[j - 1] in _TAIL_WORDS
+            or tokens[j - 1] in _HONORIFICS
+            or tokens[j - 1] in _HANDOFF_CUES
+        ):
+            saw_cue = saw_cue or tokens[j - 1] in _HANDOFF_CUES
+            j -= 1
+        if j > 0 and tokens[j - 1] in _NEGATIONS:
+            return None  # the run's cue is negated ("do not recognize Jane Harris")
+        return sid if saw_cue else None
+    return None
+
+
+def _presenter_intro_hits(
+    turns: list[ResolverTurn], strong: dict[str, int], surname: dict[str, int]
+) -> list[tuple[str, int, str]]:
+    """(cluster, subject_id, strength) anchored by an introduction/handoff to a presenter.
+
+    Cluster P names exactly one roster member in handoff position (the full-name suffix of
+    P's turn — see ``_trailing_member``), a DIFFERENT cluster Q immediately follows, and Q
+    holds the floor with sustained speech in the window after the handoff. That anchors Q
+    to the introduced member. Precision is deliberate over recall — the guards below prefer
+    missing a handoff to attributing the wrong voice:
+
+    * a second distinct member named in P's turn -> ambiguous -> skip;
+    * P (or nothing) continuing rather than a new cluster -> no handoff happened -> skip;
+    * the introduced name is not a clean full-name suffix -> skip;
+    * any other cluster matching or out-speaking Q in the window -> Q isn't clearly the
+      presenter -> skip.
+    """
+    out: list[tuple[str, int, str]] = []
+    for i, prev in enumerate(turns):
+        if i + 1 >= len(turns) or turns[i + 1].cluster_label == prev.cluster_label:
+            continue  # same cluster continues (or the turn is last) -> no handoff
+        tokens = _norm_text(prev.text).split()
+        named = _distinct_members_named(tokens, strong, surname)
+        if len(named) != 1:
+            continue  # zero named, or two+ members named (ambiguous) -> not a clean handoff
+        sid = _trailing_member(tokens, strong)
+        if sid is None or sid not in named:
+            continue  # the sole named member is not the clean handoff suffix
+        q = turns[i + 1].cluster_label
+        words: dict[str, int] = defaultdict(int)
+        for turn in turns[i + 1 : i + 1 + _SUSTAINED_WINDOW_TURNS]:
+            if turn.cluster_label != prev.cluster_label:  # the introducer's own words don't count
+                words[turn.cluster_label] += len(_norm_text(turn.text).split())
+        # Q must clear the sustained floor AND strictly out-speak every other non-introducer
+        # cluster in the window — a brief reply, a tie, or a different presenter never anchors.
+        other_max = max((w for c, w in words.items() if c != q), default=0)
+        if words[q] >= _MIN_SUSTAINED_WORDS and words[q] > other_max:
+            out.append((q, sid, "strong"))
+    return out
+
+
+def _anchor_tier(basis: str, strength: str) -> int:
+    """The publishable tier one anchor supports (see ``_TIER_*``)."""
+    if strength != "strong":
+        return _TIER_LOW  # a bare-surname match is review-only whatever the basis
+    return _TIER_MEDIUM if basis == "presenter_intro" else _TIER_HIGH
+
+
 def resolve_identities(
     turns: list[ResolverTurn], members: list[RosterMember]
 ) -> list[IdentityProposal]:
-    """Deterministic cluster -> subject proposals from roll-call + self-intro anchors.
+    """Deterministic cluster -> subject proposals from name-anchor signals.
 
-    Roll-call evidence outranks self-intro for the recorded ``basis``; a full-name hit
-    outranks a bare surname. See the module docstring for the confidence rules; nothing
-    is invented and ambiguous clusters get no proposal.
+    A cluster's confidence is the highest tier its evidence supports (``_anchor_tier``);
+    among equal-tier evidence the higher-ranked basis (``_BASIS_RANK``) is recorded. See the
+    module docstring for the tier rules; nothing is invented and ambiguous clusters get no
+    proposal.
     """
     if not turns or not members:
         return []
     strong, surname = _name_index(members)
     by_subject = {m.subject_id: m for m in members}
 
-    # cluster -> subject_id -> {"basis", "strength"} (rollcall + strong are preferred)
-    acc: dict[str, dict[int, dict[str, str]]] = defaultdict(dict)
+    # cluster -> subject_id -> {"tier", "basis"} of the single best supporting anchor.
+    # The evidence is selected as a unit (tier first, then basis rank), so confidence and
+    # basis always come from the SAME anchor — strength is never borrowed across pieces.
+    acc: dict[str, dict[int, dict[str, int | str]]] = defaultdict(dict)
 
     def _add(cluster: str, sid: int, basis: str, strength: str) -> None:
+        tier = _anchor_tier(basis, strength)
         cur = acc[cluster].get(sid)
-        if cur is None:
-            acc[cluster][sid] = {"basis": basis, "strength": strength}
-            return
-        if cur["basis"] != "rollcall" and basis == "rollcall":
-            cur["basis"] = "rollcall"
-        if cur["strength"] != "strong" and strength == "strong":
-            cur["strength"] = "strong"
+        cand = (tier, _BASIS_RANK[basis])
+        if cur is None or cand > (cur["tier"], _BASIS_RANK[cur["basis"]]):
+            acc[cluster][sid] = {"tier": tier, "basis": basis}
 
     for cluster, sid, strength in _rollcall_hits(turns, strong, surname):
         _add(cluster, sid, "rollcall", strength)
     for cluster, sid, strength in _selfintro_hits(turns, strong, surname):
         _add(cluster, sid, "self_intro", strength)
+    for cluster, sid, strength in _presenter_intro_hits(turns, strong, surname):
+        _add(cluster, sid, "presenter_intro", strength)
 
     subject_clusters: dict[int, set[str]] = defaultdict(set)
     for cluster, sdict in acc.items():
@@ -295,12 +475,13 @@ def resolve_identities(
         if len(sdict) != 1:
             continue  # ambiguous cluster -> stays anonymous (review queue surfaces it)
         sid, info = next(iter(sdict.items()))
-        contested = len(subject_clusters[sid]) > 1
-        # Publish only a clean, full-name, uncontested anchor; everything else is review.
-        high = info["strength"] == "strong" and not contested
-        confidence = "inferred_high" if high else "inferred_low"
+        # A member claimed by more than one cluster is contested -> review, whatever the
+        # tier (the review queue disambiguates). Otherwise confidence is the evidence tier.
+        tier = _TIER_LOW if len(subject_clusters[sid]) > 1 else info["tier"]
         proposals.append(
-            IdentityProposal(cluster, sid, by_subject[sid].slug, confidence, info["basis"])
+            IdentityProposal(
+                cluster, sid, by_subject[sid].slug, _TIER_CONFIDENCE[tier], info["basis"]
+            )
         )
     return sorted(proposals, key=lambda p: p.cluster_label)
 

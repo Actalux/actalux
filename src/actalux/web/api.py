@@ -167,7 +167,7 @@ class SpeakerIdentity(BaseModel):
     name: str  # the official's canonical name (only present when gated high/confirmed)
     slug: str | None
     confidence: str | None  # inferred_high | confirmed (the only publicly-shown levels)
-    basis: str | None  # rollcall | vote_anchor | self_intro | manual
+    basis: str | None  # rollcall | vote_anchor | self_intro | presenter_intro | manual
 
 
 class SpeakerWord(BaseModel):

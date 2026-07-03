@@ -35,6 +35,20 @@ def test_select_enrollable_includes_confirmed_and_name_anchored_high():
     assert {e.source_basis for e in out} == {"rollcall", "manual"}
 
 
+def test_select_enrollable_includes_presenter_intro_at_medium():
+    # presenter_intro is held at inferred_medium (below the public bar) but still enrolls;
+    # a plain inferred_medium (non-presenter) row does NOT (the medium tier is exempted
+    # only for presenter_intro), and an inferred_low presenter_intro is below the bar.
+    rows = [
+        _identity(1, 5, "SPEAKER_00", 10, "inferred_medium", "presenter_intro"),
+        _identity(2, 6, "SPEAKER_01", 11, "inferred_medium", "rollcall"),  # medium, not presenter
+        _identity(3, 7, "SPEAKER_02", 10, "inferred_low", "presenter_intro"),  # below the bar
+    ]
+    out = ev.select_enrollable(rows, _subjects(), confirmed_only=False)
+    assert [e.person_id for e in out] == [100]
+    assert out[0].source_basis == "presenter_intro"
+
+
 def test_select_enrollable_confirmed_only_excludes_name_anchored():
     rows = [
         _identity(1, 5, "SPEAKER_00", 10, "inferred_high", "rollcall"),
