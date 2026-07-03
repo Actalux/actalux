@@ -53,14 +53,15 @@ app = modal.App(APP_NAME)
 # that shifted them would silently invalidate stored voiceprints. torchaudio is
 # left to resolve (it has no 2.12.1 release; the spike ran it unpinned) — it is only
 # used to decode audio to a waveform, which does not affect the embeddings.
-# speechbrain is an alternate embedder for the dual-embedder A/B measurement only
-# (pyannote's PretrainedSpeakerEmbedding factory routes "speechbrain/..." ids to it);
-# its vectors are never persisted, so it needs no integrity pin — floor >=1.0 for the
-# `speechbrain.inference` API 4.0.5 imports, upper bound left to resolve against torch.
+# speechbrain is an alternate embedder for the dual-embedder A/B measurement only; its
+# vectors are never persisted. Pinned exactly: pyannote 4.0.5's own speechbrain branch
+# passes kwargs (token=) that NO released speechbrain from_hparams accepts, so
+# _load_embedder loads speechbrain directly — the pin keeps that direct call reproducible
+# (>=1.0.4 required: earlier releases probe torchaudio.list_audio_backends, removed in 2.9+).
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .apt_install("ffmpeg")
-    .pip_install("torch==2.12.1", "torchaudio", "pyannote.audio==4.0.5", "speechbrain>=1.0")
+    .pip_install("torch==2.12.1", "torchaudio", "pyannote.audio==4.0.5", "speechbrain==1.1.0")
 )
 
 
@@ -90,18 +91,41 @@ def _decode_16k_mono(audio_bytes: bytes):  # noqa: ANN202 - torch tensor type no
         return torchaudio.load(wav)
 
 
+class _SpeechBrainEmbedder:
+    """Minimal callable wrapper giving a speechbrain EncoderClassifier the same
+    ``embedder(waveforms) -> ndarray`` contract as pyannote's PretrainedSpeakerEmbedding.
+
+    Exists because pyannote 4.0.5's own SpeechBrain branch calls ``from_hparams(token=...)``,
+    a kwarg no released speechbrain accepts (1.0.x takes use_auth_token; >=1.0.4 forwards
+    unknowns into Pretrained.__init__ -> TypeError). Loading directly with universal kwargs
+    sidesteps the broken upstream call without touching the primary wespeaker path.
+    """
+
+    def __init__(self, classifier) -> None:  # noqa: ANN001 - speechbrain type not importable locally
+        self.classifier_ = classifier
+
+    def __call__(self, waveforms):  # noqa: ANN001, ANN204 - torch types not importable locally
+        embeddings = self.classifier_.encode_batch(waveforms.squeeze(1))  # (batch, 1, dim)
+        return embeddings.squeeze(1).cpu().numpy()
+
+
 def _load_embedder(model: str, token: str, device):  # noqa: ANN001, ANN202 - pyannote/torch types not importable locally
     """Load a speaker-embedding model onto ``device`` by its HF id.
 
-    ``model`` is dispatched by pyannote's PretrainedSpeakerEmbedding factory on a substring:
-    a "pyannote/..." id (the pinned wespeaker resnet34) loads the pyannote path, a
-    "speechbrain/..." id (the A/B alternate) the ECAPA path. Token handling is left exactly as
-    the validated primary path used it — the kwarg was renamed across pyannote versions
-    (use_auth_token -> token) and, when neither is on the factory signature, the download auth
-    falls back to the container's HF_TOKEN env. Not widened here, so the primary embedding stays
-    byte-stable; the ungated speechbrain model loads fine under the same env fallback.
+    A "speechbrain/..." id (the A/B alternate, public/ungated) is loaded directly via
+    speechbrain's EncoderClassifier — see _SpeechBrainEmbedder for why pyannote's factory
+    can't do it. Everything else (the pinned "pyannote/..." wespeaker resnet34) goes through
+    pyannote's PretrainedSpeakerEmbedding exactly as the validated primary path always has:
+    token kwarg detected by signature (renamed across pyannote versions), env fallback intact,
+    so the primary embedding stays byte-stable.
     """
     import inspect
+
+    if model.startswith("speechbrain/"):
+        from speechbrain.inference.speaker import EncoderClassifier
+
+        classifier = EncoderClassifier.from_hparams(source=model, run_opts={"device": str(device)})
+        return _SpeechBrainEmbedder(classifier)
 
     from pyannote.audio.pipelines.speaker_verification import PretrainedSpeakerEmbedding
 
