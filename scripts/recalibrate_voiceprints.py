@@ -71,6 +71,29 @@ NEG_PER_MEETING = 3  # cap negatives per meeting (GPU cost bound); longest clust
 NEG_MIN_SECONDS = 10.0  # a negative needs enough speech to be a fair distractor
 
 
+def _parse_embedders(raw: str, *, primary: str) -> list[str]:
+    """Parse ``--embedders`` into an ordered, de-duplicated model list; primary is always first.
+
+    Blank -> ``[primary]`` (the default single-embedder run, behaviourally unchanged). Otherwise
+    the first entry MUST be ``primary``: only the primary model's gallery is persisted, and that
+    column is 256-d wespeaker, so a non-primary head would try to store an off-dimension vector.
+    Enforcing it structurally keeps alt embedders strictly append-only measurement (Option B).
+    """
+    ids = [m.strip() for m in raw.split(",") if m.strip()]
+    if not ids:
+        return [primary]
+    if ids[0] != primary:
+        raise ActaluxError(
+            f"--embedders first entry must be the primary model {primary!r} (only its 256-d "
+            f"gallery is persisted); got {ids[0]!r}"
+        )
+    ordered: list[str] = []
+    for m in ids:  # preserve order, drop duplicates
+        if m not in ordered:
+            ordered.append(m)
+    return ordered
+
+
 def _place_documents(client: Client, place_id: int, body: str | None) -> dict[int, dict[str, Any]]:
     """Documents for a place's entities (optionally one body) -> ``{doc_id: doc}``."""
     entities = fetch_all_rows(
@@ -103,6 +126,51 @@ def negative_labels(
     ]
     candidates.sort(key=lambda x: -x[1])
     return [lab for lab, _ in candidates[:cap]]
+
+
+def build_meeting_samples(
+    turns_by_model: dict[str, dict[str, list[tuple[tuple[float, ...], float]]]],
+    clusters: list[EnrollableCluster],
+    neg_labels: list[str],
+    video_id: str,
+    *,
+    min_seconds: float,
+    primary_model: str,
+) -> tuple[dict[str, list[Sample]], list[tuple[EnrollableCluster, Any]]]:
+    """Pool one meeting's per-model cluster turns into per-model calibration Samples.
+
+    Officials pool to labeled Samples for every embedder; negatives pool to ``person_id=None``
+    Samples (scored, never persisted). Pooling is identical across models, so a downstream recall
+    difference is attributable to the embedder alone. The second return — ``pooled_officials`` — is
+    the PRIMARY model's officials only; it is the sole persistable artifact, so an alternate
+    embedder can never produce a gallery row (Option B). For a single-model run this yields the same
+    Samples, in the same order, that the pre-A/B path built inline.
+    """
+    per_model: dict[str, list[Sample]] = {m: [] for m in turns_by_model}
+    pooled_officials: list[tuple[EnrollableCluster, Any]] = []
+    for model_id, turns_by_label in turns_by_model.items():
+        for ec in clusters:
+            pooled = pool_cluster(turns_by_label.get(ec.cluster_label, []), **POOL_PARAMS)
+            if pooled is None or pooled.seconds < min_seconds:
+                continue
+            per_model[model_id].append(
+                Sample(
+                    ec.person_id,
+                    video_id,
+                    pooled.vector,
+                    purity=pooled.purity,
+                    confidence=ec.confidence,
+                )
+            )
+            if model_id == primary_model:
+                pooled_officials.append((ec, pooled))
+        for lab in neg_labels:  # negatives: scored, NEVER persisted
+            pooled = pool_cluster(turns_by_label.get(lab, []), **POOL_PARAMS)
+            if pooled is not None and pooled.seconds >= min_seconds:
+                per_model[model_id].append(
+                    Sample(None, video_id, pooled.vector, purity=pooled.purity)
+                )
+    return per_model, pooled_officials
 
 
 def _confusion_report(metrics: Any) -> dict[str, Any]:
@@ -144,6 +212,42 @@ def _curve_point(precision_bar: float, metrics: Any, provenance: dict[str, Any])
     }
 
 
+def _ab_report(
+    samples_by_model: dict[str, list[Sample]],
+    *,
+    primary_model: str,
+    precision_bar: float,
+    curve_bars: tuple[float, ...],
+) -> dict[str, dict[str, Any]]:
+    """Per-ALTERNATE-embedder nested LOMO + curve (measurement only), keyed by model id.
+
+    The primary model's verdict and gallery are computed and persisted by ``_finish``; this reruns
+    the identical honest harness on each alternate embedder so recall can be compared at equal
+    precision. Only aggregate metrics are returned — no alternate vector is ever written anywhere
+    (Option B). Empty (``{}``) when there is no alternate, so a default single-model run adds no
+    ``ab`` block and its persisted report stays byte-identical to the pre-A/B path.
+    """
+    ab: dict[str, dict[str, Any]] = {}
+    for model_id, samples in samples_by_model.items():
+        if model_id == primary_model:
+            continue
+        if not any(s.person_id is not None for s in samples):
+            ab[model_id] = {"n_enabled": 0, "note": "no official voiceprints pooled"}
+            continue
+        multi = nested_lomo_multi_bar(samples, precision_bars=curve_bars)
+        nested, prov = multi[precision_bar]
+        refit = select_operating_point(samples, precision_bar=precision_bar)
+        entry = _confusion_report(nested)
+        entry["n_enabled"] = len(refit.enabled) if refit else 0
+        entry["recall_by_confidence"] = prov["recall_by_confidence"]
+        entry["curve"] = {
+            "nested_by_bar": [_curve_point(b, *multi[b]) for b in CURVE_PRECISION_BARS],
+            "pareto": pareto_frontier(evaluate_grid(samples)),
+        }
+        ab[model_id] = entry
+    return ab
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Recalibrate voiceprints for a place (candidate).")
     parser.add_argument("--state", required=True, help="place state slug, e.g. mo")
@@ -163,6 +267,12 @@ def main() -> None:
         "--force",
         action="store_true",
         help="re-stage even if the place already has a cleared calibration (downgrades it)",
+    )
+    parser.add_argument(
+        "--embedders",
+        default="",
+        help="comma-separated embedder model ids; first (primary) is persisted, any others are "
+        "measured only (report.ab). Blank = the primary wespeaker model alone (unchanged).",
     )
     args = parser.parse_args()
 
@@ -308,13 +418,15 @@ def _apply(
     args: argparse.Namespace,
 ) -> None:
     """Embed per-turn on Modal, pool, run nested LOMO, report, and persist the candidate."""
-    from actalux.diarization.modal_runner import ModalRunner
+    from actalux.diarization.modal_runner import EMBED_MODEL, ModalRunner
     from actalux.ingest.youtube import download_audio
 
+    models = _parse_embedders(args.embedders, primary=EMBED_MODEL)
+    logger.info("embedders: %s (first persisted; any others measured only)", ", ".join(models))
     runner = ModalRunner()
     retries = WARP_DOWNLOAD_RETRIES if args.proxy else 1
-    samples: list[Sample] = []
-    pooled_officials: list[tuple[EnrollableCluster, Any]] = []  # (cluster, Pooled), for persist
+    samples_by_model: dict[str, list[Sample]] = {m: [] for m in models}
+    pooled_officials: list[tuple[EnrollableCluster, Any]] = []  # (cluster, Pooled), primary only
     processed_docs: set[int] = set()
 
     for doc_id in docs_to_process:
@@ -335,7 +447,8 @@ def _apply(
             logger.exception("audio download failed for doc %d (%s); skipping", doc_id, video_id)
             continue
         try:
-            turns_by_label = runner.embed_cluster_turns(str(audio), payload)
+            # one download -> one Modal call embeds the same spans with every model
+            turns_by_model = runner.embed_cluster_turns_multi(str(audio), payload, models)
         finally:
             if not args.keep_audio:
                 audio.unlink(missing_ok=True)
@@ -343,27 +456,28 @@ def _apply(
         # zero clusters survive pooling (so a now-empty poisoned meeting doesn't keep old rows).
         processed_docs.add(doc_id)
 
-        for ec in clusters:
-            pooled = pool_cluster(turns_by_label.get(ec.cluster_label, []), **POOL_PARAMS)
-            if pooled is None or pooled.seconds < args.min_seconds:
-                continue
-            samples.append(
-                Sample(
-                    ec.person_id,
-                    video_id,
-                    pooled.vector,
-                    purity=pooled.purity,
-                    confidence=ec.confidence,
-                )
-            )
-            pooled_officials.append((ec, pooled))
-        for lab in neg_labels:  # negatives: scored, NEVER persisted
-            pooled = pool_cluster(turns_by_label.get(lab, []), **POOL_PARAMS)
-            if pooled is not None and pooled.seconds >= args.min_seconds:
-                samples.append(Sample(None, video_id, pooled.vector, purity=pooled.purity))
+        meeting_samples, meeting_pooled = build_meeting_samples(
+            turns_by_model,
+            clusters,
+            neg_labels,
+            video_id,
+            min_seconds=args.min_seconds,
+            primary_model=models[0],
+        )
+        for model_id, model_samples in meeting_samples.items():
+            samples_by_model[model_id].extend(model_samples)
+        pooled_officials.extend(meeting_pooled)
 
     _finish(
-        client, place_id, entity_id, samples, pooled_officials, processed_docs, superseded, args
+        client,
+        place_id,
+        entity_id,
+        models,
+        samples_by_model,
+        pooled_officials,
+        processed_docs,
+        superseded,
+        args,
     )
 
 
@@ -371,15 +485,23 @@ def _finish(
     client: Client,
     place_id: int,
     entity_id: int | None,
-    samples: list[Sample],
+    models: list[str],
+    samples_by_model: dict[str, list[Sample]],
     pooled_officials: list[tuple[EnrollableCluster, Any]],
     processed_docs: set[int],
     superseded: set[int],
     args: argparse.Namespace,
 ) -> None:
-    """Nested-LOMO estimate + full-data refit, then persist the candidate gallery + record."""
+    """Nested-LOMO estimate + full-data refit, then persist the candidate gallery + record.
+
+    Only the primary model (``models[0]``) drives the verdict and gallery — its samples and pooled
+    officials are exactly what the pre-A/B path produced. Alternate embedders are measured off the
+    same meetings and folded into ``report['ab']`` only; none of their vectors are persisted.
+    """
     from actalux.diarization.modal_runner import EMBED_MODEL
 
+    primary = models[0]
+    samples = samples_by_model[primary]
     n_pos = sum(1 for s in samples if s.person_id is not None)
     n_neg = sum(1 for s in samples if s.person_id is None)
     if n_pos == 0:
@@ -431,6 +553,24 @@ def _finish(
         "nested_by_bar": [_curve_point(b, *multi[b]) for b in CURVE_PRECISION_BARS],
         "pareto": pareto_frontier(evaluate_grid(samples)),
     }
+    # Dual-embedder A/B: same honest harness on each alternate embedder, measurement only. Absent
+    # (no key) for a default single-model run, so its persisted report stays byte-identical.
+    ab = _ab_report(
+        samples_by_model,
+        primary_model=primary,
+        precision_bar=args.precision_bar,
+        curve_bars=curve_bars,
+    )
+    if ab:
+        report["ab"] = ab
+        for model_id, entry in ab.items():
+            logger.info(
+                "  A/B [%s]: macroP=%.3f recall=%.3f (%d enabled)",
+                model_id,
+                entry.get("macro_precision", 0.0),
+                entry.get("recall", 0.0),
+                entry.get("n_enabled", 0),
+            )
 
     logger.info(
         "nested LOMO: macroP=%.3f recall=%.3f fp_neg=%d (%d pos/%d neg, %d abstained folds)",

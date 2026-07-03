@@ -53,10 +53,14 @@ app = modal.App(APP_NAME)
 # that shifted them would silently invalidate stored voiceprints. torchaudio is
 # left to resolve (it has no 2.12.1 release; the spike ran it unpinned) — it is only
 # used to decode audio to a waveform, which does not affect the embeddings.
+# speechbrain is an alternate embedder for the dual-embedder A/B measurement only
+# (pyannote's PretrainedSpeakerEmbedding factory routes "speechbrain/..." ids to it);
+# its vectors are never persisted, so it needs no integrity pin — floor >=1.0 for the
+# `speechbrain.inference` API 4.0.5 imports, upper bound left to resolve against torch.
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .apt_install("ffmpeg")
-    .pip_install("torch==2.12.1", "torchaudio", "pyannote.audio==4.0.5")
+    .pip_install("torch==2.12.1", "torchaudio", "pyannote.audio==4.0.5", "speechbrain>=1.0")
 )
 
 
@@ -86,11 +90,16 @@ def _decode_16k_mono(audio_bytes: bytes):  # noqa: ANN202 - torch tensor type no
         return torchaudio.load(wav)
 
 
-def _load_embedder(token: str, device):  # noqa: ANN001, ANN202 - pyannote/torch types not importable locally
-    """Load the pinned wespeaker speaker-embedding model onto ``device``.
+def _load_embedder(model: str, token: str, device):  # noqa: ANN001, ANN202 - pyannote/torch types not importable locally
+    """Load a speaker-embedding model onto ``device`` by its HF id.
 
-    The HF-token kwarg was renamed across pyannote versions (use_auth_token ->
-    token); pass whichever this build's signature accepts.
+    ``model`` is dispatched by pyannote's PretrainedSpeakerEmbedding factory on a substring:
+    a "pyannote/..." id (the pinned wespeaker resnet34) loads the pyannote path, a
+    "speechbrain/..." id (the A/B alternate) the ECAPA path. Token handling is left exactly as
+    the validated primary path used it — the kwarg was renamed across pyannote versions
+    (use_auth_token -> token) and, when neither is on the factory signature, the download auth
+    falls back to the container's HF_TOKEN env. Not widened here, so the primary embedding stays
+    byte-stable; the ungated speechbrain model loads fine under the same env fallback.
     """
     import inspect
 
@@ -102,7 +111,7 @@ def _load_embedder(token: str, device):  # noqa: ANN001, ANN202 - pyannote/torch
         emb_kwargs["use_auth_token"] = token
     elif "token" in sig.parameters:
         emb_kwargs["token"] = token
-    return PretrainedSpeakerEmbedding(EMBED_MODEL, **emb_kwargs)
+    return PretrainedSpeakerEmbedding(model, **emb_kwargs)
 
 
 def _embed_spans(waveform, sample_rate, spans, embedder, device):  # noqa: ANN001, ANN202 - pyannote/torch types not importable locally
@@ -233,7 +242,7 @@ def diarize_remote(
 
     embeddings: list[dict] = []
     if return_embeddings:
-        embedder = _load_embedder(token, device)
+        embedder = _load_embedder(EMBED_MODEL, token, device)
         embeddings = _extract_cluster_embeddings(
             annotation, waveform, sample_rate, embedder, device
         )
@@ -246,38 +255,56 @@ def diarize_remote(
     secrets=[modal.Secret.from_name("actalux-hf")],
     timeout=60 * 60,
 )
-def embed_cluster_turns_remote(audio_bytes: bytes, clusters: list) -> list:
-    """Embed each cluster's STORED turns individually -> per-turn voiceprints.
+def embed_cluster_turns_remote(
+    audio_bytes: bytes, clusters: list, models: list | None = None
+) -> list:
+    """Embed each cluster's STORED turns individually with EACH model -> per-model voiceprints.
 
-    The enrollment path. A confirmed cluster's turns live in ``diarization_turns``;
+    The enrollment / A-B path. A confirmed cluster's turns live in ``diarization_turns``;
     re-diarizing a meeting would renumber the ``SPEAKER_NN`` labels, so we embed the stored
     spans directly rather than re-clustering. Turns are embedded SEPARATELY (not a
     whole-cluster concat) so the caller can pool with contamination-trimming + no-core
-    rejection (Gate B). One GPU load per meeting.
+    rejection (Gate B).
+
+    ``models`` is an ordered list of embedder HF ids; ``None`` -> ``[EMBED_MODEL]`` (the single
+    persisted wespeaker gallery, wire-compatible with a caller that passes nothing). Each model
+    is loaded, run over every cluster, then freed before the next so peak GPU memory is one
+    embedder plus the (once-decoded, reused) waveform — an L4 never holds two model graphs at once.
 
     ``clusters``: ``[{"cluster_label": str, "spans": [[start_s, end_s], ...]}, ...]``.
-    Returns ``[{"cluster_label", "turns": [{"vector": [...], "seconds"}, ...], "model"}]``.
+    Returns ``[{"cluster_label", "models": {model_id: [{"vector": [...], "seconds"}, ...]}}, ...]``.
     """
     import os
 
     import torch
 
+    model_ids = models or [EMBED_MODEL]
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    embedder = _load_embedder(os.environ["HF_TOKEN"], device)
+    token = os.environ["HF_TOKEN"]
     waveform, sample_rate = _decode_16k_mono(audio_bytes)
 
-    out: list[dict] = []
-    for c in clusters:
-        spans = [(float(a), float(b)) for a, b in c["spans"]]
-        turns = _embed_turns(waveform, sample_rate, spans, embedder, device)
-        out.append(
-            {
-                "cluster_label": c["cluster_label"],
-                "turns": turns,
-                "model": EMBED_MODEL,
-            }
-        )
-    return out
+    # {model_id: {cluster_label: turns}} — one embedder resident at a time (memory-bounded).
+    by_model: dict[str, dict[str, list[dict]]] = {}
+    for model_id in model_ids:
+        embedder = _load_embedder(model_id, token, device)
+        per_cluster: dict[str, list[dict]] = {}
+        for c in clusters:
+            spans = [(float(a), float(b)) for a, b in c["spans"]]
+            per_cluster[c["cluster_label"]] = _embed_turns(
+                waveform, sample_rate, spans, embedder, device
+            )
+        by_model[model_id] = per_cluster
+        del embedder
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+    return [
+        {
+            "cluster_label": c["cluster_label"],
+            "models": {m: by_model[m][c["cluster_label"]] for m in model_ids},
+        }
+        for c in clusters
+    ]
 
 
 class ModalRunner:
@@ -335,17 +362,31 @@ class ModalRunner:
 
         ``clusters`` is ``[{"cluster_label": str, "spans": [[start_s, end_s], ...]}]`` (the
         enrollment path: spans come from the stored ``diarization_turns``, robust to
-        re-diarization renumbering). Returns per-turn embeddings so the caller pools with
-        Gate B (``diarization/pooling.py``). Clusters with no embeddable turn are absent.
-        One GPU load per meeting.
+        re-diarization renumbering). Returns per-turn embeddings for the persisted wespeaker
+        gallery so the caller pools with Gate B (``diarization/pooling.py``). Clusters with no
+        embeddable turn are absent. The single-model view of ``embed_cluster_turns_multi`` — one
+        stable interface for the enroller, which needs only the primary model.
+        """
+        return self.embed_cluster_turns_multi(audio_uri, clusters, [EMBED_MODEL])[EMBED_MODEL]
+
+    def embed_cluster_turns_multi(
+        self, audio_uri: str, clusters: list[dict], models: list[str]
+    ) -> dict[str, dict[str, list[tuple[tuple[float, ...], float]]]]:
+        """Embed stored cluster turns with each model -> ``{model: {cluster_label: [(vec, s)]}}``.
+
+        The dual-embedder A/B path: one audio download and one Modal call embed the same spans with
+        every model in ``models`` (first is the persisted primary). Per-model turn lists come back
+        keyed by cluster; clusters with no embeddable turn under a given model are absent from that
+        model's map. Alt-model vectors are measurement-only — the caller persists none of them.
         """
         audio_bytes = Path(audio_uri).read_bytes()
         fn = modal.Function.from_name(APP_NAME, "embed_cluster_turns_remote")
-        out: dict[str, list[tuple[tuple[float, ...], float]]] = {}
-        for r in fn.remote(audio_bytes, clusters):
-            turns = [(tuple(t["vector"]), float(t["seconds"])) for t in r["turns"]]
-            if turns:
-                out[r["cluster_label"]] = turns
+        out: dict[str, dict[str, list[tuple[tuple[float, ...], float]]]] = {m: {} for m in models}
+        for r in fn.remote(audio_bytes, clusters, models):
+            for model_id, raw_turns in r["models"].items():
+                turns = [(tuple(t["vector"]), float(t["seconds"])) for t in raw_turns]
+                if turns:
+                    out[model_id][r["cluster_label"]] = turns
         return out
 
     @staticmethod

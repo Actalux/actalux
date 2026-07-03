@@ -45,6 +45,10 @@ on:
         description: "Cap the number of meetings processed (blank = all)"
         required: false
         default: ""
+      embedders:
+        description: "Comma-separated embedder ids; first is persisted, rest measured only (blank = wespeaker only)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -114,6 +118,7 @@ jobs:
           MIN_SECONDS: ${{ inputs.min_seconds }}
           NEG_PER_MEETING: ${{ inputs.neg_per_meeting }}
           LIMIT: ${{ inputs.limit }}
+          EMBEDDERS: ${{ inputs.embedders }}
         run: |
           ARGS="--state $STATE --place $PLACE --apply --proxy socks5h://127.0.0.1:40000"
           [ -n "$BODY" ] && ARGS="$ARGS --body $BODY"
@@ -121,4 +126,8 @@ jobs:
           [ -n "$MIN_SECONDS" ] && ARGS="$ARGS --min-seconds $MIN_SECONDS"
           [ -n "$NEG_PER_MEETING" ] && ARGS="$ARGS --neg-per-meeting $NEG_PER_MEETING"
           [ -n "$LIMIT" ] && ARGS="$ARGS --limit $LIMIT"
+          # model ids never contain spaces; strip any so "a, b" stays one argv token (ARGS is
+          # word-split unquoted below), then argparse sees a single comma-separated --embedders value
+          EMBEDDERS="${EMBEDDERS// /}"
+          [ -n "$EMBEDDERS" ] && ARGS="$ARGS --embedders $EMBEDDERS"
           uv run --group diarization python scripts/recalibrate_voiceprints.py $ARGS
