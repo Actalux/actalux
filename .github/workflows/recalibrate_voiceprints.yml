@@ -95,16 +95,29 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq cloudflare-warp
 
       - name: Connect Cloudflare WARP (proxy mode)
+        # Registration against the WARP API is flaky on hosted runners ("Failed to perform
+        # happy eyeballs", "Failed to communicate with the WARP API") — retry the whole
+        # register/connect/verify sequence rather than failing a multi-hour run on it.
         run: |
           sudo systemctl enable --now warp-svc
           sleep 6
-          warp-cli --accept-tos registration new
-          warp-cli --accept-tos mode proxy
-          warp-cli --accept-tos connect
-          sleep 8
-          warp-cli --accept-tos status
-          curl -s --socks5-hostname 127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/trace \
-            | grep -q "warp=on" || { echo "WARP not active"; exit 1; }
+          for attempt in 1 2 3; do
+            warp-cli --accept-tos registration delete >/dev/null 2>&1 || true
+            if warp-cli --accept-tos registration new \
+               && warp-cli --accept-tos mode proxy \
+               && warp-cli --accept-tos connect; then
+              sleep 8
+              if curl -s --socks5-hostname 127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/trace \
+                 | grep -q "warp=on"; then
+                warp-cli --accept-tos status
+                exit 0
+              fi
+            fi
+            echo "WARP attempt ${attempt} failed; retrying in 20s"
+            warp-cli --accept-tos disconnect >/dev/null 2>&1 || true
+            sleep 20
+          done
+          echo "WARP not active after 3 attempts"; exit 1
 
       - name: Verify schema is up to date
         run: uv run python scripts/apply_migrations.py --check
