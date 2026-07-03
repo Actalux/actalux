@@ -18,20 +18,42 @@ from typing import Any
 
 import numpy as np
 
-from actalux.diarization.labelqa import coherent_core, collapse_suspects
+from actalux.diarization.labelqa import (
+    coherent_core,
+    coherent_core_asnorm,
+    collapse_suspects,
+)
 
 # Operating-point search grid (cosine on L2-normalized vectors, so scores in [-1, 1]).
-# Threshold grid reaches 0.90 because the diagnostic same-person p90 is 0.937 — a 0.80
-# ceiling would stop below where a precise operating point can live.
-DEFAULT_THRESHOLDS = (0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90)
+# Threshold grid runs to 0.95 because the diagnostic same-person p90 is 0.937 — a 0.90
+# ceiling clips the wespeaker distribution just below where a precise operating point can live.
+DEFAULT_THRESHOLDS = (0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.92, 0.95)
 DEFAULT_MARGINS = (0.0, 0.05, 0.10, 0.15, 0.20)
 DEFAULT_AGGREGATIONS = ("mean", "max")
-# Gate A (label quality) core_floor + Gate B purity_floor are swept and refit; min_core and
-# collapse_bound are fixed structural safeguards (plan §7).
+# Gate A (label quality) core_floor + Gate B purity_floor are swept and refit; min_core is a
+# fixed structural safeguard (plan §7).
 DEFAULT_CORE_FLOORS = (0.30, 0.40, 0.50)
 DEFAULT_PURITY_FLOORS = (0.0, 0.30, 0.50)
+# Gate A scoring mode: "none" thresholds raw self-coherence (core_floor); "asnorm" z-scores it
+# against the impostor cohort and thresholds z_floor (E#1, plan §5). Both are swept.
+DEFAULT_SCORE_NORMS = ("none", "asnorm")
+# z-space floors for asnorm mode. A raw cosine floor (0.30–0.50) is meaningless once coherence is
+# measured in impostor-cohort standard deviations, so asnorm sweeps its own scale: a genuine
+# official sits a few σ above the cross-official cosine cloud.
+DEFAULT_Z_FLOORS = (1.0, 2.0, 3.0)
+# collapse_bound is cosine-scale-dependent (a wespeaker 0.90 near-duplicate is a lower cosine on
+# another embedder), so it is swept rather than pinned to one embedder's scale.
+DEFAULT_COLLAPSE_BOUNDS = (0.80, 0.85, 0.90)
 GATE_A_MIN_CORE = 2
+# Single-config default for enabled_officials; the sweep varies DEFAULT_COLLAPSE_BOUNDS instead.
 GATE_A_COLLAPSE_BOUND = 0.85
+# asnorm cohort guards: too few impostor scores, or a near-zero spread, leaves no z-scale, so the
+# sample falls back to the raw self-coherence test instead of dividing by ~0.
+ASNORM_MIN_COHORT = 3
+ASNORM_SIGMA_EPS = 1e-6
+# Precision bars the reporting curve is swept over (reporting only; the persisted verdict uses the
+# run's own --precision-bar).
+CURVE_PRECISION_BARS = (0.80, 0.85, 0.90, 0.95, 0.98)
 
 
 @dataclass
@@ -158,13 +180,27 @@ def leave_one_meeting_out(
 
 
 def enabled_officials(
-    train: list[Sample], *, core_floor: float, min_core: int, collapse_bound: float
+    train: list[Sample],
+    *,
+    core_floor: float,
+    min_core: int,
+    collapse_bound: float,
+    score_norm: str = "none",
+    z_floor: float | None = None,
+    cohort_min: int = ASNORM_MIN_COHORT,
+    sigma_eps: float = ASNORM_SIGMA_EPS,
 ) -> set[int]:
     """Gate A: officials from ``train`` with a cross-meeting coherent core and no collapse.
 
-    An official is enabled only if their voiceprints mutually agree (coherent core) AND
-    their voice is not near-duplicate with a *different* official's (a roll-call caller
-    labeled under several names). Negatives (person_id None) are ignored.
+    An official is enabled only if their voiceprints mutually agree (coherent core) AND their
+    voice is not near-duplicate with a *different* official's (a roll-call caller labeled under
+    several names). ``score_norm='asnorm'`` z-scores each sample's self-coherence against the
+    impostor cohort — every OTHER official's train vectors — and thresholds ``z_floor``, so a
+    modestly-coherent but clearly-non-impostor official can still enable; ``core_floor`` is then
+    only the degenerate-cohort fallback floor. Collapse detection stays on RAW cosine regardless
+    of ``score_norm``: it measures absolute similarity to another person's anchors, which
+    normalizing away would defeat. Negatives (person_id None) are ignored, so they never enter the
+    impostor cohort. Applied ONLY within training folds (leakage-safe).
     """
     by_person: dict[int, list[tuple[float, ...]]] = defaultdict(list)
     for s in train:
@@ -178,7 +214,20 @@ def enabled_officials(
     for person, vecs in by_person.items():
         if person in suspects:
             continue
-        if coherent_core(vecs, core_floor=core_floor, min_core=min_core):
+        if score_norm == "asnorm":
+            cohort = [v for other, ovecs in by_person.items() if other != person for v in ovecs]
+            core = coherent_core_asnorm(
+                vecs,
+                cohort,
+                z_floor=z_floor if z_floor is not None else 0.0,
+                min_core=min_core,
+                min_cohort=cohort_min,
+                sigma_eps=sigma_eps,
+                raw_fallback_floor=core_floor,
+            )
+        else:
+            core = coherent_core(vecs, core_floor=core_floor, min_core=min_core)
+        if core:
             enabled.add(person)
     return enabled
 
@@ -266,9 +315,90 @@ class OperatingPoint:
     aggregation: str
     enabled: set[int]
     metrics: Metrics
+    score_norm: str = "none"
+    collapse_bound: float = GATE_A_COLLAPSE_BOUND
+    z_floor: float | None = None
 
 
-def select_operating_point(
+@dataclass
+class GridPoint:
+    """One evaluated configuration and its leave-one-meeting-out metrics (``precision_bar``-free).
+
+    Carries every swept axis so a Pareto point can report which knobs produced its (precision,
+    recall) — including the AS-norm mode and z-floor. The same grid is selected against every bar
+    the curve sweeps, so it is computed once per fold and reused.
+    """
+
+    purity_floor: float
+    collapse_bound: float
+    score_norm: str
+    core_floor: float
+    z_floor: float | None
+    aggregation: str
+    threshold: float
+    margin: float
+    enabled: frozenset[int]
+    metrics: Metrics
+
+
+def _split_confusions(metrics: Metrics) -> tuple[int, int]:
+    """Split confusions into (citizen→official false positives, official↔official confusions).
+
+    The operator's split-bar policy treats citizen false positives (a negative matched to an
+    official) as hard-zero-forever while official confusions may one day tolerate a small rate;
+    reporting them apart at every operating point is what lets that call be made on data.
+    """
+    citizen_fp = sum(1 for true, _ in metrics.confusions if true is None)
+    official = sum(1 for true, _ in metrics.confusions if true is not None)
+    return citizen_fp, official
+
+
+# One query's leave-one-meeting-out ranking: (true, top_person, top_score, second_score).
+_Ranking = list[tuple[int | None, int | None, float, float]]
+
+
+def _rank_lomo(
+    samples: list[Sample],
+    *,
+    aggregation: str,
+    allowed: set[int],
+    sim: list[list[float]] | None,
+) -> _Ranking:
+    """Per query: (true, top_person, top_score, second_score) under leave-one-meeting-out.
+
+    The person scores depend only on (aggregation, enabled gallery) — NOT on threshold/margin,
+    which merely gate them. Ranking once here lets the (threshold, margin) sweep be O(1) compares
+    instead of re-scoring the gallery per grid cell, the sweep's dominant cost. Semantically this
+    is exactly what ``predict`` computes, factored out of the inner loop.
+    """
+    ranked: _Ranking = []
+    for q in samples:
+        gallery = [s for s in samples if s.meeting_key != q.meeting_key]
+        scores = person_scores(q, gallery, aggregation=aggregation, allowed=allowed, sim=sim)
+        if not scores:
+            ranked.append((q.person_id, None, 0.0, 0.0))
+            continue
+        order = sorted(scores.items(), key=lambda kv: -kv[1])
+        top_person, top_score = order[0]
+        second = order[1][1] if len(order) > 1 else 0.0
+        ranked.append((q.person_id, top_person, top_score, second))
+    return ranked
+
+
+def _preds_at(
+    ranked: _Ranking, threshold: float, margin: float
+) -> list[tuple[int | None, int | None]]:
+    """Gate precomputed rankings by (threshold, margin) — ``predict``'s body over the sweep."""
+    out: list[tuple[int | None, int | None]] = []
+    for true, top_person, top_score, second in ranked:
+        if top_person is not None and top_score >= threshold and (top_score - second) >= margin:
+            out.append((true, top_person))
+        else:
+            out.append((true, None))
+    return out
+
+
+def evaluate_grid(
     samples: list[Sample],
     *,
     thresholds: tuple[float, ...] = DEFAULT_THRESHOLDS,
@@ -276,20 +406,24 @@ def select_operating_point(
     aggregations: tuple[str, ...] = DEFAULT_AGGREGATIONS,
     core_floors: tuple[float, ...] = DEFAULT_CORE_FLOORS,
     purity_floors: tuple[float, ...] = DEFAULT_PURITY_FLOORS,
+    z_floors: tuple[float, ...] = DEFAULT_Z_FLOORS,
+    collapse_bounds: tuple[float, ...] = DEFAULT_COLLAPSE_BOUNDS,
+    score_norms: tuple[str, ...] = DEFAULT_SCORE_NORMS,
     min_core: int = GATE_A_MIN_CORE,
-    collapse_bound: float = GATE_A_COLLAPSE_BOUND,
-    precision_bar: float,
-) -> OperatingPoint | None:
-    """Pick (purity_floor, core_floor, threshold, margin, aggregation) maximizing recall@bar.
+) -> list[GridPoint]:
+    """Every (purity, collapse, score_norm, floor, aggregation, threshold, margin) point + metrics.
 
-    Sweeps the Gate-B purity floor, Gate-A enablement, and matcher params, evaluating each by
-    leave-one-meeting-out on ``samples`` (precomputed similarity per purity subset). Returns
-    the highest-recall config that clears the precision bar (conservative tie-break: higher
-    threshold, then margin), or ``None`` if nothing clears it. Used per training fold (nested)
-    and for the full-data refit.
+    ``precision_bar``-independent: the objective and the precision↔recall curve both select from
+    this grid, so the curve reuses one grid per fold across all bars. Raw and asnorm floors live on
+    different scales, so each mode sweeps its own floor axis; a degenerate asnorm cohort falls back
+    to the raw self-coherence test at the strictest swept raw floor (precision-first: when a sample
+    can't be normalized we do not get more permissive).
     """
-    best: OperatingPoint | None = None
-    best_key: tuple[float, float, float] | None = None
+    unknown = set(score_norms) - {"none", "asnorm"}
+    if unknown:
+        raise ValueError(f"unknown score_norm(s): {sorted(unknown)} (expected 'none' / 'asnorm')")
+    points: list[GridPoint] = []
+    asnorm_fallback = max(core_floors)
     for pf in purity_floors:
         filtered = [s for s in samples if s.purity >= pf]
         if len(filtered) < min_core:
@@ -300,25 +434,266 @@ def select_operating_point(
         below_floor_misses = [
             (s.person_id, None) for s in samples if s.person_id is not None and s.purity < pf
         ]
-        for core_floor in core_floors:
-            enabled = enabled_officials(
-                filtered, core_floor=core_floor, min_core=min_core, collapse_bound=collapse_bound
+        # Rankings depend only on (aggregation, enabled) for this purity subset's fixed sim, so
+        # cache them: distinct (collapse, floor) configs often produce the same enabled set.
+        rank_cache: dict[tuple[str, frozenset[int]], _Ranking] = {}
+        for collapse_bound in collapse_bounds:
+            for score_norm in score_norms:
+                is_asnorm = score_norm == "asnorm"
+                floors = z_floors if is_asnorm else core_floors
+                for fl in floors:
+                    core_floor = asnorm_fallback if is_asnorm else fl
+                    z_floor = fl if is_asnorm else None
+                    enabled = enabled_officials(
+                        filtered,
+                        core_floor=core_floor,
+                        min_core=min_core,
+                        collapse_bound=collapse_bound,
+                        score_norm=score_norm,
+                        z_floor=z_floor,
+                    )
+                    if not enabled:
+                        continue
+                    frozen = frozenset(enabled)
+                    for agg in aggregations:
+                        ranked = rank_cache.get((agg, frozen))
+                        if ranked is None:
+                            ranked = _rank_lomo(filtered, aggregation=agg, allowed=enabled, sim=sim)
+                            rank_cache[(agg, frozen)] = ranked
+                        for t in thresholds:
+                            for mgn in margins:
+                                mtr = score(_preds_at(ranked, t, mgn) + below_floor_misses)
+                                points.append(
+                                    GridPoint(
+                                        purity_floor=pf,
+                                        collapse_bound=collapse_bound,
+                                        score_norm=score_norm,
+                                        core_floor=core_floor,
+                                        z_floor=z_floor,
+                                        aggregation=agg,
+                                        threshold=t,
+                                        margin=mgn,
+                                        enabled=frozen,
+                                        metrics=mtr,
+                                    )
+                                )
+    return points
+
+
+def best_from_grid(grid: list[GridPoint], precision_bar: float) -> OperatingPoint | None:
+    """Highest-recall grid point clearing the precision bar; conservative tie-break (plan §5).
+
+    Ties on recall resolve toward the higher threshold, then higher margin — the precision-first
+    cardinal ("never a wrong name") settles a tie on stricter matching. This is exactly the
+    pre-asnorm objective; the added axes only widen the grid it selects from. Grid order is fixed
+    (``evaluate_grid``), so first-wins ties on (recall, threshold, margin) are deterministic.
+    """
+    best: OperatingPoint | None = None
+    best_key: tuple[float, float, float] | None = None
+    for gp in grid:
+        if gp.metrics.macro_precision < precision_bar:
+            continue
+        key = (gp.metrics.recall, gp.threshold, gp.margin)
+        if best_key is None or key > best_key:
+            best_key = key
+            best = OperatingPoint(
+                purity_floor=gp.purity_floor,
+                core_floor=gp.core_floor,
+                threshold=gp.threshold,
+                margin=gp.margin,
+                aggregation=gp.aggregation,
+                enabled=set(gp.enabled),
+                metrics=gp.metrics,
+                score_norm=gp.score_norm,
+                collapse_bound=gp.collapse_bound,
+                z_floor=gp.z_floor,
             )
-            if not enabled:
-                continue
-            for agg in aggregations:
-                for t in thresholds:
-                    for mgn in margins:
-                        preds = leave_one_meeting_out(
-                            filtered, t, mgn, aggregation=agg, allowed=enabled, sim=sim
-                        )
-                        mtr = score(preds + below_floor_misses)
-                        if mtr.macro_precision >= precision_bar:
-                            key = (mtr.recall, t, mgn)
-                            if best_key is None or key > best_key:
-                                best_key = key
-                                best = OperatingPoint(pf, core_floor, t, mgn, agg, enabled, mtr)
     return best
+
+
+def pareto_frontier(grid: list[GridPoint]) -> list[dict[str, Any]]:
+    """The non-dominated (precision, recall) points, each tagged with the knobs that produced it.
+
+    Reporting only: the persisted operating point is chosen by ``best_from_grid`` at the run's
+    precision bar, never from this frontier. A point is on the frontier if no other point beats it
+    on both precision and recall. Duplicate (precision, recall) collapse to the most conservative
+    representative (higher threshold, then margin) so the frontier is one row per trade-off.
+    """
+    best_by_pr: dict[tuple[float, float], GridPoint] = {}
+    for gp in grid:
+        pr = (round(gp.metrics.macro_precision, 9), round(gp.metrics.recall, 9))
+        cur = best_by_pr.get(pr)
+        if cur is None or (gp.threshold, gp.margin) > (cur.threshold, cur.margin):
+            best_by_pr[pr] = gp
+    candidates = list(best_by_pr.values())
+    frontier: list[dict[str, Any]] = []
+    for gp in candidates:
+        p, r = gp.metrics.macro_precision, gp.metrics.recall
+        dominated = any(
+            o is not gp
+            and o.metrics.macro_precision >= p
+            and o.metrics.recall >= r
+            and (o.metrics.macro_precision > p or o.metrics.recall > r)
+            for o in candidates
+        )
+        if dominated:
+            continue
+        citizen_fp, official = _split_confusions(gp.metrics)
+        frontier.append(
+            {
+                "precision": round(p, 4),
+                "recall": round(r, 4),
+                "threshold": gp.threshold,
+                "margin": gp.margin,
+                "core_floor": gp.core_floor,
+                "z_floor": gp.z_floor,
+                "collapse_bound": gp.collapse_bound,
+                "score_norm": gp.score_norm,
+                "citizen_fp": citizen_fp,
+                "official_confusion_count": official,
+            }
+        )
+    frontier.sort(key=lambda d: (d["recall"], d["precision"]))
+    return frontier
+
+
+def select_operating_point(
+    samples: list[Sample],
+    *,
+    thresholds: tuple[float, ...] = DEFAULT_THRESHOLDS,
+    margins: tuple[float, ...] = DEFAULT_MARGINS,
+    aggregations: tuple[str, ...] = DEFAULT_AGGREGATIONS,
+    core_floors: tuple[float, ...] = DEFAULT_CORE_FLOORS,
+    purity_floors: tuple[float, ...] = DEFAULT_PURITY_FLOORS,
+    z_floors: tuple[float, ...] = DEFAULT_Z_FLOORS,
+    collapse_bounds: tuple[float, ...] = DEFAULT_COLLAPSE_BOUNDS,
+    score_norms: tuple[str, ...] = DEFAULT_SCORE_NORMS,
+    min_core: int = GATE_A_MIN_CORE,
+    precision_bar: float,
+) -> OperatingPoint | None:
+    """Pick the swept config maximizing recall@bar (Gate B purity + Gate A enablement + matcher).
+
+    Evaluates the full grid (``evaluate_grid``) then selects the highest-recall point clearing the
+    precision bar (conservative tie-break). Used per training fold (nested) and for the full-data
+    refit. Returns ``None`` if nothing clears the bar.
+    """
+    grid = evaluate_grid(
+        samples,
+        thresholds=thresholds,
+        margins=margins,
+        aggregations=aggregations,
+        core_floors=core_floors,
+        purity_floors=purity_floors,
+        z_floors=z_floors,
+        collapse_bounds=collapse_bounds,
+        score_norms=score_norms,
+        min_core=min_core,
+    )
+    return best_from_grid(grid, precision_bar)
+
+
+def _score_held_out(
+    held: list[Sample], train: list[Sample], op: OperatingPoint
+) -> list[tuple[int | None, int | None]]:
+    """Score a held-out meeting's clusters against the training gallery at ``op`` (no refit).
+
+    A held-out cluster below the chosen purity floor is not matchable (Gate B would reject it): a
+    positive becomes a recall miss, a negative is simply never presented to the matcher. This is
+    the leakage-safe scoring step — enablement/params come only from ``train``.
+    """
+    gallery = [s for s in train if s.purity >= op.purity_floor]
+    out: list[tuple[int | None, int | None]] = []
+    for q in held:
+        if q.purity < op.purity_floor:
+            if q.person_id is not None:
+                out.append((q.person_id, None))
+            continue
+        out.append(
+            (
+                q.person_id,
+                predict(
+                    q, gallery, op.threshold, op.margin,
+                    aggregation=op.aggregation, allowed=op.enabled,
+                ),
+            )
+        )  # fmt: skip
+    return out
+
+
+def nested_lomo_multi_bar(
+    samples: list[Sample],
+    *,
+    precision_bars: tuple[float, ...],
+    thresholds: tuple[float, ...] = DEFAULT_THRESHOLDS,
+    margins: tuple[float, ...] = DEFAULT_MARGINS,
+    aggregations: tuple[str, ...] = DEFAULT_AGGREGATIONS,
+    core_floors: tuple[float, ...] = DEFAULT_CORE_FLOORS,
+    purity_floors: tuple[float, ...] = DEFAULT_PURITY_FLOORS,
+    z_floors: tuple[float, ...] = DEFAULT_Z_FLOORS,
+    collapse_bounds: tuple[float, ...] = DEFAULT_COLLAPSE_BOUNDS,
+    score_norms: tuple[str, ...] = DEFAULT_SCORE_NORMS,
+    min_core: int = GATE_A_MIN_CORE,
+) -> dict[float, tuple[Metrics, dict[str, Any]]]:
+    """Nested leave-one-meeting-out at several precision bars, reusing one grid per fold.
+
+    The per-fold grid (``evaluate_grid`` on the OTHER meetings) is the whole cost; selecting a
+    different bar from it and re-scoring the held-out meeting is cheap, so the precision↔recall
+    curve costs one nested pass, not one per bar. Each bar's result is identical to a standalone
+    ``nested_leave_one_meeting_out`` at that bar (same grid, same selection, same held-out
+    scoring). The grid is built from training meetings only, so no held-out sample reaches the
+    cohort stats or the selection.
+    """
+    meetings = sorted({s.meeting_key for s in samples})
+    preds_by_bar: dict[float, list[tuple[int | None, int | None]]] = {b: [] for b in precision_bars}
+    chosen_by_bar: dict[float, list[dict[str, Any]]] = {b: [] for b in precision_bars}
+    abstained_by_bar: dict[float, int] = {b: 0 for b in precision_bars}
+    for mk in meetings:
+        held = [s for s in samples if s.meeting_key == mk]
+        train = [s for s in samples if s.meeting_key != mk]
+        grid = evaluate_grid(
+            train,
+            thresholds=thresholds,
+            margins=margins,
+            aggregations=aggregations,
+            core_floors=core_floors,
+            purity_floors=purity_floors,
+            z_floors=z_floors,
+            collapse_bounds=collapse_bounds,
+            score_norms=score_norms,
+            min_core=min_core,
+        )
+        for b in precision_bars:
+            op = best_from_grid(grid, b)
+            if op is None:
+                abstained_by_bar[b] += 1
+                preds_by_bar[b].extend((q.person_id, None) for q in held)
+                continue
+            chosen_by_bar[b].append(
+                {
+                    "purity_floor": op.purity_floor,
+                    "core_floor": op.core_floor,
+                    "threshold": op.threshold,
+                    "margin": op.margin,
+                    "n_enabled": float(len(op.enabled)),
+                    "score_norm": op.score_norm,
+                    "collapse_bound": op.collapse_bound,
+                    "z_floor": op.z_floor,
+                }
+            )
+            preds_by_bar[b].extend(_score_held_out(held, train, op))
+    n_positives = sum(1 for s in samples if s.person_id is not None)
+    n_negatives = sum(1 for s in samples if s.person_id is None)
+    result: dict[float, tuple[Metrics, dict[str, Any]]] = {}
+    for b in precision_bars:
+        provenance = {
+            "folds": len(meetings),
+            "abstained_folds": abstained_by_bar[b],
+            "n_positives": n_positives,
+            "n_negatives": n_negatives,
+            "chosen": chosen_by_bar[b],
+        }
+        result[b] = (score(preds_by_bar[b]), provenance)
+    return result
 
 
 def nested_leave_one_meeting_out(
@@ -329,71 +704,29 @@ def nested_leave_one_meeting_out(
     aggregations: tuple[str, ...] = DEFAULT_AGGREGATIONS,
     core_floors: tuple[float, ...] = DEFAULT_CORE_FLOORS,
     purity_floors: tuple[float, ...] = DEFAULT_PURITY_FLOORS,
+    z_floors: tuple[float, ...] = DEFAULT_Z_FLOORS,
+    collapse_bounds: tuple[float, ...] = DEFAULT_COLLAPSE_BOUNDS,
+    score_norms: tuple[str, ...] = DEFAULT_SCORE_NORMS,
     min_core: int = GATE_A_MIN_CORE,
-    collapse_bound: float = GATE_A_COLLAPSE_BOUND,
     precision_bar: float,
 ) -> tuple[Metrics, dict[str, Any]]:
     """Honest performance estimate: params/enablement chosen per fold from OTHER meetings.
 
-    Outer loop holds out one meeting; the operating point (purity floor + enablement + matcher
-    params) is selected on the remaining meetings only, then the held-out meeting's positives
-    AND negatives are scored unfiltered against the training gallery. A held-out cluster below
-    the chosen purity floor is not matchable (Gate B would reject it), so it is not scored.
-    This removes the lucky-operating-point circularity (plan §5). Returns (Metrics, provenance).
+    A single-bar view of ``nested_lomo_multi_bar`` (one mechanism for one bar and for the curve's
+    many). Outer loop holds out one meeting; the operating point is selected on the remaining
+    meetings only, then the held-out positives AND negatives are scored unfiltered against the
+    training gallery — removing the lucky-operating-point circularity (plan §5).
     """
-    meetings = sorted({s.meeting_key for s in samples})
-    preds: list[tuple[int | None, int | None]] = []
-    chosen: list[dict[str, float]] = []
-    abstained_folds = 0
-    for mk in meetings:
-        held = [s for s in samples if s.meeting_key == mk]
-        train = [s for s in samples if s.meeting_key != mk]
-        op = select_operating_point(
-            train,
-            thresholds=thresholds,
-            margins=margins,
-            aggregations=aggregations,
-            core_floors=core_floors,
-            purity_floors=purity_floors,
-            min_core=min_core,
-            collapse_bound=collapse_bound,
-            precision_bar=precision_bar,
-        )
-        if op is None:
-            abstained_folds += 1
-            preds.extend((q.person_id, None) for q in held)
-            continue
-        chosen.append(
-            {
-                "purity_floor": op.purity_floor,
-                "core_floor": op.core_floor,
-                "threshold": op.threshold,
-                "margin": op.margin,
-                "n_enabled": float(len(op.enabled)),
-            }
-        )
-        gallery = [s for s in train if s.purity >= op.purity_floor]
-        for q in held:
-            if q.purity < op.purity_floor:
-                # Gate B would reject this cluster. A positive is then a recall miss; a negative
-                # is simply never presented to the matcher (not a false-positive opportunity).
-                if q.person_id is not None:
-                    preds.append((q.person_id, None))
-                continue
-            preds.append(
-                (
-                    q.person_id,
-                    predict(
-                        q, gallery, op.threshold, op.margin,
-                        aggregation=op.aggregation, allowed=op.enabled,
-                    ),
-                )
-            )  # fmt: skip
-    provenance = {
-        "folds": len(meetings),
-        "abstained_folds": abstained_folds,
-        "n_positives": sum(1 for s in samples if s.person_id is not None),
-        "n_negatives": sum(1 for s in samples if s.person_id is None),
-        "chosen": chosen,
-    }
-    return score(preds), provenance
+    return nested_lomo_multi_bar(
+        samples,
+        precision_bars=(precision_bar,),
+        thresholds=thresholds,
+        margins=margins,
+        aggregations=aggregations,
+        core_floors=core_floors,
+        purity_floors=purity_floors,
+        z_floors=z_floors,
+        collapse_bounds=collapse_bounds,
+        score_norms=score_norms,
+        min_core=min_core,
+    )[precision_bar]

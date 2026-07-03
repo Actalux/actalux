@@ -55,6 +55,50 @@ def coherent_core(
     return core if len(core) >= min_core else []
 
 
+def coherent_core_asnorm(
+    own_vectors: list[tuple[float, ...]],
+    cohort_vectors: list[tuple[float, ...]],
+    *,
+    z_floor: float,
+    min_core: int,
+    min_cohort: int,
+    sigma_eps: float,
+    raw_fallback_floor: float,
+) -> list[int]:
+    """Indices of an official's samples that stand clear of the impostor cohort (AS-norm core).
+
+    The genuine statistic per own sample is its mean cosine to the official's OTHER samples (the
+    same self-coherence ``coherent_core`` thresholds raw). Here it is z-scored against the impostor
+    cohort — that sample's cosines to every OTHER official's vectors — before comparison, so an
+    official whose absolute coherence is modest but clearly above the cross-official cloud can still
+    form a core. A raw cosine floor is meaningless on the z-scale, so asnorm gets its own
+    ``z_floor``. A degenerate cohort (fewer than ``min_cohort`` scores, or a spread below
+    ``sigma_eps``) has no z-scale, so that sample falls back to the raw self-coherence test at
+    ``raw_fallback_floor`` rather than dividing by ~0. Population std (ddof=0) matches AS-norm's
+    cohort statistic. Cohort is caller-supplied and excludes negatives.
+    """
+    if not own_vectors:
+        return []
+    own_means = mean_cosine_to_others(own_vectors)
+    own = _normalize(np.asarray(own_vectors, dtype=np.float64))
+    cohort = _normalize(np.asarray(cohort_vectors, dtype=np.float64)) if cohort_vectors else None
+    core: list[int] = []
+    for i in range(len(own_vectors)):
+        if cohort is None or len(cohort_vectors) < min_cohort:
+            in_core = own_means[i] >= raw_fallback_floor
+        else:
+            cohort_cos = own[i] @ cohort.T  # impostor scores for own sample i
+            sigma = float(cohort_cos.std())
+            if sigma < sigma_eps:
+                in_core = own_means[i] >= raw_fallback_floor
+            else:
+                z = (own_means[i] - float(cohort_cos.mean())) / sigma
+                in_core = z >= z_floor
+        if in_core:
+            core.append(i)
+    return core if len(core) >= min_core else []
+
+
 def collapse_suspects(
     labeled: list[tuple[int, tuple[float, ...]]], *, collapse_bound: float
 ) -> set[int]:

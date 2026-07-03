@@ -49,8 +49,11 @@ from actalux.diarization.enrollment import (
     voiceprint_row,
 )
 from actalux.diarization.matching import (
+    CURVE_PRECISION_BARS,
     Sample,
-    nested_leave_one_meeting_out,
+    evaluate_grid,
+    nested_lomo_multi_bar,
+    pareto_frontier,
     select_operating_point,
 )
 from actalux.errors import ActaluxError
@@ -119,6 +122,25 @@ def _confusion_report(metrics: Any) -> dict[str, Any]:
             str(p): round(v, 4) for p, v in metrics.per_person_precision.items()
         },
         "official_confusions": official_confusions[:50],
+    }
+
+
+def _curve_point(precision_bar: float, metrics: Any, provenance: dict[str, Any]) -> dict[str, Any]:
+    """One honest nested-LOMO point for the precision↔recall curve, false positives split by type.
+
+    citizen_fp (a negative matched to an official) and official_confusion_count (one official
+    matched as another) are reported apart so the operator's split-bar policy can be decided on
+    data. Aggregate counts only — never a negative's identifier.
+    """
+    citizen_fp = sum(1 for true, _ in metrics.confusions if true is None)
+    official = sum(1 for true, _ in metrics.confusions if true is not None)
+    return {
+        "precision_bar": precision_bar,
+        "macro_precision": round(metrics.macro_precision, 4),
+        "recall": round(metrics.recall, 4),
+        "citizen_fp": citizen_fp,
+        "official_confusion_count": official,
+        "abstained_folds": provenance["abstained_folds"],
     }
 
 
@@ -356,7 +378,12 @@ def _finish(
         logger.warning("no official voiceprints pooled; nothing to calibrate")
         return
 
-    nested, prov = nested_leave_one_meeting_out(samples, precision_bar=args.precision_bar)
+    # One nested pass over the union of the run's bar and the reporting curve's bars, reusing each
+    # fold's grid across bars. The verdict below reads nested@(args.precision_bar) — identical to a
+    # standalone nested_leave_one_meeting_out at that bar — so the persisted decision is unchanged.
+    curve_bars = tuple(sorted({args.precision_bar, *CURVE_PRECISION_BARS}))
+    multi = nested_lomo_multi_bar(samples, precision_bars=curve_bars)
+    nested, prov = multi[args.precision_bar]
     refit = select_operating_point(samples, precision_bar=args.precision_bar)
 
     # CANDIDATE only if the honest (nested, no-circular) estimate clears the bar; the refit is
@@ -378,10 +405,19 @@ def _finish(
             "threshold": refit.threshold,
             "margin": refit.margin,
             "aggregation": refit.aggregation,
+            "score_norm": refit.score_norm,
+            "collapse_bound": refit.collapse_bound,
+            "z_floor": refit.z_floor,
             "n_enabled": len(refit.enabled),
             "in_sample_macroP": round(refit.metrics.macro_precision, 4),
             "in_sample_recall": round(refit.metrics.recall, 4),
         }
+    # Reporting-only precision↔recall curve: honest nested metrics at each bar (citizen vs official
+    # FPs split) + the full-data Pareto frontier. Neither drives the persisted verdict/gallery.
+    report["curve"] = {
+        "nested_by_bar": [_curve_point(b, *multi[b]) for b in CURVE_PRECISION_BARS],
+        "pareto": pareto_frontier(evaluate_grid(samples)),
+    }
 
     logger.info(
         "nested LOMO: macroP=%.3f recall=%.3f fp_neg=%d (%d pos/%d neg, %d abstained folds)",
