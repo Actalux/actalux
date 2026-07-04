@@ -34,6 +34,7 @@ import logging
 import os
 from collections import defaultdict
 from dataclasses import dataclass
+from itertools import groupby
 from typing import Any
 
 from supabase import Client
@@ -57,6 +58,15 @@ logger = logging.getLogger("confirm_speaker")
 CONFIRM_TARGET_MEETINGS = 3
 EXCERPTS_PER_CANDIDATE = 3
 EXCERPT_MAX_CHARS = 240
+# The batch screen packs many clusters onto one page, so it shows fewer, tighter excerpts than the
+# clip-by-clip view and caps how many clusters an official gets per pass (the rest surface on a
+# later pass). These are display-only knobs; they never affect which rows are confirmable.
+BATCH_MAX_CANDIDATES_PER_OFFICIAL = 8
+BATCH_EXCERPTS_PER_CANDIDATE = 2
+BATCH_EXCERPT_MAX_CHARS = 200
+# Gate A survives a leave-one-meeting-out fold only with >=2 confirmed meetings in the TRAIN split
+# (see CONFIRM_TARGET_MEETINGS above); the batch summary flags officials that cross this bar.
+ENABLEMENT_MIN_MEETINGS = 2
 # A locked human decision is never re-shown as a candidate.
 LOCKED_TIERS = ("confirmed", "rejected")
 
@@ -79,6 +89,7 @@ class Candidate:
     meeting_date: str
     seconds: float
     excerpts: tuple[tuple[int, str], ...] = ()  # (start_seconds, text), longest first
+    roster_title: str | None = None  # the official's memberships.role in this body (display only)
 
 
 @dataclass
@@ -194,6 +205,125 @@ def _order_person_candidates(cands: list[Candidate], already: set[str]) -> list[
     return representatives + extras + seen
 
 
+# --- batch mode: per-official screens (unit-tested) -------------------------------
+
+
+@dataclass(frozen=True)
+class BatchInput:
+    """A parsed response to one official screen. ``confirm``/``reject`` are 1-based positions."""
+
+    action: str  # "apply" | "skip" | "quit"
+    confirm: tuple[int, ...] = ()
+    reject: tuple[int, ...] = ()
+
+
+@dataclass(frozen=True)
+class OfficialGroup:
+    """One official's screen: the capped clusters shown plus how many exist in total."""
+
+    person_id: int
+    official_name: str
+    roster_title: str | None
+    listed: tuple[Candidate, ...]  # capped, most-speech-first — the numbered rows 1..len(listed)
+    total: int  # candidates before the per-pass cap (drives the "showing N of M" note)
+
+
+def _parse_positions(part: str) -> list[int] | None:
+    """Parse a comma/space-separated position list; None if any token is not a bare number."""
+    tokens = part.replace(",", " ").split()
+    out: list[int] = []
+    for tok in tokens:
+        if not tok.isdigit():
+            return None
+        out.append(int(tok))
+    return out
+
+
+def parse_batch_input(raw: str, listed_count: int) -> BatchInput | None:
+    """Parse one official-screen response into a decision, or None on garbage (caller re-prompts).
+
+    Grammar (numbers are 1-based positions in the displayed list):
+      ``""`` / ``s``  -> skip this official (writes nothing)
+      ``q``           -> quit with a summary
+      ``1,3``         -> confirm positions 1 and 3
+      ``a``           -> confirm every listed position
+      ``n 2``         -> reject position 2 (no confirmations)
+      ``1,3 n 2``     -> confirm 1 and 3, reject 2
+
+    The optional ``n`` clause trails the confirm part; ``a`` cannot be combined with a reject
+    clause (that would confirm and reject the same rows), which parses as garbage. Out-of-range
+    positions, confirm/reject overlap, and an empty result all return None so no wrong row is ever
+    written on a fat-fingered entry.
+    """
+    text = raw.strip().lower()
+    if text in {"", "s"}:
+        return BatchInput("skip")
+    if text == "q":
+        return BatchInput("quit")
+
+    confirm_part, sep, reject_part = text.partition("n")
+    confirm_token = confirm_part.replace(",", " ").strip()
+    if confirm_token == "a":
+        confirm = list(range(1, listed_count + 1))
+    else:
+        parsed = _parse_positions(confirm_part)
+        if parsed is None:
+            return None
+        confirm = parsed
+
+    if sep == "n":
+        rejected = _parse_positions(reject_part)
+        if not rejected:  # None (garbage) or empty ("n" with no numbers) -> re-prompt
+            return None
+        reject = rejected
+    else:
+        reject = []
+
+    positions = set(confirm) | set(reject)
+    if not positions:
+        return None
+    if any(p < 1 or p > listed_count for p in positions):
+        return None
+    if set(confirm) & set(reject):
+        return None
+    return BatchInput("apply", tuple(sorted(set(confirm))), tuple(sorted(set(reject))))
+
+
+def build_official_groups(
+    candidates: list[Candidate],
+    confirmed_meetings: dict[int, set[str]],
+    *,
+    cap: int = BATCH_MAX_CANDIDATES_PER_OFFICIAL,
+    done_bar: int = CONFIRM_TARGET_MEETINGS,
+) -> list[OfficialGroup]:
+    """Group candidates into per-official screens, least-covered official first.
+
+    Officials already spanning ``done_bar`` distinct confirmed meetings are dropped — they have the
+    cross-meeting coverage Gate A needs, so more confirmations buy nothing. (Spanning that many
+    meetings implies at least that many confirmed rows, so the "N rows across N meetings" bar
+    reduces to the distinct-meeting count.) Official order reuses ``order_candidates`` (fewest-
+    confirmed first), which emits each official's candidates contiguously; within a screen the
+    clusters are ordered by speech seconds (most recognizable voice first) and capped per pass.
+    """
+    ordered = order_candidates(candidates, confirmed_meetings)
+    groups: list[OfficialGroup] = []
+    for person_id, run in groupby(ordered, key=lambda c: c.person_id):
+        cands = list(run)
+        if len(confirmed_meetings.get(person_id, set())) >= done_bar:
+            continue
+        listed = sorted(cands, key=lambda c: (-c.seconds, c.meeting_key, c.cluster_label))[:cap]
+        groups.append(
+            OfficialGroup(
+                person_id=person_id,
+                official_name=listed[0].official_name,
+                roster_title=listed[0].roster_title,
+                listed=tuple(listed),
+                total=len(cands),
+            )
+        )
+    return groups
+
+
 # --- DB-facing orchestration ------------------------------------------------------
 
 
@@ -241,23 +371,26 @@ def _subjects(client: Client, place_id: int) -> dict[int, dict[str, Any]]:
     }
 
 
-def _members_by_entity(client: Client, entity_ids: list[int]) -> dict[int, set[int]]:
-    """``entity_id -> {subject_id}`` roster membership — the authoritative "official of this body".
+def _members_by_entity(client: Client, entity_ids: list[int]) -> dict[int, dict[int, str | None]]:
+    """``entity_id -> {subject_id: role}`` roster membership — the authoritative body-official set.
 
     A subject is an official of a body only if it holds a membership in that body's entity (the
     same roster the resolver proposes from). Being merely publishable makes a subject a public
-    figure, not necessarily an official.
+    figure, not necessarily an official. The ``role`` value is the official's roster title (for
+    display only); membership itself is still the set of keys, so the Option-B guard is unchanged.
     """
     if not entity_ids:
         return {}
     rows = fetch_all_rows(
         lambda: (
-            client.table("memberships").select("subject_id,entity_id").in_("entity_id", entity_ids)
+            client.table("memberships")
+            .select("subject_id,entity_id,role")
+            .in_("entity_id", entity_ids)
         )
     )
-    out: dict[int, set[int]] = defaultdict(set)
+    out: dict[int, dict[int, str | None]] = defaultdict(dict)
     for r in rows:
-        out[r["entity_id"]].add(r["subject_id"])
+        out[r["entity_id"]][r["subject_id"]] = r.get("role")
     return out
 
 
@@ -273,7 +406,8 @@ def _load_candidates(
     Option-B scope structurally: the resolver only ever proposes body members, so it drops no
     legitimate row, but it stops the tool touching a hand-inserted/stale row that points at a
     publishable non-member. Confirmed rows for the same officials seed the coverage counters so
-    ordering front-loads the least-covered officials.
+    ordering front-loads the least-covered officials — but only *enrollable* confirmations count
+    (see the ``basis == "voiceprint"`` skip below), so coverage matches what Gate A actually trusts.
     """
     doc_ids = sorted(docs_by_id)
     identities = fetch_all_rows(
@@ -290,11 +424,16 @@ def _load_candidates(
         """The subject is a publishable, person-linked roster member of the document's body."""
         if not subject or not subject.get("publishable") or subject.get("person_id") is None:
             return False
-        return bool(doc) and subject["id"] in members_by_entity.get(doc.get("entity_id"), set())
+        return bool(doc) and subject["id"] in members_by_entity.get(doc.get("entity_id"), {})
 
     confirmed_meetings: dict[int, set[str]] = defaultdict(set)
     for row in identities:
         if row.get("confidence") != "confirmed":
+            continue
+        # enrollment.py drops confirmed voiceprint-basis rows, so they are not real coverage;
+        # counting them would let the batch done-gate skip an official who still lacks enrollable
+        # meetings (in clip mode it would only skew ordering).
+        if row.get("basis") == "voiceprint":
             continue
         subject = subjects_by_id.get(row.get("subject_id"))
         doc = docs_by_id.get(row["document_id"])
@@ -333,6 +472,7 @@ def _load_candidates(
                 meeting_date=str(doc.get("meeting_date", "")),
                 seconds=seconds,
                 excerpts=tuple(cluster_excerpts(turns, row["cluster_label"])),
+                roster_title=members_by_entity.get(doc.get("entity_id"), {}).get(subject["id"]),
             )
         )
     return candidates, confirmed_meetings
@@ -433,12 +573,136 @@ def _print_summary(tallies: dict[str, SessionTally]) -> None:
     print(f"  {'TOTAL':<32} {totals.confirmed} / {totals.denied} / {totals.skipped}")
 
 
+# --- batch mode: interactive per-official screens ---------------------------------
+
+
+def _print_official_screen(group: OfficialGroup, coverage: int) -> None:
+    """Render one official's screen: header, numbered clusters with excerpts + cue, grammar line."""
+    print("\n" + "=" * 72)
+    title = group.roster_title or "(no roster title)"
+    print(
+        f"{group.official_name} — {title}  ·  "
+        f"{coverage} confirmed meeting(s) (target ~{CONFIRM_TARGET_MEETINGS})"
+    )
+    if group.total > len(group.listed):
+        print(
+            f"Showing the {len(group.listed)} clusters with the most speech of {group.total} "
+            "(the rest surface on a later pass)"
+        )
+    for n, candidate in enumerate(group.listed, 1):
+        print("-" * 72)
+        print(f"  {n}. {candidate.meeting_date} — {candidate.meeting_title}")
+        print(
+            f"     cluster {candidate.cluster_label} · basis={candidate.basis} "
+            f"confidence={candidate.confidence} · {candidate.seconds:.0f}s speech"
+        )
+        excerpts = candidate.excerpts[:BATCH_EXCERPTS_PER_CANDIDATE]
+        if excerpts:
+            print(f"     cue: {youtube_cue_url(candidate.video_id, excerpts[0][0])}")  # to longest
+            for _start, text in excerpts:
+                trimmed = (
+                    text
+                    if len(text) <= BATCH_EXCERPT_MAX_CHARS
+                    else text[:BATCH_EXCERPT_MAX_CHARS] + "…"
+                )
+                print(f'       "{trimmed}"')
+        else:
+            print("     (no transcript excerpts for this cluster)")
+    print("-" * 72)
+
+
+def _prompt_batch(listed_count: int) -> BatchInput:
+    """Read one official-screen decision, re-prompting until the grammar parses."""
+    while True:
+        raw = input(
+            "  confirm #s (e.g. 1,3) · a=all · n <#s>=reject (e.g. n 2) · [s]kip · [q]uit > "
+        )
+        decision = parse_batch_input(raw, listed_count)
+        if decision is not None:
+            return decision
+        print(f"  (couldn't read that — enter 1-{listed_count}, 'a', 'n <#s>', 's', or 'q')")
+
+
+def _apply_batch_decision(
+    client: Client, group: OfficialGroup, decision: BatchInput, live: dict[int, set[str]]
+) -> SessionTally:
+    """Persist a parsed screen decision via the shared per-clip write path; update live coverage.
+
+    Confirms and rejects go through ``_apply_decision`` exactly as the clip-by-clip mode does, so a
+    batch confirm/deny writes byte-for-byte the same payload as its per-clip counterpart. Every
+    listed cluster is accounted for: skipped = listed − confirmed − rejected.
+    """
+    tally = SessionTally()
+    for pos in decision.confirm:
+        candidate = group.listed[pos - 1]  # 1-based display position -> 0-based list index
+        _apply_decision(client, candidate, "y")
+        tally.confirmed += 1
+        live.setdefault(group.person_id, set()).add(candidate.meeting_key)
+    for pos in decision.reject:
+        candidate = group.listed[pos - 1]
+        _apply_decision(client, candidate, "n")
+        tally.denied += 1
+    tally.skipped = len(group.listed) - tally.confirmed - tally.denied
+    return tally
+
+
+def _run_batch_session(
+    client: Client, groups: list[OfficialGroup], confirmed_meetings: dict[int, set[str]]
+) -> tuple[dict[str, SessionTally], list[tuple[str, int, bool]]]:
+    """Walk the per-official screens; return tallies and per-official enablement rows.
+
+    Each enablement row is ``(official_name, confirmed_meetings_now, newly_enabled)`` for a
+    presented official, where newly_enabled means this session pushed them to the
+    >=ENABLEMENT_MIN_MEETINGS bar. A skipped official writes nothing.
+    """
+    live = {pid: set(mtgs) for pid, mtgs in confirmed_meetings.items()}
+    tallies: dict[str, SessionTally] = {}
+    enablement: list[tuple[str, int, bool]] = []
+    total = len(groups)
+    for i, group in enumerate(groups, 1):
+        before = len(live.get(group.person_id, set()))
+        print(f"\n[official {i}/{total}]")
+        _print_official_screen(group, before)
+        decision = _prompt_batch(len(group.listed))
+        if decision.action == "quit":
+            logger.info("quit at official %d/%d", i, total)
+            break
+        if decision.action == "skip":
+            tallies[group.official_name] = SessionTally(skipped=len(group.listed))
+            enablement.append((group.official_name, before, False))
+            continue
+        tallies[group.official_name] = _apply_batch_decision(client, group, decision, live)
+        after = len(live.get(group.person_id, set()))
+        enablement.append((group.official_name, after, before < ENABLEMENT_MIN_MEETINGS <= after))
+    return tallies, enablement
+
+
+def _print_enablement(enablement: list[tuple[str, int, bool]]) -> None:
+    """Report per-official confirmed-meeting coverage and who crossed the enablement bar."""
+    print("\n" + "=" * 72)
+    print(f"Confirmed-meeting coverage (enablement bar: >={ENABLEMENT_MIN_MEETINGS} meetings):")
+    if not enablement:
+        print("  (no officials presented)")
+        return
+    for name, coverage, newly in sorted(enablement):
+        meets = "x" if coverage >= ENABLEMENT_MIN_MEETINGS else " "
+        flag = "  <- newly enabled" if newly else ""
+        print(f"  [{meets}] {name:<32} {coverage} meeting(s){flag}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Confirm/deny speaker labels for a place.")
     parser.add_argument("--state", required=True, help="place state slug, e.g. mo")
     parser.add_argument("--place", required=True, help="place slug, e.g. clayton")
     parser.add_argument("--body", help="restrict to one body_slug; default all bodies")
-    parser.add_argument("--limit", type=int, help="cap the number of candidates presented")
+    parser.add_argument(
+        "--limit", type=int, help="cap presented candidates (clip mode) or officials (--batch)"
+    )
+    parser.add_argument(
+        "--batch",
+        action="store_true",
+        help="one screen per official (decidable from transcript text) instead of clip-by-clip",
+    )
     args = parser.parse_args()
 
     client = _service_client()
@@ -450,15 +714,18 @@ def main() -> None:
     docs_by_id = _documents(client, place_id, args.body)
     subjects_by_id = _subjects(client, place_id)
     candidates, confirmed_meetings = _load_candidates(client, docs_by_id, subjects_by_id)
+    scope = f"{args.state}/{args.place}" + (f"/{args.body}" if args.body else "")
+
+    if args.batch:
+        _run_batch_mode(client, candidates, confirmed_meetings, args.limit, scope)
+        return
+
     queue = order_candidates(candidates, confirmed_meetings)
     if args.limit:
         queue = queue[: args.limit]
-
     logger.info(
-        "%s/%s%s: %d unconfirmed candidate(s) across %d official(s)",
-        args.state,
-        args.place,
-        f"/{args.body}" if args.body else "",
+        "%s: %d unconfirmed candidate(s) across %d official(s)",
+        scope,
         len(queue),
         len({c.person_id for c in queue}),
     )
@@ -468,6 +735,31 @@ def main() -> None:
 
     tallies = _run_session(client, queue, confirmed_meetings)
     _print_summary(tallies)
+
+
+def _run_batch_mode(
+    client: Client,
+    candidates: list[Candidate],
+    confirmed_meetings: dict[int, set[str]],
+    limit: int | None,
+    scope: str,
+) -> None:
+    """Drive per-official batch screens: group, present, summarize."""
+    groups = build_official_groups(candidates, confirmed_meetings)
+    if limit:
+        groups = groups[:limit]
+    logger.info(
+        "%s: %d official screen(s), %d candidate(s)",
+        scope,
+        len(groups),
+        sum(g.total for g in groups),
+    )
+    if not groups:
+        logger.info("nothing to confirm")
+        return
+    tallies, enablement = _run_batch_session(client, groups, confirmed_meetings)
+    _print_summary(tallies)
+    _print_enablement(enablement)
 
 
 if __name__ == "__main__":
