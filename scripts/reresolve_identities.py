@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
@@ -27,7 +28,7 @@ from actalux.config import load_config  # noqa: E402
 from actalux.db import fetch_all_rows, get_client, get_place_by_path  # noqa: E402
 from actalux.diarization.enrollment import superseded_doc_ids  # noqa: E402
 from actalux.errors import ActaluxError  # noqa: E402
-from actalux.identity.resolve import resolve_document  # noqa: E402
+from actalux.identity.resolve import _PRESENTER_PATTERNS, resolve_document  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("reresolve_identities")
@@ -104,8 +105,9 @@ def main() -> None:
         return
 
     total = published = 0
+    presenter_tally: Counter[str] = Counter()
     for doc in docs:
-        proposals = resolve_document(service, service, doc["id"], doc["entity_id"])
+        proposals = resolve_document(service, service, doc["id"], doc["entity_id"], presenter_tally)
         pub = sum(1 for p in proposals if p.confidence == "inferred_high")
         total += len(proposals)
         published += pub
@@ -113,6 +115,13 @@ def main() -> None:
     logger.info(
         "re-resolved %d document(s): %d identities (%d published)", len(docs), total, published
     )
+    # Presenter-introduction anchors are non-public (inferred_medium) and easy to miss in the
+    # aggregate above, so report them explicitly per trigger family — and shout when a pattern
+    # (or the whole signal) fired zero times, since that is the failure mode this rebuild fixes.
+    fired = sum(presenter_tally[p] for p in _PRESENTER_PATTERNS)
+    breakdown = " ".join(f"{p}={presenter_tally[p]}" for p in _PRESENTER_PATTERNS)
+    log = logger.info if fired else logger.warning
+    log("presenter_intro anchors fired: %d total (%s)", fired, breakdown)
 
 
 if __name__ == "__main__":

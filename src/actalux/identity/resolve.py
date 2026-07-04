@@ -14,11 +14,15 @@ Three signals, all grounded in spoken-name anchors and all with a valid schema
   to the named member (the clerk-reads-name -> member-answers pattern).
 * **self-introduction** — "I'm <member>" / "this is <member>" / "my name is <member>"
   within a cluster anchors that cluster to the named member.
-* **presenter introduction** — a turn that introduces exactly one member in handoff
-  position (near its end), immediately followed by a *different* cluster taking the floor
-  with sustained speech, anchors that speaking cluster to the introduced member. This is
-  the only signal that reaches an official who speaks at length but is never in a roll
-  call (an appointed director, the counsel, a staff presenter with a seat).
+* **presenter introduction** — a turn that introduces exactly one member, immediately
+  followed by a *different* cluster taking the floor with sustained speech, anchors that
+  speaking cluster to the introduced member. The introduction is recognized three ways,
+  all jurisdiction-agnostic: a handoff *cue verb* naming the member at the handoff position
+  ("...I now recognize Jane Harris"); the member's full name *appositive* to that member's
+  OWN roster title ("Jane Harris, our Director of Finance"); or a small set of fixed
+  *presence* templates around the name ("we have with us Jane Harris", "Jane Harris is
+  here"). This is the only signal that reaches an official who speaks at length but is
+  never in a roll call (an appointed director, the counsel, a staff presenter with a seat).
 
 Confidence is assigned conservatively:
 
@@ -42,7 +46,7 @@ have (vote timestamps, a voice gallery) and are left for later phases.
 from __future__ import annotations
 
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from typing import Any
 
@@ -120,6 +124,71 @@ _HANDOFF_CUES = frozenset(
 # by _norm_text, so "don't" -> "dont".) Non-adjacent negation is left to the review queue —
 # presenter_intro is non-public and gate-contained, so this need only catch the clean cases.
 _NEGATIONS = frozenset("not never no cannot cant dont doesnt didnt wont nor".split())
+# A recognition word shortly LEFT of an appositive or presence hit disqualifies it: a closing
+# "...thank our City Clerk Carol Diaz" or "...a round of applause for Carol Diaz, our City
+# Clerk" reads as name+own-title exactly like an introduction, so the co-occurrence alone can't
+# tell them apart. Requiring no thanks/applause/congratulation (or negation) word in the short
+# run before the hit separates "introducing X to speak" from "thanking/celebrating X". All
+# generic English, so no jurisdiction leaks in.
+# "honor"/"recognize" are deliberately excluded — both lead legitimate introductions ("it is my
+# honor to introduce ...", and "recognize" is itself a handoff cue) — so only unambiguous
+# thanks/applause/commendation terms are here.
+_RECOGNITION_WORDS = frozenset(
+    """thank thanks thanking thanked grateful gratefully appreciate appreciated appreciation
+    gratitude applause congratulate congratulates congratulated congratulating congratulations
+    commend commends commended commending kudos""".split()
+)
+# First-person markers immediately LEFT of the name mean the speaker is naming THEMSELVES
+# ("I, <name>, Mayor, hereby proclaim..." / "I am <name>") — a recital or self-intro, not a
+# handoff to a *different* cluster — so such a span is not a presenter introduction. Checked as
+# strict adjacency (not the wider lookback) so "I have with us <name>" is untouched.
+_SELF_REF = frozenset({"i", "im", "am"})
+# How far left of a hit the recognition/negation guard looks (the closing "...thank our city
+# clerk <name>" puts "thank" two connectors before the title), and how many filler tokens
+# may sit between a name and its OWN title for the appositive to still bind them.
+_INTRO_CONTEXT_LOOKBACK = 3
+_APPOSITIVE_GAP = 2
+# Only these small, generic filler words may occupy the appositive gap — a real appositive is
+# "<name>, our <title>" / "our <title>, <name>", never "<name> told the <title>". Restricting
+# the gap to determiners + honorifics rejects incidental clauses whose intervening words carry
+# content, while keeping the observed "our" / bare-comma gaps. Generic English, not town wording.
+_APPOSITIVE_FILLERS = frozenset("our the a an mr mrs ms mx dr".split())
+# Title-BEFORE-name ("our <title> <name> ...") also reads as an ordinary referential mention
+# ("our finance director Jane Harris said..."), so on that side the co-occurrence alone is not
+# enough: the name must end the turn or continue into a handoff. These tiny function words begin
+# the handoff continuations seen in the corpus ("... here", "... is here", "... to present",
+# "... will speak") and separate a live hand-off from past-tense narration. Name-BEFORE-title
+# ("<name>, our <title>") is the canonical introducing appositive and needs no such tail.
+_APPOSITIVE_TAIL = frozenset("here is to will".split())
+# Presence-introduction templates: fixed word sequences bracketing the name, NOT an open verb
+# list — each reads unambiguously as "this person is here to present". A prefix template sits
+# immediately before the full name, a suffix template immediately after it. Kept deliberately
+# small and generic (no town wording); recall beyond these phrasings is traded for precision.
+_PRESENCE_PREFIX = (
+    ("have", "with", "us"),
+    ("here", "to", "present", "is"),
+    ("here", "to", "speak", "is"),
+)
+_PRESENCE_SUFFIX = (("is", "here"), ("is", "with", "us"))
+# A title-BEFORE-name appositive naming turn must carry real introduction content, or a bare
+# roll-call address ("Councilmember Bob Stevens?") / vote prompt matches the appositive (title
+# + name, name turn-final) and the "aye"/"present" responses that follow satisfy the sustained
+# floor — anchoring a vote to the wrong voice. Content = tokens that are NOT the member's own
+# title, ANY roster name token, a vote/affirmative token, or a filler/honorific. A genuine
+# introduction clears this comfortably ("...to go through the budget"); a roll-call address has
+# zero. Only the title-before-name branch is gated (that is where the roll-call form lives);
+# name-before-title is the canonical introducing appositive and keeps its recall, and the
+# presence templates ("is here") / cue verbs are themselves the content. Vote tokens are generic
+# parliamentary words (incl. vote/cast, to blunt "...will you please vote?"), no town wording.
+_VOTE_TOKENS = frozenset(
+    "aye ayes yes yeah nay no here present i vote votes voting voted cast".split()
+)
+_MIN_INTRO_CONTENT = 3
+# The three presenter-introduction trigger families, in the order a hit is attributed to a
+# pattern for the fire-count report (a turn can satisfy more than one). Name+own-title is the
+# most specific, so it is credited first; the recorded schema ``basis`` is ``presenter_intro``
+# for all three — this label only drives the per-pattern visibility counter.
+_PRESENTER_PATTERNS = ("title_appositive", "cue_verb", "presence_intro")
 # Turns after the handoff over which the incoming cluster's speech is summed — diarization
 # fragments a monologue into several turns and brief interjections can interleave.
 _SUSTAINED_WINDOW_TURNS = 6
@@ -154,6 +223,7 @@ class RosterMember:
     slug: str
     canonical_name: str
     aliases: frozenset[str]  # normalized alias keys
+    title: str = ""  # this member's OWN per-body roster role (memberships.role), display form
 
 
 @dataclass(frozen=True)
@@ -226,6 +296,24 @@ def _name_index(members: list[RosterMember]) -> tuple[dict[str, int], dict[str, 
     strong = {k: next(iter(v)) for k, v in strong_owners.items() if len(v) == 1}
     surname = {k: next(iter(v)) for k, v in surname_owners.items() if len(v) == 1}
     return strong, surname
+
+
+def _title_index(members: list[RosterMember]) -> dict[int, list[str]]:
+    """``subject_id -> normalized title token list`` for members whose roster title is set.
+
+    The title is each member's OWN per-body role (``memberships.role``), normalized the same
+    way as spoken text so a name+own-title appositive matches as a contiguous word sequence.
+    Keyed by ``subject_id``, and the appositive is only ever checked against the SAME member
+    it named — so a title shared by several officials (two "City Attorney"s, many
+    "Commissioner"s) can never anchor a name to a different member. Members with no recorded
+    title are simply absent, so the appositive pattern never fires for them.
+    """
+    index: dict[int, list[str]] = {}
+    for m in members:
+        tokens = _norm_text(m.title).split() if m.title else []
+        if tokens:
+            index[m.subject_id] = tokens
+    return index
 
 
 def _strip_honorifics(tokens: list[str]) -> list[str]:
@@ -383,24 +471,199 @@ def _trailing_member(tokens: list[str], strong: dict[str, int]) -> int | None:
     return None
 
 
-def _presenter_intro_hits(
-    turns: list[ResolverTurn], strong: dict[str, int], surname: dict[str, int]
-) -> list[tuple[str, int, str]]:
-    """(cluster, subject_id, strength) anchored by an introduction/handoff to a presenter.
+def _name_spans(tokens: list[str], strong: dict[str, int]) -> list[tuple[int, int, int]]:
+    """``(start, end, subject_id)`` for every full-name occurrence in ``tokens``.
 
-    Cluster P names exactly one roster member in handoff position (the full-name suffix of
-    P's turn — see ``_trailing_member``), a DIFFERENT cluster Q immediately follows, and Q
-    holds the floor with sustained speech in the window after the handoff. That anchors Q
-    to the introduced member. Precision is deliberate over recall — the guards below prefer
-    missing a handoff to attributing the wrong voice:
+    Longest-match, left-to-right, non-overlapping over the ``strong`` (full-name / curated
+    alias) index only — bare surnames are excluded here just as they are from the cue-verb
+    and appositive/presence anchors, being too collision-prone to launch a presenter on.
+    """
+    max_len = max((k.count(" ") + 1 for k in strong), default=0)
+    spans: list[tuple[int, int, int]] = []
+    i, n = 0, len(tokens)
+    while i < n:
+        matched = 0
+        for length in range(min(max_len, n - i), 1, -1):  # strong keys are multi-token
+            sid = strong.get(" ".join(tokens[i : i + length]))
+            if sid is not None:
+                spans.append((i, i + length, sid))
+                matched = length
+                break
+        i += matched or 1
+    return spans
+
+
+def _intro_context_ok(tokens: list[str], left: int) -> bool:
+    """No recognition or negation word sits in the short run immediately left of ``left``.
+
+    This is the precision guard shared by the appositive and presence patterns: a recognition
+    closing ("...thank our City Clerk Carol Diaz", "...applause for Carol Diaz") and a
+    negation ("we do not have ...") both reproduce the surface form of an introduction, and
+    only their left context tells them apart. Locality matters — a distant earlier "thanks"
+    must not disqualify a real later introduction — so the window is a few tokens, mirroring
+    the cue-verb locality rule.
+    """
+    window = tokens[max(0, left - _INTRO_CONTEXT_LOOKBACK) : left]
+    return not any(t in _RECOGNITION_WORDS or t in _NEGATIONS for t in window)
+
+
+def _self_named(tokens: list[str], start: int) -> bool:
+    """The name at ``start`` is a first-person self-reference ("I, Jane Harris, ...")."""
+    return start > 0 and tokens[start - 1] in _SELF_REF
+
+
+def _gap_is_filler(tokens: list[str], lo: int, hi: int) -> bool:
+    """Every token in ``tokens[lo:hi]`` (the name<->title gap) is a permitted filler word."""
+    return all(t in _APPOSITIVE_FILLERS for t in tokens[lo:hi])
+
+
+def _handoff_continues(tokens: list[str], end: int) -> bool:
+    """After a title-before-name appositive, the name ends the turn or begins a handoff tail."""
+    return end >= len(tokens) or tokens[end] in _APPOSITIVE_TAIL
+
+
+def _appositive_hit(
+    tokens: list[str], spans: list[tuple[int, int]], title: list[str]
+) -> str | None:
+    """The matched appositive order — ``"name_first"`` / ``"title_first"`` — or ``None``.
+
+    A member's full name sits within a small *filler* gap (<= ``_APPOSITIVE_GAP``) of that
+    member's OWN roster title, in either order: "Jane Harris, our Director of Finance"
+    (``name_first``) or "our Director of Finance, Jane Harris" (``title_first``). ``title``
+    is always the SAME member's normalized role (the caller passes the named member's own
+    title), so the co-occurrence cannot bind the name to a different official. The order is
+    returned because the two differ in strength: name-before-title is the canonical
+    introducing appositive; title-before-name also reads as a referential mention, so it
+    additionally requires the name to end the turn or lead into a handoff tail
+    (``_handoff_continues``) AND is content-gated by the caller against bare roll-call
+    addresses.
+    """
+    if not title:
+        return None
+    length = len(title)
+    for start, end in spans:
+        if _self_named(tokens, start):
+            continue  # "I, <name>, <title> ..." is a recital, not a handoff to another cluster
+        # Title immediately AFTER the name, filler-only gap.
+        for p in range(end, min(end + _APPOSITIVE_GAP, len(tokens) - length) + 1):
+            if (
+                tokens[p : p + length] == title
+                and _gap_is_filler(tokens, end, p)
+                and _intro_context_ok(tokens, start)
+            ):
+                return "name_first"
+        # Title immediately BEFORE the name, filler-only gap (title occupies ``[q, q+length)``),
+        # AND the name continues as a handoff (this order alone is not enough — see docstring).
+        for q in range(start - length, start - length - _APPOSITIVE_GAP - 1, -1):
+            if (
+                q >= 0
+                and tokens[q : q + length] == title
+                and _gap_is_filler(tokens, q + length, start)
+                and _intro_context_ok(tokens, q)
+                and _handoff_continues(tokens, end)
+            ):
+                return "title_first"
+    return None
+
+
+def _presence_hit(tokens: list[str], spans: list[tuple[int, int]]) -> bool:
+    """A fixed presence-introduction template brackets the member's full name.
+
+    A prefix template ("have with us <name>", "here to present is <name>") sits immediately
+    before the name; a suffix template ("<name> is here", "<name> is with us") immediately
+    after it. The shared recognition/negation guard applies to the left of the whole hit, and
+    a first-person self-reference is excluded, so a thanked, negated, or self-named mention
+    does not read as a presentation.
+    """
+    for start, end in spans:
+        if _self_named(tokens, start):
+            continue
+        for tpl in _PRESENCE_PREFIX:
+            length = len(tpl)
+            if start - length >= 0 and tuple(tokens[start - length : start]) == tpl:
+                if _intro_context_ok(tokens, start - length):
+                    return True
+        for tpl in _PRESENCE_SUFFIX:
+            if tuple(tokens[end : end + len(tpl)]) == tpl and _intro_context_ok(tokens, start):
+                return True
+    return False
+
+
+def _has_intro_content(tokens: list[str], own_title: list[str], name_tokens: set[str]) -> bool:
+    """The turn carries ``>= _MIN_INTRO_CONTENT`` tokens beyond title/name/vote/filler words.
+
+    This separates a real introduction ("...to go through the budget") from a bare roll-call
+    address ("Councilmember Bob Stevens?"), whose only tokens are an honorific plus the name.
+    Gates the title-before-name appositive only (where the roll-call form lives); name-before-
+    title and the presence/cue families carry their own content (see the ``_VOTE_TOKENS`` note).
+    """
+    stop = _VOTE_TOKENS | _APPOSITIVE_FILLERS | _HONORIFICS
+    own = set(own_title)
+    content = sum(1 for t in tokens if t not in stop and t not in own and t not in name_tokens)
+    return content >= _MIN_INTRO_CONTENT
+
+
+def _intro_pattern(
+    tokens: list[str],
+    sid: int,
+    strong: dict[str, int],
+    title_tokens: dict[int, list[str]],
+    name_tokens: set[str],
+) -> str | None:
+    """Which presenter-introduction pattern (if any) introduces member ``sid`` in ``tokens``.
+
+    Returns the pattern label for the fire-count report, or ``None`` if no pattern fires. The
+    caller has already established that ``sid`` is the SOLE roster member named in the turn,
+    so every name span here is that member; the checks below decide whether the turn actually
+    *introduces* them and by which family. Order follows ``_PRESENTER_PATTERNS`` (most
+    specific first) — a turn can satisfy more than one, and this only sets the report label.
+    A title-before-name appositive additionally requires real introduction content, so a bare
+    roll-call address ("Councilmember Bob Stevens?") does not anchor the votes that follow it.
+    """
+    spans = [(s, e) for s, e, msid in _name_spans(tokens, strong) if msid == sid]
+    own_title = title_tokens.get(sid, [])
+    order = _appositive_hit(tokens, spans, own_title)
+    # Name-before-title is the canonical introducing appositive (recall kept); title-before-name
+    # is the roll-call/reference-prone order, so it must also carry real introduction content.
+    if order == "name_first" or (
+        order == "title_first" and _has_intro_content(tokens, own_title, name_tokens)
+    ):
+        return "title_appositive"
+    if _trailing_member(tokens, strong) == sid:
+        return "cue_verb"
+    if _presence_hit(tokens, spans):
+        return "presence_intro"
+    return None
+
+
+def _presenter_intro_hits(
+    turns: list[ResolverTurn],
+    strong: dict[str, int],
+    surname: dict[str, int],
+    title_tokens: dict[int, list[str]],
+) -> list[tuple[str, int, str, str]]:
+    """(cluster, subject_id, strength, pattern) anchored by an introduction/handoff.
+
+    Cluster P introduces exactly one roster member — via a handoff cue verb, the member's own
+    title appositive to their name, or a fixed presence template (see ``_intro_pattern``) — a
+    DIFFERENT cluster Q immediately follows, and Q holds the floor with sustained speech in
+    the window after the handoff. That anchors Q to the introduced member. Precision is
+    deliberate over recall — the guards below prefer missing a handoff to a wrong voice:
 
     * a second distinct member named in P's turn -> ambiguous -> skip;
     * P (or nothing) continuing rather than a new cluster -> no handoff happened -> skip;
-    * the introduced name is not a clean full-name suffix -> skip;
+    * P's turn names one member but does not actually introduce them (no pattern) -> skip;
     * any other cluster matching or out-speaking Q in the window -> Q isn't clearly the
       presenter -> skip.
+
+    The fourth tuple element is the trigger family, recorded only for the per-pattern
+    fire-count report; every hit's schema ``basis`` is ``presenter_intro`` regardless.
     """
-    out: list[tuple[str, int, str]] = []
+    # Every token that is part of any roster name (first names + surnames across the body),
+    # used by the title_appositive content guard to tell a real introduction from a bare
+    # roll-call address. Derived from the name indexes, so it needs no extra input.
+    name_tokens = {tok for key in strong for tok in key.split()} | set(surname)
+    out: list[tuple[str, int, str, str]] = []
     for i, prev in enumerate(turns):
         if i + 1 >= len(turns) or turns[i + 1].cluster_label == prev.cluster_label:
             continue  # same cluster continues (or the turn is last) -> no handoff
@@ -408,9 +671,10 @@ def _presenter_intro_hits(
         named = _distinct_members_named(tokens, strong, surname)
         if len(named) != 1:
             continue  # zero named, or two+ members named (ambiguous) -> not a clean handoff
-        sid = _trailing_member(tokens, strong)
-        if sid is None or sid not in named:
-            continue  # the sole named member is not the clean handoff suffix
+        sid = next(iter(named))
+        pattern = _intro_pattern(tokens, sid, strong, title_tokens, name_tokens)
+        if pattern is None:
+            continue  # the sole named member is mentioned but not introduced -> skip
         q = turns[i + 1].cluster_label
         words: dict[str, int] = defaultdict(int)
         for turn in turns[i + 1 : i + 1 + _SUSTAINED_WINDOW_TURNS]:
@@ -420,7 +684,7 @@ def _presenter_intro_hits(
         # cluster in the window — a brief reply, a tie, or a different presenter never anchors.
         other_max = max((w for c, w in words.items() if c != q), default=0)
         if words[q] >= _MIN_SUSTAINED_WORDS and words[q] > other_max:
-            out.append((q, sid, "strong"))
+            out.append((q, sid, "strong", pattern))
     return out
 
 
@@ -432,7 +696,9 @@ def _anchor_tier(basis: str, strength: str) -> int:
 
 
 def resolve_identities(
-    turns: list[ResolverTurn], members: list[RosterMember]
+    turns: list[ResolverTurn],
+    members: list[RosterMember],
+    presenter_tally: Counter[str] | None = None,
 ) -> list[IdentityProposal]:
     """Deterministic cluster -> subject proposals from name-anchor signals.
 
@@ -440,10 +706,15 @@ def resolve_identities(
     among equal-tier evidence the higher-ranked basis (``_BASIS_RANK``) is recorded. See the
     module docstring for the tier rules; nothing is invented and ambiguous clusters get no
     proposal.
+
+    ``presenter_tally``, if given, is incremented per presenter-introduction trigger family
+    (``_PRESENTER_PATTERNS``) so a batch pass can report how many anchors each pattern fired
+    — visibility that makes a zero-fire pattern loud rather than silent.
     """
     if not turns or not members:
         return []
     strong, surname = _name_index(members)
+    title_tokens = _title_index(members)
     by_subject = {m.subject_id: m for m in members}
 
     # cluster -> subject_id -> {"tier", "basis"} of the single best supporting anchor.
@@ -462,8 +733,12 @@ def resolve_identities(
         _add(cluster, sid, "rollcall", strength)
     for cluster, sid, strength in _selfintro_hits(turns, strong, surname):
         _add(cluster, sid, "self_intro", strength)
-    for cluster, sid, strength in _presenter_intro_hits(turns, strong, surname):
+    for cluster, sid, strength, pattern in _presenter_intro_hits(
+        turns, strong, surname, title_tokens
+    ):
         _add(cluster, sid, "presenter_intro", strength)
+        if presenter_tally is not None:
+            presenter_tally[pattern] += 1
 
     subject_clusters: dict[int, set[str]] = defaultdict(set)
     for cluster, sdict in acc.items():
@@ -490,13 +765,27 @@ def resolve_identities(
 
 
 def members_for_entity(client: Client, entity_id: int) -> list[RosterMember]:
-    """Publishable members of one body, with their normalized aliases (the candidate set)."""
+    """Publishable members of one body, with their aliases and this body's role (candidates).
+
+    Each member carries the per-body ``memberships.role`` as its ``title`` — the same person
+    can hold different titles on different bodies, so the role is read from the membership row
+    for THIS entity, not from any body-agnostic field. The title feeds only the presenter
+    appositive pattern (name+own-title co-occurrence); a null role leaves it blank.
+    """
     mems = (
-        client.table("memberships").select("subject_id").eq("entity_id", entity_id).execute().data
+        client.table("memberships")
+        .select("subject_id,role")
+        .eq("entity_id", entity_id)
+        .execute()
+        .data
     )
     subject_ids = {m["subject_id"] for m in mems}
     if not subject_ids:
         return []
+    # First membership row per subject wins the title (the seeder keeps one row per body).
+    role_by_subject: dict[int, str] = {}
+    for m in mems:
+        role_by_subject.setdefault(m["subject_id"], m.get("role") or "")
     subjects = (
         client.table("subjects")
         .select("id,slug,canonical_name")
@@ -518,6 +807,7 @@ def members_for_entity(client: Client, entity_id: int) -> list[RosterMember]:
             slug=s["slug"],
             canonical_name=s["canonical_name"],
             aliases=frozenset(by_alias.get(s["id"], set())),
+            title=role_by_subject.get(s["id"], ""),
         )
         for s in subjects
     ]
@@ -606,16 +896,22 @@ def _place_canonical_rules(client: Client, entity_id: int) -> list[CorrectionRul
 
 
 def resolve_document(
-    client: Client, service_client: Client, document_id: int, entity_id: int
+    client: Client,
+    service_client: Client,
+    document_id: int,
+    entity_id: int,
+    presenter_tally: Counter[str] | None = None,
 ) -> list[IdentityProposal]:
     """Resolve + persist identities for one transcript; return the proposals.
 
     Turn text is name-canonicalized first (so a known mangling like "York" resolves to
-    roster "Jeffery Yorg") before matching against the body roster.
+    roster "Jeffery Yorg") before matching against the body roster. A caller batching many
+    documents may pass a shared ``presenter_tally`` to accumulate presenter-introduction
+    fire counts per pattern across the whole pass (see ``resolve_identities``).
     """
     members = members_for_entity(client, entity_id)
     rules = _place_canonical_rules(client, entity_id)
     turns = turns_for_document(client, document_id, rules)
-    proposals = resolve_identities(turns, members)
+    proposals = resolve_identities(turns, members, presenter_tally)
     persist_identities(service_client, document_id, proposals)
     return proposals

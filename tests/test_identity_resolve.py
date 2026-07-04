@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from types import SimpleNamespace
 from typing import Any
 
@@ -22,6 +23,57 @@ def _members() -> list[RosterMember]:
         RosterMember(1, "jane-harris", "Jane Harris", frozenset({"jane harris", "harris"})),
         RosterMember(2, "bob-stevens", "Bob Stevens", frozenset({"bob stevens", "stevens"})),
         RosterMember(3, "carol-diaz", "Carol Diaz", frozenset({"carol diaz", "diaz"})),
+    ]
+
+
+def _titled_members() -> list[RosterMember]:
+    """Members carrying their per-body roster title — the input the appositive pattern needs.
+
+    Two share nothing but a title family ("City Clerk" is Frazier's; Dilber's own title is
+    "Director of Finance"), which lets the tests prove the appositive binds a name only to
+    that member's OWN title.
+    """
+    return [
+        RosterMember(
+            1,
+            "karen-dilber",
+            "Karen Dilber",
+            frozenset({"karen dilber", "dilber"}),
+            "Director of Finance",
+        ),
+        RosterMember(
+            2, "june-frazier", "June Frazier", frozenset({"june frazier", "frazier"}), "City Clerk"
+        ),
+        RosterMember(
+            3,
+            "jane-harris",
+            "Jane Harris",
+            frozenset({"jane harris", "harris"}),
+            "Council President",
+        ),
+    ]
+
+
+def _council_members() -> list[RosterMember]:
+    """A council-style roster (shared generic title) for the roll-call / vote-call guards."""
+    return [
+        RosterMember(
+            10, "jeffery-yorg", "Jeffery Yorg", frozenset({"jeffery yorg", "yorg"}), "Councilmember"
+        ),
+        RosterMember(
+            11,
+            "rick-hummell",
+            "Rick Hummell",
+            frozenset({"rick hummell", "hummell"}),
+            "Councilmember",
+        ),
+        RosterMember(
+            12,
+            "karen-dilber",
+            "Karen Dilber",
+            frozenset({"karen dilber", "dilber"}),
+            "Director of Finance",
+        ),
     ]
 
 
@@ -378,6 +430,265 @@ def test_rollcall_outranks_presenter_intro_for_recorded_basis():
     assert by_cluster["SPEAKER_02"].basis == "rollcall"
     # Recorded as a roll call, so it publishes (inferred_high), not the presenter tier.
     assert by_cluster["SPEAKER_02"].confidence == "inferred_high"
+
+
+# --- presenter-introduction: title-appositive + presence families (real corpus + edges) --
+
+
+def test_presenter_intro_presence_and_appositive_real_sentence():
+    # Real council-transcript introduction: no whitelisted cue verb, name mid-turn. Fires via
+    # both the presence template ("have with us <name>") and the name+own-title appositive.
+    turns = [
+        _t(
+            "CHAIR",
+            "this evening we have with us karen dilber, our director of finance "
+            "to go through the budget",
+        ),
+        _t("SPEAKER_02", _long()),
+    ]
+    tally: Counter[str] = Counter()
+    props = resolve_identities(turns, _titled_members(), tally)
+    by_cluster = {p.cluster_label: p for p in props}
+    assert by_cluster["SPEAKER_02"].subject_id == 1
+    assert by_cluster["SPEAKER_02"].basis == "presenter_intro"
+    # Held below the public gate exactly like the cue-verb handoff — inferred from free text.
+    assert by_cluster["SPEAKER_02"].confidence == "inferred_medium"
+    assert "CHAIR" not in by_cluster  # the introducer is never attributed
+    assert tally["title_appositive"] == 1  # appositive is credited first when both fire
+
+
+def test_presenter_intro_appositive_title_before_name_real_sentence():
+    # Real council-transcript introduction with the title BEFORE the name.
+    turns = [
+        _t("CHAIR", "we do have our director of finance, karen dilber here as well"),
+        _t("SPEAKER_02", _long()),
+    ]
+    props = resolve_identities(turns, _titled_members())
+    assert len(props) == 1
+    assert props[0].cluster_label == "SPEAKER_02" and props[0].subject_id == 1
+    assert props[0].basis == "presenter_intro" and props[0].confidence == "inferred_medium"
+
+
+def test_presenter_intro_gratitude_appositive_does_not_anchor_real_sentence():
+    # "...thank our city clerk june frazier" is name+own-title adjacency identical in surface
+    # form to an introduction; the gratitude word must disqualify it even with a valid handoff
+    # structure following. This is the load-bearing precision guard for the appositive.
+    turns = [
+        _t("CHAIR", "i would also like to thank our city clerk june frazier"),
+        _t("SPEAKER_02", _long()),
+    ]
+    assert resolve_identities(turns, _titled_members()) == []
+
+
+def test_presenter_intro_appositive_requires_the_members_own_title():
+    # Dilber named next to a DIFFERENT member's title ("city clerk" is Frazier's) -> the
+    # appositive binds a name only to that member's own title, so this does not anchor.
+    turns = [
+        _t("CHAIR", "our city clerk karen dilber will now speak"),
+        _t("SPEAKER_02", _long()),
+    ]
+    assert resolve_identities(turns, _titled_members()) == []
+
+
+def test_presenter_intro_appositive_gap_too_large_does_not_anchor():
+    # The member's title appears only in a later clause, well beyond the appositive window.
+    turns = [
+        _t("CHAIR", "karen dilber joined the city last spring as the director of finance"),
+        _t("SPEAKER_02", _long()),
+    ]
+    assert resolve_identities(turns, _titled_members()) == []
+
+
+def test_presenter_intro_presence_suffix_is_here_anchors():
+    turns = [
+        _t("CHAIR", "karen dilber is here to walk us through the numbers"),
+        _t("SPEAKER_02", _long()),
+    ]
+    tally: Counter[str] = Counter()
+    props = resolve_identities(turns, _titled_members(), tally)
+    assert len(props) == 1 and props[0].subject_id == 1
+    assert props[0].basis == "presenter_intro"
+    assert tally["presence_intro"] == 1
+
+
+def test_presenter_intro_presence_suffix_is_with_us_anchors():
+    turns = [
+        _t("CHAIR", "jane harris is with us to present the plan"),
+        _t("SPEAKER_02", _long()),
+    ]
+    props = resolve_identities(turns, _titled_members())
+    assert len(props) == 1 and props[0].subject_id == 3
+
+
+def test_presenter_intro_presence_here_to_present_is_anchors():
+    turns = [
+        _t("CHAIR", "here to present is jane harris from the finance office"),
+        _t("SPEAKER_02", _long()),
+    ]
+    props = resolve_identities(turns, _titled_members())
+    assert len(props) == 1 and props[0].subject_id == 3
+
+
+def test_presenter_intro_presence_negated_does_not_anchor():
+    # A negation shortly before the presence template flips it -> no handoff.
+    turns = [
+        _t("CHAIR", "we do not have with us karen dilber this evening"),
+        _t("SPEAKER_02", _long()),
+    ]
+    assert resolve_identities(turns, _titled_members()) == []
+
+
+def test_presenter_intro_gratitude_blocks_presence_template():
+    # A thanks word shortly before a presence template disqualifies it just as for appositive.
+    turns = [
+        _t("CHAIR", "i want to thank karen dilber is here today"),
+        _t("SPEAKER_02", _long()),
+    ]
+    assert resolve_identities(turns, _titled_members()) == []
+
+
+def test_presenter_intro_appositive_requires_a_different_cluster():
+    # Same cluster keeps the floor after the appositive introduction -> no handoff happened.
+    turns = [
+        _t("CHAIR", "we have with us karen dilber, our director of finance"),
+        _t("CHAIR", _long()),
+    ]
+    assert resolve_identities(turns, _titled_members()) == []
+
+
+def test_presenter_intro_appositive_brief_reply_does_not_anchor():
+    # The incoming cluster speaks well below the sustained floor -> not a presentation.
+    turns = [
+        _t("CHAIR", "we have with us karen dilber, our director of finance"),
+        _t("SPEAKER_02", "thank you very much"),
+    ]
+    assert resolve_identities(turns, _titled_members()) == []
+
+
+def test_presenter_intro_appositive_two_members_is_ambiguous():
+    # Two distinct members named in the introducer's turn -> cannot tell who takes over.
+    turns = [
+        _t("CHAIR", "we have with us karen dilber and june frazier tonight"),
+        _t("SPEAKER_02", _long()),
+    ]
+    assert resolve_identities(turns, _titled_members()) == []
+
+
+def test_presenter_intro_tally_counts_cue_verb_pattern():
+    # The cue-verb family still fires and is credited separately in the fire-count report.
+    turns = [
+        _t("CHAIR", "for the next item i would like to introduce jane harris"),
+        _t("SPEAKER_02", _long()),
+    ]
+    tally: Counter[str] = Counter()
+    resolve_identities(turns, _titled_members(), tally)
+    assert tally["cue_verb"] == 1
+    assert tally["title_appositive"] == 0 and tally["presence_intro"] == 0
+
+
+def test_presenter_intro_appositive_gap_must_be_filler_words():
+    # A name and its own title co-occur but a content word sits between them ("<name> <verb>
+    # the <title>") -> an incidental clause, not an appositive -> no anchor.
+    turns = [
+        _t("CHAIR", "karen dilber reviewed the director of finance report last week"),
+        _t("SPEAKER_02", _long()),
+    ]
+    assert resolve_identities(turns, _titled_members()) == []
+
+
+def test_presenter_intro_title_before_name_incidental_reference_does_not_anchor():
+    # "our <title> <name> <keeps talking>" is a referential mention (the O'Keefe/Gipson shape),
+    # not a handoff -> title-before-name needs the name to end the turn or lead into a handoff.
+    turns = [
+        _t("CHAIR", "our director of finance karen dilber mentioned the shortfall earlier"),
+        _t("SPEAKER_02", _long()),
+    ]
+    assert resolve_identities(turns, _titled_members()) == []
+
+
+def test_presenter_intro_title_before_name_turn_final_with_content_anchors():
+    # Title-before-name where the name ends the turn AND the turn carries real introduction
+    # content still anchors (the content guard distinguishes this from a bare roll-call address).
+    turns = [
+        _t("CHAIR", "and now to walk us through the report our director of finance karen dilber"),
+        _t("SPEAKER_02", _long()),
+    ]
+    props = resolve_identities(turns, _titled_members())
+    assert len(props) == 1 and props[0].subject_id == 1
+    assert props[0].basis == "presenter_intro"
+
+
+def test_presenter_intro_rollcall_address_does_not_anchor():
+    # A bare roll-call / vote prompt "<honorific> <name>[?]" matches the title appositive
+    # (title-before-name, name turn-final) but carries no introduction content, so the vote
+    # responses that follow it must not be anchored to the addressed member (docs 2517/2515).
+    for prompt in ("Councilmember Jeffery Yorg?", "Councilmember Jeffery Yorg"):
+        turns = [_t("CHAIR", prompt), _t("SPEAKER_02", _long())]
+        assert resolve_identities(turns, _council_members()) == [], prompt
+
+
+def test_presenter_intro_vote_call_two_names_is_ambiguous():
+    # A roll-call turn naming two members is blocked by the two-distinct-members ambiguity
+    # guard, which applies to ALL families including title_appositive (grouped vote call).
+    turns = [
+        _t("CHAIR", "Councilmember Rick Hummell? Aye. Councilmember Jeffery Yorg?"),
+        _t("SPEAKER_02", _long()),
+    ]
+    assert resolve_identities(turns, _council_members()) == []
+
+
+def test_presenter_intro_terse_name_before_title_still_anchors():
+    # The content gate is scoped to the title-before-name (roll-call-prone) order only; a terse
+    # name-before-title appositive is the canonical introducing form and keeps its recall.
+    turns = [
+        _t("CHAIR", "Karen Dilber, our Director of Finance."),
+        _t("SPEAKER_02", _long()),
+    ]
+    props = resolve_identities(turns, _council_members())
+    assert len(props) == 1 and props[0].subject_id == 12
+    assert props[0].basis == "presenter_intro"
+
+
+def test_presenter_intro_procedural_vote_prompt_does_not_anchor():
+    # A terse title-before-name vote prompt stays below the content floor because vote-action
+    # words are excluded ("will now vote" -> only "will"/"now" count = 2 < 3) -> no anchor.
+    turns = [
+        _t("CHAIR", "Councilmember Jeffery Yorg will now vote"),
+        _t("SPEAKER_02", _long()),
+    ]
+    assert resolve_identities(turns, _council_members()) == []
+
+
+def test_presenter_intro_commendation_does_not_anchor():
+    # A commendation ("commend") shortly before a name+title reads as recognition, not a handoff.
+    turns = [
+        _t("CHAIR", "i want to commend karen dilber, our director of finance, for her work"),
+        _t("SPEAKER_02", _long()),
+    ]
+    assert resolve_identities(turns, _titled_members()) == []
+
+
+def test_presenter_intro_applause_recognition_does_not_anchor():
+    # "...a round of applause to June Frazier, our city clerk" is recognition of the member,
+    # not a handoff of the floor to them -> must not anchor even with a valid handoff after.
+    turns = [
+        _t("CHAIR", "lets give a round of applause to june frazier, our city clerk tonight"),
+        _t("SPEAKER_02", _long()),
+    ]
+    assert resolve_identities(turns, _titled_members()) == []
+
+
+def test_presenter_intro_first_person_recital_does_not_anchor():
+    # A first-person recital ("I, <name>, <title>, hereby proclaim...") names the SPEAKER, not
+    # a third party to hand the floor to, so it must not anchor the next (different) cluster.
+    turns = [
+        _t(
+            "CHAIR",
+            "now therefore be it resolved i, jane harris, council president, hereby proclaim",
+        ),
+        _t("SPEAKER_02", _long()),
+    ]
+    assert resolve_identities(turns, _titled_members()) == []
 
 
 def test_rows_to_turns_canonicalizes_names():
