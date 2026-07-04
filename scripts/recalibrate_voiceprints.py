@@ -63,6 +63,10 @@ logger = logging.getLogger(__name__)
 
 AUDIO_DIR = Path("data/audio")
 WARP_DOWNLOAD_RETRIES = 6
+# A verdict computed on a partial corpus is not comparable to the baseline and must never
+# overwrite the gallery: run 28684759549 measured only 46/74 meetings (YouTube bot-checks)
+# and looked like a recall collapse. Abort before persisting instead.
+MAX_DOWNLOAD_FAILURE_FRACTION = 0.10
 # Gate B pooling is FIXED (rationale, plan §5): trimmed-mean robustness + require >=2 turns;
 # purity_floor 0 so pooling only trims — within-cluster purity rejection is delegated to
 # Gate A cross-meeting coherence, the stronger label-aware signal.
@@ -418,8 +422,15 @@ def _apply(
     args: argparse.Namespace,
 ) -> None:
     """Embed per-turn on Modal, pool, run nested LOMO, report, and persist the candidate."""
+    import sys
+
     from actalux.diarization.modal_runner import EMBED_MODEL, ModalRunner
     from actalux.ingest.youtube import download_audio
+
+    # Same-dir import, like backfill_whisperx.py: rotate the WARP egress between download
+    # retries — without it every retry re-hits the same bot-flagged exit IP.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from transcribe_meetings import reconnect_warp
 
     models = _parse_embedders(args.embedders, primary=EMBED_MODEL)
     logger.info("embedders: %s (first persisted; any others measured only)", ", ".join(models))
@@ -442,7 +453,13 @@ def _apply(
             for lab in official_labels | set(neg_labels)
         ]
         try:
-            audio = download_audio(video_id, AUDIO_DIR, proxy=args.proxy, retries=retries)
+            audio = download_audio(
+                video_id,
+                AUDIO_DIR,
+                proxy=args.proxy,
+                retries=retries,
+                on_retry=reconnect_warp if args.proxy else None,
+            )
         except Exception:  # noqa: BLE001 - one meeting's download failure must not abort the batch
             logger.exception("audio download failed for doc %d (%s); skipping", doc_id, video_id)
             continue
@@ -467,6 +484,14 @@ def _apply(
         for model_id, model_samples in meeting_samples.items():
             samples_by_model[model_id].extend(model_samples)
         pooled_officials.extend(meeting_pooled)
+
+    failed = len(docs_to_process) - len(processed_docs)
+    if docs_to_process and failed / len(docs_to_process) > MAX_DOWNLOAD_FAILURE_FRACTION:
+        raise ActaluxError(
+            f"{failed}/{len(docs_to_process)} meetings failed to download "
+            f"(> {MAX_DOWNLOAD_FAILURE_FRACTION:.0%}); verdict on a partial corpus is not "
+            f"comparable to the baseline — aborting before persisting anything."
+        )
 
     _finish(
         client,
