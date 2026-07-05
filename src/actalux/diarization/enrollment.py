@@ -14,9 +14,16 @@ from typing import Any
 from actalux.diarization.pooling import Pooled, pool_turn_embeddings
 
 # Name anchors are deterministic (a spoken name -> this voice), so enrolling from an auto
-# inferred_high with one of these bases is safe. basis='voiceprint' is NEVER enrollable --
+# inferred_high with one of these bases is safe. 'presenter_intro' and 'discourse' seed at
+# inferred_medium (below the public bar) — both are corroborated name evidence whose imprecision
+# is contained by the gallery's own acoustic gates. basis='voiceprint' is NEVER enrollable --
 # that would let a biometric guess train the gallery (poison loop).
-NAME_ANCHOR_BASES = ("rollcall", "self_intro", "vote_anchor", "presenter_intro")
+NAME_ANCHOR_BASES = ("rollcall", "self_intro", "vote_anchor", "presenter_intro", "discourse")
+# Bases admitted at inferred_medium (held below the public-display gate) yet still enrollable —
+# a presenter introduction and an LLM discourse label. A roll call / self-intro must be
+# inferred_high to enroll; these two are trusted one tier lower because their error is contained
+# downstream by the gallery's label-purity + calibration gates.
+_MEDIUM_ENROLLABLE_BASES = ("presenter_intro", "discourse")
 
 
 @dataclass(frozen=True)
@@ -47,8 +54,8 @@ def select_enrollable(
     Eligible when the cluster maps to a publishable subject with a ``person_id`` and is
     either human-``confirmed`` or (unless ``confirmed_only``) a name anchor at its clean
     tier: an ``inferred_high`` roll call / self-intro, or an ``inferred_medium``
-    ``presenter_intro`` (held below the public bar but still enrollable). All bases must be
-    in ``NAME_ANCHOR_BASES``; ``basis='voiceprint'`` is never eligible.
+    ``presenter_intro`` / ``discourse`` (held below the public bar but still enrollable). All
+    bases must be in ``NAME_ANCHOR_BASES``; ``basis='voiceprint'`` is never eligible.
     """
     out: list[EnrollableCluster] = []
     for row in identities:
@@ -64,14 +71,14 @@ def select_enrollable(
         if basis == "voiceprint":
             continue  # never train the gallery on a biometric guess
         # A name anchor seeds the gallery at its clean tier: roll call / self-intro publish
-        # at inferred_high; presenter_intro is deliberately held at inferred_medium (below
-        # the public-display gate) yet still enrolls, its imprecision contained downstream.
+        # at inferred_high; presenter_intro / discourse are deliberately held at inferred_medium
+        # (below the public-display gate) yet still enroll, their imprecision contained downstream.
         eligible = confidence == "confirmed" or (
             not confirmed_only
             and basis in NAME_ANCHOR_BASES
             and (
                 confidence == "inferred_high"
-                or (basis == "presenter_intro" and confidence == "inferred_medium")
+                or (basis in _MEDIUM_ENROLLABLE_BASES and confidence == "inferred_medium")
             )
         )
         if not eligible:

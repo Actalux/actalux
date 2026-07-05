@@ -213,6 +213,16 @@ _TIER_CONFIDENCE = {
     _TIER_MEDIUM: "inferred_medium",
     _TIER_LOW: "inferred_low",
 }
+# Rank of a stored confidence, used only to arbitrate a (document, cluster) conflict between
+# two independent evidence families that each want the same cluster (see persist_identities).
+# 'confirmed'/'rejected' are human decisions handled separately (always locked), so they need
+# no rank here; an unrecognized value ranks lowest so it can never win a conflict by accident.
+_CONFIDENCE_RANK = {"inferred_low": 1, "inferred_medium": 2, "inferred_high": 3}
+# The deterministic name-anchor bases this resolver owns and may retract. A separate evidence
+# family (e.g. the LLM discourse labeler, basis='discourse') owns its own bases and is scoped
+# out of this family's retraction, so the two coexist on one document without deleting each
+# other's rows (persist_identities' managed_bases). Kept in sync with the bases resolve writes.
+RESOLVER_BASES = frozenset({"rollcall", "self_intro", "presenter_intro", "vote_anchor"})
 
 
 @dataclass(frozen=True)
@@ -839,18 +849,35 @@ def turns_for_document(
 
 
 def persist_identities(
-    service_client: Client, document_id: int, proposals: list[IdentityProposal]
+    service_client: Client,
+    document_id: int,
+    proposals: list[IdentityProposal],
+    *,
+    managed_bases: frozenset[str] | None = None,
 ) -> int:
     """Reconcile a document's resolved identities via the service client; return rows written.
 
-    ``proposals`` must be the COMPLETE current proposal set for the document. This:
+    ``proposals`` must be the COMPLETE current proposal set for the caller's evidence family
+    on this document. This:
       * never touches a human-decided row — ``confirmed`` (manual gold) OR ``rejected`` (a
         denied hypothesis): a locked cluster is neither retracted nor re-proposed, so a
         confirmed name is preserved and a denied name is never re-attached on re-pass,
-      * retracts stale auto rows — a previously-published cluster the resolver no longer
+      * retracts stale auto rows — a previously-published cluster the caller no longer
         proposes (e.g. after a roster/alias change) is deleted, so a wrong public
         identity can't linger,
       * upserts the current proposals on ``(document_id, cluster_label)``.
+
+    ``managed_bases`` scopes the family that owns rows on this document, so several
+    independent evidence families (the deterministic resolver, the LLM discourse labeler,
+    …) can write to one document without erasing each other's rows:
+      * ``None`` — the caller owns every non-locked row (the original single-family
+        behavior): retract any non-locked row it no longer proposes and overwrite on upsert.
+      * a set of bases — the caller owns only rows whose ``basis`` is in the set. It
+        retracts only its OWN stale rows; a FOREIGN row (another family's basis) is never
+        deleted, and on a shared cluster the proposal overwrites the foreign row only when
+        it ranks strictly higher (``_CONFIDENCE_RANK``) — equal or lower keeps the existing
+        row. That makes the outcome deterministic and stable across either family's
+        re-passes: higher tier wins, a tie keeps whoever got there first.
 
     Caveat: not atomic — a human could decide a row between the read and the upsert and
     have it overwritten. The durable fix is the DB trigger (migrate_035/043) that skips any
@@ -860,7 +887,7 @@ def persist_identities(
     """
     existing = (
         service_client.table("speaker_identities")
-        .select("cluster_label,confidence")
+        .select("cluster_label,confidence,basis")
         .eq("document_id", document_id)
         .execute()
         .data
@@ -872,18 +899,51 @@ def persist_identities(
     locked = {
         r["cluster_label"] for r in existing if r.get("confidence") in ("confirmed", "rejected")
     }
+    # A foreign row (another family's basis, when a family scope is given) is preserved like a
+    # locked one on the DELETE path, and yields to this proposal on the UPSERT path only when
+    # this proposal ranks strictly higher. With no scope every non-locked row is this caller's.
+    existing_by_cluster = {r["cluster_label"]: r for r in existing}
+
+    def _owned(row: dict[str, Any]) -> bool:
+        return managed_bases is None or row.get("basis") in managed_bases
+
     proposed = {p.cluster_label for p in proposals}
     table = service_client.table("speaker_identities")
 
     for row in existing:
         cluster = row["cluster_label"]
-        if cluster not in proposed and cluster not in locked:
+        if cluster not in proposed and cluster not in locked and _owned(row):
             table.delete().eq("document_id", document_id).eq("cluster_label", cluster).execute()
 
-    rows = [p.to_row(document_id) for p in proposals if p.cluster_label not in locked]
+    rows = [
+        p.to_row(document_id)
+        for p in proposals
+        if p.cluster_label not in locked
+        and _wins_cluster(p, existing_by_cluster.get(p.cluster_label), _owned)
+    ]
     if rows:
         table.upsert(rows, on_conflict="document_id,cluster_label").execute()
     return len(rows)
+
+
+def _wins_cluster(
+    proposal: IdentityProposal,
+    existing_row: dict[str, Any] | None,
+    owned: Any,
+) -> bool:
+    """Whether ``proposal`` may overwrite the current row on its cluster.
+
+    A cluster with no row, or one this family owns, is always writable (the family's own
+    prior row is simply replaced by its current proposal). A FOREIGN row — another evidence
+    family's — is overwritten only when this proposal ranks strictly higher than it
+    (``_CONFIDENCE_RANK``); an equal or lower rank keeps the existing row, so a tie resolves
+    to whoever wrote first and neither family clobbers the other on re-passes.
+    """
+    if existing_row is None or owned(existing_row):
+        return True
+    return _CONFIDENCE_RANK.get(proposal.confidence, 0) > _CONFIDENCE_RANK.get(
+        existing_row.get("confidence"), 0
+    )
 
 
 def _place_canonical_rules(client: Client, entity_id: int) -> list[CorrectionRule]:
@@ -913,5 +973,8 @@ def resolve_document(
     rules = _place_canonical_rules(client, entity_id)
     turns = turns_for_document(client, document_id, rules)
     proposals = resolve_identities(turns, members, presenter_tally)
-    persist_identities(service_client, document_id, proposals)
+    # Scope retraction to this family's own bases so a coexisting discourse-labeler row on
+    # another cluster is never deleted here (and vice versa); conflicts on a shared cluster
+    # resolve by tier inside persist_identities.
+    persist_identities(service_client, document_id, proposals, managed_bases=RESOLVER_BASES)
     return proposals

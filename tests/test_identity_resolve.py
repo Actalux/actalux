@@ -9,6 +9,7 @@ from typing import Any
 from actalux.glossary.canonicalize import CorrectionRule
 from actalux.identity.resolve import (
     _MIN_SUSTAINED_WORDS,
+    RESOLVER_BASES,
     IdentityProposal,
     ResolverTurn,
     RosterMember,
@@ -16,6 +17,8 @@ from actalux.identity.resolve import (
     persist_identities,
     resolve_identities,
 )
+
+_DISCOURSE_BASES = frozenset({"discourse"})
 
 
 def _members() -> list[RosterMember]:
@@ -839,3 +842,114 @@ def test_persist_identities_keeps_rejected_when_no_longer_proposed():
     client = _IdentClient(existing)
     persist_identities(client, 7, proposals)
     assert not [e for e in client.log if e["op"] == "delete"]
+
+
+# --- family-scoped coexistence of the resolver and the discourse labeler ---------------
+# Two independent evidence families write speaker_identities on one document. The invariant:
+# a discourse row survives resolver re-passes and vice versa, and a (document, cluster)
+# conflict resolves by tier (higher wins; equal keeps existing) — see persist_identities.
+
+
+def _deletes(client: _IdentClient) -> set:
+    return {dict(e["filters"]).get("cluster_label") for e in client.log if e["op"] == "delete"}
+
+
+def _upserted(client: _IdentClient) -> set:
+    return {r["cluster_label"] for e in client.log if e["op"] == "upsert" for r in e["payload"]}
+
+
+def test_resolver_repass_never_retracts_a_foreign_discourse_row():
+    # A discourse row on SPEAKER_05 must survive a resolver re-pass that doesn't propose it.
+    existing = [
+        {"cluster_label": "SPEAKER_05", "confidence": "inferred_medium", "basis": "discourse"},
+    ]
+    proposals = [IdentityProposal("SPEAKER_00", 1, "jane-harris", "inferred_high", "rollcall")]
+    client = _IdentClient(existing)
+    persist_identities(client, 7, proposals, managed_bases=RESOLVER_BASES)
+    assert _deletes(client) == set()  # foreign discourse row not retracted
+    assert _upserted(client) == {"SPEAKER_00"}
+
+
+def test_discourse_repass_never_retracts_a_foreign_resolver_row():
+    existing = [
+        {"cluster_label": "SPEAKER_00", "confidence": "inferred_high", "basis": "rollcall"},
+    ]
+    proposals = [IdentityProposal("SPEAKER_05", 3, "carol-diaz", "inferred_medium", "discourse")]
+    client = _IdentClient(existing)
+    persist_identities(client, 7, proposals, managed_bases=_DISCOURSE_BASES)
+    assert _deletes(client) == set()  # foreign resolver row not retracted
+    assert _upserted(client) == {"SPEAKER_05"}
+
+
+def test_discourse_yields_to_higher_tier_resolver_row_on_same_cluster():
+    # Discourse (medium) must NOT clobber a foreign resolver inferred_high on the same cluster.
+    existing = [
+        {"cluster_label": "SPEAKER_00", "confidence": "inferred_high", "basis": "rollcall"},
+    ]
+    proposals = [IdentityProposal("SPEAKER_00", 1, "jane-harris", "inferred_medium", "discourse")]
+    client = _IdentClient(existing)
+    written = persist_identities(client, 7, proposals, managed_bases=_DISCOURSE_BASES)
+    assert written == 0 and _upserted(client) == set()  # kept the resolver row
+    assert _deletes(client) == set()
+
+
+def test_higher_tier_resolver_takes_over_foreign_discourse_row():
+    # A resolver inferred_high overwrites a foreign discourse medium on the same cluster.
+    existing = [
+        {"cluster_label": "SPEAKER_00", "confidence": "inferred_medium", "basis": "discourse"},
+    ]
+    proposals = [IdentityProposal("SPEAKER_00", 1, "jane-harris", "inferred_high", "rollcall")]
+    client = _IdentClient(existing)
+    written = persist_identities(client, 7, proposals, managed_bases=RESOLVER_BASES)
+    assert written == 1 and _upserted(client) == {"SPEAKER_00"}  # higher tier wins
+
+
+def test_equal_tier_conflict_keeps_existing_foreign_row():
+    # presenter_intro (medium) already holds the cluster; a discourse (medium) re-pass ties
+    # -> keep existing, so the outcome is stable across passes.
+    existing = [
+        {
+            "cluster_label": "SPEAKER_00",
+            "confidence": "inferred_medium",
+            "basis": "presenter_intro",
+        },
+    ]
+    proposals = [IdentityProposal("SPEAKER_00", 1, "jane-harris", "inferred_medium", "discourse")]
+    client = _IdentClient(existing)
+    written = persist_identities(client, 7, proposals, managed_bases=_DISCOURSE_BASES)
+    assert written == 0 and _upserted(client) == set()
+
+
+def test_discourse_takes_over_lower_tier_resolver_contested_row():
+    # A resolver contested cluster (inferred_low) yields to a corroborated discourse medium.
+    existing = [
+        {"cluster_label": "SPEAKER_00", "confidence": "inferred_low", "basis": "rollcall"},
+    ]
+    proposals = [IdentityProposal("SPEAKER_00", 3, "carol-diaz", "inferred_medium", "discourse")]
+    client = _IdentClient(existing)
+    written = persist_identities(client, 7, proposals, managed_bases=_DISCOURSE_BASES)
+    assert written == 1 and _upserted(client) == {"SPEAKER_00"}  # medium > low
+
+
+def test_discourse_retracts_only_its_own_stale_rows():
+    # SPEAKER_05 (discourse, no longer proposed) is retracted; SPEAKER_00 (foreign resolver) is not.
+    existing = [
+        {"cluster_label": "SPEAKER_05", "confidence": "inferred_medium", "basis": "discourse"},
+        {"cluster_label": "SPEAKER_00", "confidence": "inferred_high", "basis": "rollcall"},
+    ]
+    proposals = [IdentityProposal("SPEAKER_09", 2, "bob-stevens", "inferred_medium", "discourse")]
+    client = _IdentClient(existing)
+    persist_identities(client, 7, proposals, managed_bases=_DISCOURSE_BASES)
+    assert _deletes(client) == {"SPEAKER_05"}  # own stale retracted; foreign resolver kept
+
+
+def test_discourse_replaces_its_own_prior_row_regardless_of_tier():
+    # An OWNED discourse row is always replaced by the family's current proposal (no arbitration
+    # against your own row) — here re-proposing the same cluster for a different member.
+    existing = [
+        {"cluster_label": "SPEAKER_00", "confidence": "inferred_medium", "basis": "discourse"},
+    ]
+    proposals = [IdentityProposal("SPEAKER_00", 2, "bob-stevens", "inferred_medium", "discourse")]
+    client = _IdentClient(existing)
+    written = persist_identities(client, 7, proposals, managed_bases=_DISCOURSE_BASES)
+    assert written == 1 and _upserted(client) == {"SPEAKER_00"}
