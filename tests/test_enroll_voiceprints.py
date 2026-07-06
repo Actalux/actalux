@@ -49,6 +49,18 @@ def test_select_enrollable_includes_presenter_intro_at_medium():
     assert out[0].source_basis == "presenter_intro"
 
 
+def test_select_enrollable_includes_vote_anchor_at_medium():
+    # vote_anchor is held at inferred_medium (never public on text alone) but seeds the gallery,
+    # exactly like presenter_intro; a plain medium rollcall still does not enroll.
+    rows = [
+        _identity(1, 5, "SPEAKER_00", 10, "inferred_medium", "vote_anchor"),
+        _identity(2, 6, "SPEAKER_01", 11, "inferred_medium", "rollcall"),  # medium, not exempt
+    ]
+    out = ev.select_enrollable(rows, _subjects(), confirmed_only=False)
+    assert [e.person_id for e in out] == [100]
+    assert out[0].source_basis == "vote_anchor"
+
+
 def test_select_enrollable_confirmed_only_excludes_name_anchored():
     rows = [
         _identity(1, 5, "SPEAKER_00", 10, "inferred_high", "rollcall"),

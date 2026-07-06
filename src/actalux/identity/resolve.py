@@ -252,7 +252,7 @@ class IdentityProposal:
     subject_id: int
     slug: str  # for review/logging; not a DB column
     confidence: str  # inferred_high | inferred_medium | inferred_low
-    basis: str  # rollcall | self_intro | presenter_intro
+    basis: str  # rollcall | vote_anchor | self_intro | presenter_intro | discourse
 
     def to_row(self, document_id: int) -> dict[str, Any]:
         """Row for the ``speaker_identities`` table."""
@@ -962,19 +962,36 @@ def resolve_document(
     entity_id: int,
     presenter_tally: Counter[str] | None = None,
 ) -> list[IdentityProposal]:
-    """Resolve + persist identities for one transcript; return the proposals.
+    """Resolve + persist identities for one transcript; return the merged proposals.
 
     Turn text is name-canonicalized first (so a known mangling like "York" resolves to
-    roster "Jeffery Yorg") before matching against the body roster. A caller batching many
-    documents may pass a shared ``presenter_tally`` to accumulate presenter-introduction
-    fire counts per pattern across the whole pass (see ``resolve_identities``).
+    roster "Jeffery Yorg") before matching against the body roster. Two evidence families run
+    over the same turns: the deterministic name anchors (``resolve_identities``) and the
+    vote-sequence aligner (``vote_align.align_votes``), merged under an explicit precedence
+    (``merge_vote_anchor``) before a single persist. A caller batching many documents may pass a
+    shared ``presenter_tally`` to accumulate presenter-introduction fire counts per pattern across
+    the whole pass (see ``resolve_identities``).
     """
+    # Local import breaks the resolve <-> vote_align cycle (vote_align reuses this module's name
+    # index + proposal types); it is cached after the first document, mirroring db.py's pattern.
+    from actalux.identity.vote_align import (
+        align_votes,
+        merge_vote_anchor,
+        vote_reference_for_document,
+    )
+
     members = members_for_entity(client, entity_id)
     rules = _place_canonical_rules(client, entity_id)
     turns = turns_for_document(client, document_id, rules)
     proposals = resolve_identities(turns, members, presenter_tally)
-    # Scope retraction to this family's own bases so a coexisting discourse-labeler row on
-    # another cluster is never deleted here (and vice versa); conflicts on a shared cluster
-    # resolve by tier inside persist_identities.
-    persist_identities(service_client, document_id, proposals, managed_bases=RESOLVER_BASES)
-    return proposals
+    # Second, independent evidence family: align the clerk-call roll-call sequence against the
+    # correlated structured vote record. Merged under an explicit precedence (a high vote_anchor
+    # overrides the poisoned single-adjacency rollcall on a shared cluster; otherwise the rollcall
+    # row stays) so the persisted set is deterministic and independent of DB write order.
+    vote_ref = vote_reference_for_document(client, document_id, entity_id)
+    merged = merge_vote_anchor(proposals, align_votes(turns, members, vote_ref))
+    # Scope retraction to this family's own bases (RESOLVER_BASES includes vote_anchor) so a
+    # coexisting discourse-labeler row on another cluster is never deleted here (and vice versa);
+    # conflicts on a shared cluster resolve by tier inside persist_identities.
+    persist_identities(service_client, document_id, merged, managed_bases=RESOLVER_BASES)
+    return merged
