@@ -99,6 +99,72 @@ def coherent_core_asnorm(
     return core if len(core) >= min_core else []
 
 
+def coherent_subset(
+    vectors: list[tuple[float, ...]],
+    *,
+    core_floor: float,
+    min_core: int,
+    cohort_vectors: list[tuple[float, ...]] | None = None,
+    z_floor: float | None = None,
+    min_cohort: int = 3,
+    sigma_eps: float = 1e-6,
+) -> list[int]:
+    """Grow the largest mutually-coherent subset from the medoid (the "Hummell fix").
+
+    ``coherent_core`` thresholds each sample's mean cosine to *all* the official's other samples,
+    so a scattered minority of anchors (e.g. six unverified discourse labels pointing at
+    inconsistent voices) drags a coherent majority's mean below the floor and knocks the whole
+    official out. This grows the core instead: the medoid (the sample most similar on average to
+    the rest) anchors the coherent voice, and a sample joins the core when it sits within the core
+    radius of the medoid. Anchors outside the radius are discarded — the coherent majority survives
+    the noisy minority.
+
+    Raw mode: a sample joins when its cosine-to-medoid ≥ ``core_floor``. AS-norm mode (an impostor
+    ``cohort_vectors`` + ``z_floor`` given): it joins when its cosine-to-medoid, z-scored against
+    that sample's cohort cosines, ≥ ``z_floor``; a degenerate cohort (fewer than ``min_cohort``
+    scores or spread below ``sigma_eps``) falls back to the raw radius rather than dividing by ~0.
+    The medoid is always in its own core. Returns ``[]`` if fewer than ``min_core`` survive.
+
+    The returned indices are the *retained* anchors; the caller computes discarded ones as the
+    complement (reported per evidence family in the audit block). Pure numpy; leakage-safe (called
+    on training folds only, like the rest of Gate A).
+    """
+    n = len(vectors)
+    if n == 0:
+        return []
+    vecs = _normalize(np.asarray(vectors, dtype=np.float64))
+    sim = vecs @ vecs.T
+    if n == 1:
+        mean_to_others = np.array([1.0])
+    else:
+        mean_to_others = (sim.sum(axis=1) - 1.0) / (n - 1)
+    medoid = int(np.argmax(mean_to_others))
+    cos_to_medoid = sim[medoid]
+
+    asnorm = (
+        cohort_vectors is not None and z_floor is not None and len(cohort_vectors) >= min_cohort
+    )
+    cohort = _normalize(np.asarray(cohort_vectors, dtype=np.float64)) if asnorm else None
+
+    core: list[int] = []
+    for i in range(n):
+        if i == medoid:
+            in_core = True  # the medoid anchors its own core
+        elif asnorm:
+            cohort_cos = vecs[i] @ cohort.T  # type: ignore[union-attr]
+            sigma = float(cohort_cos.std())
+            if sigma < sigma_eps:
+                in_core = cos_to_medoid[i] >= core_floor  # no z-scale -> raw fallback radius
+            else:
+                z = (cos_to_medoid[i] - float(cohort_cos.mean())) / sigma
+                in_core = z >= z_floor
+        else:
+            in_core = cos_to_medoid[i] >= core_floor
+        if in_core:
+            core.append(i)
+    return core if len(core) >= min_core else []
+
+
 def collapse_suspects(
     labeled: list[tuple[int, tuple[float, ...]]], *, collapse_bound: float
 ) -> set[int]:

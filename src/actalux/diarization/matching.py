@@ -12,15 +12,15 @@ Design: docs/architecture/voiceprint-recalibration-plan.md §5.
 
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
 
+from actalux.diarization.families import CONFIRMED_CONFIDENCE, family_of
 from actalux.diarization.labelqa import (
-    coherent_core,
-    coherent_core_asnorm,
+    coherent_subset,
     collapse_suspects,
 )
 
@@ -52,6 +52,22 @@ GATE_A_MIN_CORE = 2
 GATE_A_CONFIRMED_MIN_MEETINGS = 2
 # Single-config default for enabled_officials; the sweep varies DEFAULT_COLLAPSE_BOUNDS instead.
 GATE_A_COLLAPSE_BOUND = 0.85
+# Consensus enablement (Phase C). A non-confirmed official is enabled ONLY when independent
+# evidence families corroborate the SAME acoustic voice across meetings — a single unverified
+# family (the id=5 discourse flood) can point at the wrong cluster and must never enable alone.
+# These are FIXED structural minima (like GATE_A_MIN_CORE), not tuning knobs: the coherence
+# *geometry* is what the grid sweeps (core_floor / collapse_bound / z_floor), while the required
+# *counts* of families and meetings are the label-quality floor. Their values:
+#  - 3 core meetings: strictly above the confirmed-waiver's 2 — an unconfirmed official must clear
+#    a higher cross-meeting bar than a human-vouched one, and 3 distinct recordings make a
+#    room/label coincidence implausible.
+#  - 2 families: "independent" needs at least two; one family is exactly the id=5 failure.
+#  - 2 family-meetings: the multi-family agreement must span ≥2 meetings so it is not a single-
+#    meeting diarization artifact (subsumed by the 3-meeting floor at these defaults, but kept
+#    explicit so lowering the meeting floor can't silently admit single-meeting consensus).
+CONSENSUS_MIN_CORE_MEETINGS = 3
+CONSENSUS_MIN_FAMILIES = 2
+CONSENSUS_MIN_FAMILY_MEETINGS = 2
 # Held-out recall is reported split by the held-out sample's confidence tier: mixing confirmed
 # (human-verified) positives with possibly-mislabeled inferred ones dilutes the honest read.
 CONFIDENCE_TIERS = ("confirmed", "inferred_high", "other")
@@ -77,6 +93,9 @@ class Sample:
     label): Gate A trusts confirmed samples as a core even when raw coherence fails, and the
     honest recall estimate is split by the held-out sample's tier. The default is a neutral
     non-confirmed tier, so a gallery built without confirmations behaves exactly as before.
+    ``basis`` is the enrollment basis (``rollcall`` / ``vote_anchor`` / ``discourse`` / …); it
+    resolves to an evidence *family* via ``family`` for the consensus gate. It defaults to ``None``
+    (family ``human``) so a sample built without a basis behaves as a single neutral family.
     """
 
     person_id: int | None
@@ -85,6 +104,12 @@ class Sample:
     purity: float = 1.0
     idx: int = -1
     confidence: str = "inferred_high"
+    basis: str | None = None
+
+    @property
+    def family(self) -> str:
+        """The coarse evidence family of this sample (consensus counts families, not bases)."""
+        return family_of(self.basis, self.confidence)
 
 
 def cosine(a: tuple[float, ...], b: tuple[float, ...]) -> float:
@@ -192,6 +217,198 @@ def leave_one_meeting_out(
     return out
 
 
+@dataclass
+class GateDecision:
+    """One official's Gate-A verdict + the evidence that produced it (audit substrate).
+
+    ``path`` is ``confirmed_waiver`` (human-vouched across ≥2 meetings), ``consensus`` (≥2
+    independent families agree acoustically across ≥3 meetings), or ``not_enabled``. ``families``
+    counts the official's samples by evidence family; ``core_families`` counts only those inside
+    the coherent acoustic core; ``discarded_by_family`` counts the anchors the coherent-subset
+    selection dropped (the noisy minority). These feed the machine-readable audit block and the
+    run-over-run enablement delta; they carry no negative/citizen identifiers.
+    """
+
+    person_id: int
+    enabled: bool
+    path: str
+    reason: str
+    families: dict[str, int]
+    core_families: dict[str, int]
+    core_meetings: int
+    discarded_by_family: dict[str, int]
+    confirmed_meetings: int
+    collapsed: bool
+
+
+def gate_official(
+    samples: list[Sample],
+    *,
+    collapsed: bool,
+    core_floor: float,
+    min_core: int,
+    cohort_vectors: list[tuple[float, ...]] | None = None,
+    score_norm: str = "none",
+    z_floor: float | None = None,
+    cohort_min: int = ASNORM_MIN_COHORT,
+    sigma_eps: float = ASNORM_SIGMA_EPS,
+    confirmed_min_meetings: int = GATE_A_CONFIRMED_MIN_MEETINGS,
+    consensus_min_core_meetings: int = CONSENSUS_MIN_CORE_MEETINGS,
+    consensus_min_families: int = CONSENSUS_MIN_FAMILIES,
+    consensus_min_family_meetings: int = CONSENSUS_MIN_FAMILY_MEETINGS,
+) -> GateDecision:
+    """Decide one official (all ``samples`` share ``person_id``); explain why. Leakage-safe.
+
+    Order is precision-first and unchanged at the top: the collapse guard vetoes a one-voice-many-
+    names official FIRST (a confirmation or a consensus can never split one voice into two people),
+    then the human-confirmed waiver enables on ≥``confirmed_min_meetings`` distinct confirmed
+    meetings (coherence waived — the strongest single family). Absent both, Phase C's CONSENSUS
+    rule enables only when the coherent acoustic core (grown robustly from the medoid, so a
+    scattered minority of anchors can't knock out a coherent majority) spans ≥``consensus_min_core_
+    meetings`` distinct meetings AND ≥``consensus_min_families`` independent families land inside it
+    (agreement checked in embedding space — a family "agrees" by having a sample inside the core —
+    never by name strings), across ≥``consensus_min_family_meetings`` meetings.
+    """
+    person_id = samples[0].person_id
+    assert person_id is not None  # callers group by person; negatives never reach here
+    families = Counter(s.family for s in samples)
+    confirmed_mtgs = {s.meeting_key for s in samples if s.confidence == CONFIRMED_CONFIDENCE}
+    base: dict[str, Any] = {
+        "person_id": person_id,
+        "families": dict(families),
+        "confirmed_meetings": len(confirmed_mtgs),
+        "collapsed": collapsed,
+    }
+    if (
+        collapsed
+    ):  # collapse guard first — neither confirmation nor consensus rescues a shared voice
+        return GateDecision(
+            enabled=False,
+            path="not_enabled",
+            reason="collapse: one voice anchored under multiple names",
+            core_families={},
+            core_meetings=0,
+            discarded_by_family={},
+            **base,
+        )
+    if len(confirmed_mtgs) >= confirmed_min_meetings:
+        return GateDecision(
+            enabled=True,
+            path="confirmed_waiver",
+            reason=f"human-confirmed across {len(confirmed_mtgs)} meetings",
+            core_families={},
+            core_meetings=len(confirmed_mtgs),
+            discarded_by_family={},
+            **base,
+        )
+
+    vecs = [s.embedding for s in samples]
+    asnorm = score_norm == "asnorm"
+    core_idx = coherent_subset(
+        vecs,
+        core_floor=core_floor,
+        min_core=min_core,
+        cohort_vectors=cohort_vectors if asnorm else None,
+        z_floor=z_floor if asnorm else None,
+        min_cohort=cohort_min,
+        sigma_eps=sigma_eps,
+    )
+    core_set = set(core_idx)
+    core_families = Counter(samples[i].family for i in core_idx)
+    core_meeting_set = {samples[i].meeting_key for i in core_idx}
+    discarded = Counter(s.family for j, s in enumerate(samples) if j not in core_set)
+    n_core_meetings = len(core_meeting_set)
+    n_families = len(core_families)
+    decision: dict[str, Any] = {
+        "core_families": dict(core_families),
+        "core_meetings": n_core_meetings,
+        "discarded_by_family": dict(discarded),
+        **base,
+    }
+    if not core_idx:
+        return GateDecision(
+            enabled=False, path="not_enabled", reason="no coherent acoustic core", **decision
+        )
+    if n_core_meetings < consensus_min_core_meetings:
+        return GateDecision(
+            enabled=False,
+            path="not_enabled",
+            reason=(
+                f"coherent core spans {n_core_meetings} < {consensus_min_core_meetings} meetings"
+            ),
+            **decision,
+        )
+    if n_families < consensus_min_families:
+        only = next(iter(core_families), "?")
+        return GateDecision(
+            enabled=False,
+            path="not_enabled",
+            reason=(
+                f"single family ({only}) on the coherent voice; "
+                f"{consensus_min_families} independent families required"
+            ),
+            **decision,
+        )
+    if n_core_meetings < consensus_min_family_meetings:  # guard single-meeting corroboration
+        return GateDecision(
+            enabled=False,
+            path="not_enabled",
+            reason=f"multi-family agreement confined to {n_core_meetings} meeting(s)",
+            **decision,
+        )
+    return GateDecision(
+        enabled=True,
+        path="consensus",
+        reason=f"consensus: {n_families} families agree across {n_core_meetings} meetings",
+        **decision,
+    )
+
+
+def gate_officials(
+    train: list[Sample],
+    *,
+    core_floor: float,
+    min_core: int,
+    collapse_bound: float,
+    score_norm: str = "none",
+    z_floor: float | None = None,
+    cohort_min: int = ASNORM_MIN_COHORT,
+    sigma_eps: float = ASNORM_SIGMA_EPS,
+    confirmed_min_meetings: int = GATE_A_CONFIRMED_MIN_MEETINGS,
+) -> dict[int, GateDecision]:
+    """Gate every official in ``train`` -> ``{person_id: GateDecision}`` (the audit substrate).
+
+    Groups ``train`` by person, runs the cross-official collapse detector once (raw cosine,
+    regardless of ``score_norm`` — normalizing away absolute similarity to another person's anchors
+    would defeat it), then decides each official via ``gate_official`` against the impostor cohort
+    of every OTHER official's vectors. Negatives (``person_id`` None) are ignored, so they never
+    enter the cohort or a decision. Applied ONLY within training folds (leakage-safe).
+    """
+    by_person: dict[int, list[Sample]] = defaultdict(list)
+    for s in train:
+        if s.person_id is not None:
+            by_person[s.person_id].append(s)
+    suspects = collapse_suspects(
+        [(p, s.embedding) for p, ss in by_person.items() for s in ss], collapse_bound=collapse_bound
+    )
+    decisions: dict[int, GateDecision] = {}
+    for person, samples in by_person.items():
+        cohort = [s.embedding for other, oss in by_person.items() if other != person for s in oss]
+        decisions[person] = gate_official(
+            samples,
+            collapsed=person in suspects,
+            core_floor=core_floor,
+            min_core=min_core,
+            cohort_vectors=cohort,
+            score_norm=score_norm,
+            z_floor=z_floor,
+            cohort_min=cohort_min,
+            sigma_eps=sigma_eps,
+            confirmed_min_meetings=confirmed_min_meetings,
+        )
+    return decisions
+
+
 def enabled_officials(
     train: list[Sample],
     *,
@@ -204,63 +421,25 @@ def enabled_officials(
     sigma_eps: float = ASNORM_SIGMA_EPS,
     confirmed_min_meetings: int = GATE_A_CONFIRMED_MIN_MEETINGS,
 ) -> set[int]:
-    """Gate A: officials from ``train`` with a cross-meeting coherent core and no collapse.
-
-    An official is enabled only if their voiceprints mutually agree (coherent core) AND their
-    voice is not near-duplicate with a *different* official's (a roll-call caller labeled under
-    several names). ``score_norm='asnorm'`` z-scores each sample's self-coherence against the
-    impostor cohort — every OTHER official's train vectors — and thresholds ``z_floor``, so a
-    modestly-coherent but clearly-non-impostor official can still enable; ``core_floor`` is then
-    only the degenerate-cohort fallback floor. Collapse detection stays on RAW cosine regardless
-    of ``score_norm``: it measures absolute similarity to another person's anchors, which
-    normalizing away would defeat. Negatives (person_id None) are ignored, so they never enter the
-    impostor cohort. Applied ONLY within training folds (leakage-safe).
-
-    Human confirmations (lever B) enter here as a trusted core: an official whose train samples
-    carry ``confidence='confirmed'`` from at least ``confirmed_min_meetings`` distinct meetings is
-    enabled even if raw coherence fails (a genuine official whose voiceprints scatter across noisy
-    rooms is still that official once a human has vouched across meetings). The confirmation relaxes
-    ONLY the coherence test — the collapse guard is applied first and unchanged, so a confirmed
-    official whose voice near-duplicates a different official's is still excluded: confirming one
-    name can't make a one-voice-two-names collapse into two people, and precision comes first. Only
-    train confirmations count, so the estimate stays fold-safe (a held-out meeting's confirmations
-    never enable an official in its own fold).
+    """Gate A: the officials from ``train`` enabled under Phase C's consensus rule (see
+    ``gate_official``). A thin wrapper over ``gate_officials`` — one mechanism produces both the
+    enabled set (the hot sweep path) and the per-official audit decisions (reporting).
     """
-    by_person: dict[int, list[tuple[float, ...]]] = defaultdict(list)
-    confirmed_meetings: dict[int, set[str]] = defaultdict(set)
-    for s in train:
-        if s.person_id is None:
-            continue
-        by_person[s.person_id].append(s.embedding)
-        if s.confidence == "confirmed":
-            confirmed_meetings[s.person_id].add(s.meeting_key)
-
-    suspects = collapse_suspects(
-        [(p, v) for p, vs in by_person.items() for v in vs], collapse_bound=collapse_bound
-    )
-    enabled: set[int] = set()
-    for person, vecs in by_person.items():
-        if person in suspects:
-            continue  # collapse guard first: a confirmation never rescues a two-name voice
-        if len(confirmed_meetings[person]) >= confirmed_min_meetings:
-            enabled.add(person)  # trusted core: human-confirmed across meetings, coherence waived
-            continue
-        if score_norm == "asnorm":
-            cohort = [v for other, ovecs in by_person.items() if other != person for v in ovecs]
-            core = coherent_core_asnorm(
-                vecs,
-                cohort,
-                z_floor=z_floor if z_floor is not None else 0.0,
-                min_core=min_core,
-                min_cohort=cohort_min,
-                sigma_eps=sigma_eps,
-                raw_fallback_floor=core_floor,
-            )
-        else:
-            core = coherent_core(vecs, core_floor=core_floor, min_core=min_core)
-        if core:
-            enabled.add(person)
-    return enabled
+    return {
+        p
+        for p, d in gate_officials(
+            train,
+            core_floor=core_floor,
+            min_core=min_core,
+            collapse_bound=collapse_bound,
+            score_norm=score_norm,
+            z_floor=z_floor,
+            cohort_min=cohort_min,
+            sigma_eps=sigma_eps,
+            confirmed_min_meetings=confirmed_min_meetings,
+        ).items()
+        if d.enabled
+    }
 
 
 @dataclass
@@ -676,6 +855,66 @@ def recall_by_confidence(
     }
 
 
+def trusted_tier_recall(records: list[tuple[bool, int | None, int | None]]) -> dict[str, Any]:
+    """Held-out recall over TRUSTED positives only — the headline number the operator reads.
+
+    ``records`` are ``(trusted, true_person, predicted_person)`` for held-out samples across all
+    folds. A positive is trusted when its held-out sample is human-confirmed OR its official was
+    enabled via multi-family consensus in that fold (the same enable-set the matcher used) — i.e.
+    an official we trust enough to name. Untrusted positives (e.g. the id=5 flood of unverified
+    single-family discourse labels the gate refused to enable) are EXCLUDED, so a corpus swamped
+    with noisy labels can't make the headline recall meaningless. Negatives never count. Officials
+    only — a record carries no citizen identifier.
+    """
+    positives = recalled = 0
+    for trusted, true, pred in records:
+        if true is None or not trusted:
+            continue
+        positives += 1
+        if pred == true:
+            recalled += 1
+    return {
+        "positives": positives,
+        "recalled": recalled,
+        "recall": round(recalled / positives, 4) if positives else None,
+    }
+
+
+def enablement_delta(
+    previous_enabled: set[int],
+    current_enabled: set[int],
+    *,
+    current_reasons: dict[int, str],
+    names: dict[int, str] | None = None,
+) -> dict[str, list[dict[str, Any]]]:
+    """Who gained/lost enablement versus the previous calibration, each with a reason category.
+
+    ``gained`` = enabled now but not before (reason = the current enable path/why). ``lost`` =
+    enabled before but not now — an automatic DEMOTION the audit sheet makes visible (reason = why
+    they no longer enable, from the current Gate-A decision). Pure — the caller queries the previous
+    ``voiceprint_calibration`` row for ``previous_enabled`` and supplies ``current_reasons`` (the
+    reason for every current official, enabled or not). ``names`` is an optional person_id -> label
+    map for human-readable rows. Officials only.
+    """
+    names = names or {}
+    gained = sorted(current_enabled - previous_enabled)
+    lost = sorted(previous_enabled - current_enabled)
+    return {
+        "gained": [
+            {"person_id": p, "name": names.get(p), "reason": current_reasons.get(p, "enabled")}
+            for p in gained
+        ],
+        "lost": [
+            {
+                "person_id": p,
+                "name": names.get(p),
+                "reason": current_reasons.get(p, "no longer enabled"),
+            }
+            for p in lost
+        ],
+    }
+
+
 def nested_lomo_multi_bar(
     samples: list[Sample],
     *,
@@ -705,6 +944,10 @@ def nested_lomo_multi_bar(
     records_by_bar: dict[float, list[tuple[str, int | None, int | None]]] = {
         b: [] for b in precision_bars
     }
+    # (trusted, true, pred) per held-out sample, for the trusted-tier headline recall (reporting).
+    trusted_by_bar: dict[float, list[tuple[bool, int | None, int | None]]] = {
+        b: [] for b in precision_bars
+    }
     chosen_by_bar: dict[float, list[dict[str, Any]]] = {b: [] for b in precision_bars}
     abstained_by_bar: dict[float, int] = {b: 0 for b in precision_bars}
     for mk in meetings:
@@ -728,6 +971,11 @@ def nested_lomo_multi_bar(
                 abstained_by_bar[b] += 1
                 preds_by_bar[b].extend((q.person_id, None) for q in held)
                 records_by_bar[b].extend((q.confidence, q.person_id, None) for q in held)
+                # nothing enabled -> nothing trusted this fold (a confirmed held-out sample is still
+                # trusted, so its abstention is an honest trusted-tier miss, not an exclusion).
+                trusted_by_bar[b].extend(
+                    (q.confidence == CONFIRMED_CONFIDENCE, q.person_id, None) for q in held
+                )
                 continue
             chosen_by_bar[b].append(
                 {
@@ -744,6 +992,16 @@ def nested_lomo_multi_bar(
             scored = _score_held_out(held, train, op)
             preds_by_bar[b].extend((q.person_id, pred) for q, pred in scored)
             records_by_bar[b].extend((q.confidence, q.person_id, pred) for q, pred in scored)
+            # Trusted = confirmed sample OR its official was enabled in-fold (= confirmed-waiver or
+            # multi-family consensus, both trusted). op.enabled is exactly the matcher gallery.
+            trusted_by_bar[b].extend(
+                (
+                    (q.confidence == CONFIRMED_CONFIDENCE or q.person_id in op.enabled),
+                    q.person_id,
+                    pred,
+                )
+                for q, pred in scored
+            )
     n_positives = sum(1 for s in samples if s.person_id is not None)
     n_negatives = sum(1 for s in samples if s.person_id is None)
     result: dict[float, tuple[Metrics, dict[str, Any]]] = {}
@@ -755,6 +1013,7 @@ def nested_lomo_multi_bar(
             "n_negatives": n_negatives,
             "chosen": chosen_by_bar[b],
             "recall_by_confidence": recall_by_confidence(records_by_bar[b]),
+            "trusted_recall": trusted_tier_recall(trusted_by_bar[b]),
         }
         result[b] = (score(preds_by_bar[b]), provenance)
     return result

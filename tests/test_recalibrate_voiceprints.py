@@ -36,14 +36,14 @@ def _turns(vec, *, n=2, secs=30.0):
     return [(tuple(vec), secs) for _ in range(n)]
 
 
-def _ec(person_id, label, name, meeting, *, confidence="inferred_high"):
+def _ec(person_id, label, name, meeting, *, confidence="inferred_high", basis="rollcall"):
     return EnrollableCluster(
         person_id=person_id,
         source_subject_id=10 * person_id,
         source_identity_id=1000 * person_id + meeting,
         document_id=meeting,
         cluster_label=label,
-        source_basis="rollcall",
+        source_basis=basis,
         canonical_name=name,
         confidence=confidence,
     )
@@ -111,13 +111,18 @@ def test_ab_report_empty_when_only_primary():
 
 
 def test_ab_report_shape_for_alternate_model():
-    # Clean separation so the alternate harness produces a real nested verdict; the report carries
-    # the nested summary + curve + n_enabled + recall split, keyed by model id, primary excluded.
+    # Clean separation so the alternate harness produces a real nested verdict; each official has
+    # two evidence families across four meetings (consensus-eligible even under LOMO holdout). The
+    # report carries the nested summary + curve + n_enabled + recall split, keyed by model, primary
+    # excluded.
+    def _fam(person, mk, vec):
+        return Sample(person, f"m{mk}", vec, basis=("rollcall" if mk % 2 else "vote_anchor"))
+
     alt = [
-        Sample(1, "m1", _A), Sample(1, "m2", _A), Sample(1, "m3", _A),
-        Sample(2, "m4", _B), Sample(2, "m5", _B), Sample(2, "m6", _B),
-        Sample(None, "m7", _C),
-    ]  # fmt: skip
+        *(_fam(1, mk, _A) for mk in (1, 2, 3, 4)),
+        *(_fam(2, mk, _B) for mk in (5, 6, 7, 8)),
+        Sample(None, "m9", _C),
+    ]
     curve_bars = tuple(sorted({0.9, *CURVE_PRECISION_BARS}))
     ab = rc._ab_report(
         {"wp": [Sample(1, "m1", _A), Sample(1, "m2", _A)], "ecapa": alt},
@@ -213,17 +218,20 @@ class _FakeClient:
 
 
 def _clean_dual_model(primary, alt):
-    """Three clean meetings for two officials, embedded by two models, via build_meeting_samples.
+    """Four clean meetings for two officials, embedded by two models, via build_meeting_samples.
 
-    Primary gets orthogonal vectors _A/_B (+ neg _C); the alternate gets _P/_Q (+ neg _R). Clean
-    separation clears the bar, so both officials enable and the primary gallery is actually written.
+    Primary gets orthogonal vectors _A/_B (+ neg _C); the alternate gets _P/_Q (+ neg _R). Each
+    official is anchored by two evidence families (adjacency + vote) alternating by meeting, across
+    FOUR meetings — so under nested LOMO (one held out) three remain and clear the 3-meeting
+    consensus floor, both officials enable, and the primary gallery is actually written.
     pooled_officials is accumulated primary-only exactly as _apply does.
     """
     samples_by_model = {primary: [], alt: []}
     pooled_officials = []
-    for mk in (1, 2, 3):
-        ec1 = _ec(1, "SPEAKER_00", "Alice", mk)
-        ec2 = _ec(2, "SPEAKER_01", "Bob", mk)
+    for mk in (1, 2, 3, 4):
+        basis = "rollcall" if mk % 2 else "vote_anchor"  # two families across the four meetings
+        ec1 = _ec(1, "SPEAKER_00", "Alice", mk, basis=basis)
+        ec2 = _ec(2, "SPEAKER_01", "Bob", mk, basis=basis)
         tbm = {
             primary: {"SPEAKER_00": _turns(_A), "SPEAKER_01": _turns(_B), "SPEAKER_09": _turns(_C)},
             alt: {"SPEAKER_00": _turns(_P), "SPEAKER_01": _turns(_Q), "SPEAKER_09": _turns(_R)},
@@ -291,6 +299,137 @@ def test_finish_single_model_writes_no_ab_block():
     assert cal_row["status"] == "candidate"
     assert "ab" not in cal_row["report"]
     assert client.recorder["upserts"], "single-model run still persists the primary gallery"
+
+
+def test_finish_report_carries_audit_delta_and_trusted_recall():
+    # The persisted report gains the Phase-C blocks: trusted-tier headline recall, the per-official
+    # audit (families + agreement + enable path), and the run-over-run enablement delta.
+    primary = "wp"
+    samples_by_model, pooled_officials = _clean_dual_model(primary, "ecapa")
+    client = _FakeClient()
+    rc._finish(
+        client,
+        place_id=5,
+        entity_id=None,
+        models=[primary],
+        samples_by_model={primary: samples_by_model[primary]},
+        pooled_officials=pooled_officials,
+        processed_docs={1, 2, 3, 4},
+        superseded=set(),
+        args=SimpleNamespace(precision_bar=0.9),
+    )
+    (_t, cal_row) = client.recorder["inserts"][0]
+    report = cal_row["report"]
+    assert set(report["trusted_recall"]) == {"positives", "recalled", "recall"}
+    audit = report["audit"]
+    assert set(audit) == {"1", "2"}
+    for entry in audit.values():
+        assert entry["enabled"] and entry["enable_path"] == "consensus"
+        assert set(entry["family_agreement"]["agreeing_families"]) == {"adjacency", "vote"}
+    delta = report["delta"]
+    assert {g["person_id"] for g in delta["gained"]} == {1, 2}  # no previous row -> both gained
+    assert delta["lost"] == [] and delta["previous_calibration_id"] is None
+
+
+def test_build_audit_enabled_flag_follows_run_not_bare_gate():
+    # A not_cleared run: an official may clear Gate-A consensus, but the RUN enabled nobody
+    # (enabled=set()). The audit's `enabled` flag must follow the persisted verdict, not the bare
+    # gate pass, so the sheet/report never claim an official is enabled while nothing was stored.
+    from actalux.diarization.matching import Sample, gate_officials
+
+    two_family = [
+        Sample(1, "m1", _A, basis="rollcall"),
+        Sample(1, "m2", _A, basis="vote_anchor"),
+        Sample(1, "m3", _A, basis="rollcall"),
+    ]
+    decisions = gate_officials(two_family, core_floor=0.3, min_core=2, collapse_bound=0.85)
+    assert decisions[1].enabled  # the official clears consensus Gate A
+    # the RUN enabled nobody (not_cleared): the audit's enabled flag must follow the run
+    audit, _reasons = rc._build_audit(decisions, {1: "Alice"}, {}, enabled=set())
+    assert audit["1"]["enabled"] is False  # audit agrees with the (empty) run enablement
+    assert audit["1"]["enable_path"] == "consensus"  # path/reason still explain the gate pass
+
+
+def test_top_evidence_excludes_discarded_family_clips():
+    # A rollcall (adjacency) clip and a discourse clip. When the coherent voice is adjacency-only
+    # (discourse was discarded by the gate), the audit must NOT cue the discarded discourse clip.
+    cues = [
+        {
+            "document_id": 1, "video_id": "v1", "cluster_label": "S0", "basis": "rollcall",
+            "confidence": "inferred_high", "start_seconds": 10.0, "end_seconds": 20.0,
+        },
+        {
+            "document_id": 2, "video_id": "v2", "cluster_label": "S1", "basis": "discourse",
+            "confidence": "inferred_medium", "start_seconds": 5.0, "end_seconds": 15.0,
+        },
+    ]  # fmt: skip
+    picked = rc._top_evidence(cues, {"adjacency"})
+    assert [c["document_id"] for c in picked] == [1]  # discourse clip (discarded family) excluded
+    assert len(rc._top_evidence(cues, None)) == 2  # confirmed-waiver: no family filter, keep both
+
+
+def test_render_audit_sheet_has_embeds_metric_block_and_delta():
+    report = {
+        "trusted_recall": {"positives": 3, "recalled": 2, "recall": 0.667},
+        "macro_precision": 1.0,
+        "recall": 0.5,
+        "fp_negatives": 0,
+        "audit": {
+            "1": {
+                "name": "Alice",
+                "enabled": True,
+                "enable_path": "consensus",
+                "reason": "consensus: 2 families agree across 4 meetings",
+                "families": {"adjacency": 2, "vote": 2},
+                "family_agreement": {
+                    "agreeing_families": ["adjacency", "vote"],
+                    "in_core": {"adjacency": 2, "vote": 2},
+                    "core_meetings": 4,
+                    "discarded": {},
+                },
+                "confirmed_meetings": 0,
+                "evidence": [
+                    {
+                        "document_id": 12,
+                        "video_id": "abc123",
+                        "cluster_label": "SPEAKER_00",
+                        "basis": "rollcall",
+                        "start_seconds": 90.0,
+                        "end_seconds": 105.0,
+                    }
+                ],
+            },
+            "2": {  # a not-enabled official gets no row on the sheet
+                "name": "Bob",
+                "enabled": False,
+                "enable_path": "not_enabled",
+                "reason": "single family",
+                "families": {"adjacency": 3},
+                "family_agreement": {
+                    "agreeing_families": ["adjacency"],
+                    "in_core": {"adjacency": 3},
+                    "core_meetings": 3,
+                    "discarded": {},
+                },
+                "confirmed_meetings": 0,
+            },
+        },
+        "delta": {
+            "gained": [{"person_id": 1, "name": "Alice", "reason": "consensus"}],
+            "lost": [{"person_id": 9, "name": "Zed", "reason": "single family (adjacency)"}],
+            "previous_calibration_id": 7,
+        },
+    }
+    out = rc.render_audit_sheet(
+        title="Voiceprint audit — mo/clayton", calibration_id=8, status="candidate", report=report
+    )
+    assert "<!doctype html>" in out.lower()
+    # the enabled official's cued embed appears (nocookie, ~10s window; & is html-escaped)
+    assert "youtube-nocookie.com/embed/abc123?start=90&amp;end=100" in out
+    assert "Alice" in out and "Bob" not in out  # only enabled officials get a row
+    # metric block + delta (including the demotion)
+    assert "trusted-tier recall" in out
+    assert "Zed" in out and "lost (demoted)" in out
 
 
 def test_negative_labels_excludes_officials_and_short_clusters_longest_first():

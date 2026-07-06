@@ -3,21 +3,16 @@
 from __future__ import annotations
 
 import math
-from collections import defaultdict
 
 import numpy as np
 
 from actalux.diarization.labelqa import (
-    coherent_core,
     coherent_core_asnorm,
-    collapse_suspects,
 )
 from actalux.diarization.matching import (
-    DEFAULT_AGGREGATIONS,
+    CONSENSUS_MIN_CORE_MEETINGS,
+    CONSENSUS_MIN_FAMILIES,
     DEFAULT_COLLAPSE_BOUNDS,
-    DEFAULT_CORE_FLOORS,
-    DEFAULT_MARGINS,
-    DEFAULT_PURITY_FLOORS,
     DEFAULT_SCORE_NORMS,
     DEFAULT_THRESHOLDS,
     GATE_A_MIN_CORE,
@@ -27,28 +22,37 @@ from actalux.diarization.matching import (
     best_operating_point,
     build_sim,
     enabled_officials,
+    enablement_delta,
     evaluate_grid,
-    leave_one_meeting_out,
+    gate_official,
+    gate_officials,
     nested_leave_one_meeting_out,
     nested_lomo_multi_bar,
     pareto_frontier,
     person_scores,
     recall_by_confidence,
-    score,
     select_operating_point,
+    trusted_tier_recall,
 )
 
 A = (1.0, 0.0, 0.0)
 B = (0.0, 1.0, 0.0)
 C = (0.0, 0.0, 1.0)
 
-# Threshold grid before the 0.92/0.95 extension — the identity oracle sweeps this so a "none"-mode
-# run reproduces the pre-asnorm selection exactly.
-LEGACY_THRESHOLDS = (0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90)
+# Two independent evidence families (adjacency vs vote) — the consensus gate needs ≥2 distinct
+# families on one coherent voice, so multi-family fixtures use these bases.
+ADJ, VOTE = "rollcall", "vote_anchor"
 
 
-def _s(person, meeting, vec):
-    return Sample(person_id=person, meeting_key=meeting, embedding=vec)
+def _s(person, meeting, vec, basis=None):
+    return Sample(person_id=person, meeting_key=meeting, embedding=vec, basis=basis)
+
+
+def _two_family(person, vec, meetings=("m1", "m2", "m3")):
+    """A consensus-eligible official: the SAME coherent voice across ``meetings`` with ≥2 families
+    (adjacency + vote) landing on it — the minimum a non-confirmed official needs to enable."""
+    bases = [ADJ, VOTE, ADJ, VOTE]
+    return [_s(person, m, vec, basis=bases[i % len(bases)]) for i, m in enumerate(meetings)]
 
 
 def test_person_scores_allowed_restricts_gallery():
@@ -67,10 +71,24 @@ def test_sim_fast_path_matches_cosine():
     assert all(abs(slow[k] - fast[k]) < 1e-9 for k in slow)
 
 
-def test_enabled_officials_requires_core_and_min_samples():
-    # p1 has two agreeing meetings (core); p2 has one (no core at min_core=2).
-    train = [_s(1, "m1", A), _s(1, "m2", A), _s(2, "m3", B)]
+def test_enabled_officials_single_family_does_not_enable():
+    # p1 agrees across three meetings but on ONE evidence family (all adjacency); consensus needs
+    # ≥2 independent families on the coherent voice, so a single-family official is NOT enabled.
+    train = [_s(1, "m1", A, ADJ), _s(1, "m2", A, ADJ), _s(1, "m3", A, ADJ)]
+    assert enabled_officials(train, core_floor=0.5, min_core=2, collapse_bound=0.85) == set()
+
+
+def test_enabled_officials_consensus_two_families_enables():
+    # The same coherent voice, now anchored by two independent families (adjacency + vote) across
+    # three meetings -> consensus enables. This is the sole non-confirmed enablement path.
+    train = _two_family(1, A)
     assert enabled_officials(train, core_floor=0.5, min_core=2, collapse_bound=0.85) == {1}
+
+
+def test_enabled_officials_consensus_needs_three_meetings():
+    # Two families but only two meetings (below CONSENSUS_MIN_CORE_MEETINGS) -> not enabled.
+    train = _two_family(1, A, meetings=("m1", "m2"))
+    assert enabled_officials(train, core_floor=0.5, min_core=2, collapse_bound=0.85) == set()
 
 
 def test_enabled_officials_drops_collapsed_voices():
@@ -80,11 +98,14 @@ def test_enabled_officials_drops_collapsed_voices():
 
 
 def test_nested_lomo_clean_separation_rejects_negative():
+    # Two consensus-eligible officials (each 2 families across FOUR meetings on one coherent voice,
+    # so that when nested LOMO holds one out the remaining three still clear the 3-meeting consensus
+    # floor), cleanly separated, plus a distinct citizen the matcher must reject.
     samples = [
-        _s(1, "m1", A), _s(1, "m2", A), _s(1, "m3", A),
-        _s(2, "m4", B), _s(2, "m5", B), _s(2, "m6", B),
-        _s(None, "m7", C),  # a citizen distinct from both officials
-    ]  # fmt: skip
+        *_two_family(1, A, ("m1", "m2", "m3", "m4")),
+        *_two_family(2, B, ("m5", "m6", "m7", "m8")),
+        _s(None, "m9", C),  # a citizen distinct from both officials
+    ]
     metrics, prov = nested_leave_one_meeting_out(samples, precision_bar=0.9)
     assert metrics.macro_precision == 1.0
     assert metrics.recall == 1.0
@@ -95,10 +116,10 @@ def test_nested_lomo_clean_separation_rejects_negative():
 def test_nested_lomo_counts_negative_match_as_false_positive():
     # A "negative" that is actually official 1's voice must get matched -> FP -> macroP < 1.
     samples = [
-        _s(1, "m1", A), _s(1, "m2", A), _s(1, "m3", A),
-        _s(2, "m4", B), _s(2, "m5", B), _s(2, "m6", B),
+        *_two_family(1, A, ("m1", "m2", "m3")),
+        *_two_family(2, B, ("m4", "m5", "m6")),
         _s(None, "m7", A),
-    ]  # fmt: skip
+    ]
     metrics, _ = nested_leave_one_meeting_out(samples, precision_bar=0.5)
     assert any(true is None for true, _ in metrics.confusions)
     assert metrics.macro_precision < 1.0
@@ -129,10 +150,6 @@ _S2X = (0.1, 0.0, _R99, 0.0, 0.0)  # cosine 0.1 with _S1A, 0.04 with _S1B
 _S2Y = (-0.1, 0.0, 0.0, _R99, 0.0)  # cosine -0.1 with _S1A, -0.04 with _S1B
 
 
-def _asnorm_train():
-    return [_s(1, "m1", _S1A), _s(1, "m2", _S1B), _s(2, "m3", _S2X), _s(2, "m4", _S2Y)]
-
-
 def test_asnorm_zfloor_pins_core_membership():
     # z(s1a) = (0.4-0)/0.1 = 4.0 ; z(s1b) = (0.4-0)/0.04 = 10.0 (population σ). min_core=1 exposes
     # the per-sample decision the enablement filter would otherwise hide. Floors bracket (not equal)
@@ -145,51 +162,17 @@ def test_asnorm_zfloor_pins_core_membership():
     assert coherent_core_asnorm(both, cohort, z_floor=10.1, **kw) == []  # s1b drops out
 
 
-def test_asnorm_flips_enablement_the_right_way():
-    train = _asnorm_train()
-    # Raw self-coherence 0.4 < 0.5 -> neither official has a core.
-    assert enabled_officials(train, core_floor=0.5, min_core=2, collapse_bound=0.85) == set()
-    # asnorm rescues the genuine, non-impostor official 1; the incoherent official 2 stays out.
-    assert enabled_officials(
-        train,
-        core_floor=0.5,
-        min_core=2,
-        collapse_bound=0.85,
-        score_norm="asnorm",
-        z_floor=2.0,
-        cohort_min=2,
-    ) == {1}
-    # A z-floor above s1b's 10σ leaves person 1 with fewer than min_core survivors -> not enabled.
-    assert (
-        enabled_officials(
-            train,
-            core_floor=0.5,
-            min_core=2,
-            collapse_bound=0.85,
-            score_norm="asnorm",
-            z_floor=5.0,
-            cohort_min=2,
-        )
-        == set()
+def test_consensus_holds_under_asnorm_mode():
+    # asnorm changes only how the coherent core is selected (the z-scored radius); the consensus
+    # family/meeting requirements still gate enablement. A clean 2-family official enables in either
+    # mode; asnorm never lowers the bar to admit a single-family official.
+    two_fam = _two_family(1, A)
+    one_fam = [_s(2, "m4", B, ADJ), _s(2, "m5", B, ADJ), _s(2, "m6", B, ADJ)]
+    kw = {"score_norm": "asnorm", "z_floor": 1.0, "cohort_min": 2}
+    enabled = enabled_officials(
+        two_fam + one_fam, core_floor=0.5, min_core=2, collapse_bound=0.85, **kw
     )
-
-
-def test_asnorm_degenerate_sigma_falls_back_to_raw():
-    # Cohort cosines with zero spread give no z-scale: the sample is judged by the raw fallback.
-    c1 = (0.1, 0.0, _R99, 0.0, 0.0)
-    c2 = (0.1, 0.0, 0.0, _R99, 0.0)  # both cosine 0.1 with _S1A -> σ = 0
-    train = [_s(1, "m1", _S1A), _s(1, "m2", _S1B), _s(2, "m3", c1), _s(2, "m4", c2)]
-    common = {"min_core": 2, "collapse_bound": 0.85, "score_norm": "asnorm", "z_floor": 2.0}
-    assert enabled_officials(train, core_floor=0.3, cohort_min=2, **common) == {1}  # 0.4 >= 0.3
-    assert enabled_officials(train, core_floor=0.5, cohort_min=2, **common) == set()  # 0.4 < 0.5
-
-
-def test_asnorm_small_cohort_falls_back_to_raw():
-    # A single-sample cohort is below the default size floor -> raw fallback, not a divide-by-~0.
-    train = [_s(1, "m1", _S1A), _s(1, "m2", _S1B), _s(2, "m3", _S2X)]
-    common = {"min_core": 2, "collapse_bound": 0.85, "score_norm": "asnorm", "z_floor": 2.0}
-    assert enabled_officials(train, core_floor=0.3, **common) == {1}
-    assert enabled_officials(train, core_floor=0.5, **common) == set()
+    assert enabled == {1}  # 2-family official enabled; 1-family official excluded even under asnorm
 
 
 def test_collapse_stays_raw_under_asnorm():
@@ -287,94 +270,31 @@ def test_multi_bar_matches_single_bar_per_bar():
         assert multi_prov["abstained_folds"] == single_prov["abstained_folds"]
 
 
-# --- regression identity: none-mode + legacy grid == pre-asnorm behavior ----------------------
+# --- consensus invariant: the refit's enabled set is reproducible from its own knobs -----------
 
 
-def _legacy_enabled(train, *, core_floor, min_core, collapse_bound):
-    """Pre-asnorm Gate A rebuilt from the untouched primitives (not via enabled_officials)."""
-    by_person = defaultdict(list)
-    for s in train:
-        if s.person_id is not None:
-            by_person[s.person_id].append(s.embedding)
-    suspects = collapse_suspects(
-        [(p, v) for p, vs in by_person.items() for v in vs], collapse_bound=collapse_bound
-    )
-    enabled = set()
-    for person, vecs in by_person.items():
-        if person in suspects:
-            continue
-        if coherent_core(vecs, core_floor=core_floor, min_core=min_core):
-            enabled.add(person)
-    return enabled
-
-
-def _legacy_select(samples, *, precision_bar):
-    """Faithful copy of select_operating_point as it was before the asnorm/collapse-sweep rework."""
-    best = None
-    best_key = None
-    for pf in DEFAULT_PURITY_FLOORS:
-        filtered = [s for s in samples if s.purity >= pf]
-        if len(filtered) < GATE_A_MIN_CORE:
-            continue
-        sim = build_sim(filtered)
-        below = [(s.person_id, None) for s in samples if s.person_id is not None and s.purity < pf]
-        for core_floor in DEFAULT_CORE_FLOORS:
-            enabled = _legacy_enabled(
-                filtered, core_floor=core_floor, min_core=GATE_A_MIN_CORE, collapse_bound=0.85
-            )
-            if not enabled:
-                continue
-            for agg in DEFAULT_AGGREGATIONS:
-                for t in LEGACY_THRESHOLDS:
-                    for mgn in DEFAULT_MARGINS:
-                        preds = leave_one_meeting_out(
-                            filtered, t, mgn, aggregation=agg, allowed=enabled, sim=sim
-                        )
-                        mtr = score(preds + below)
-                        if mtr.macro_precision >= precision_bar:
-                            key = (mtr.recall, t, mgn)
-                            if best_key is None or key > best_key:
-                                best_key = key
-                                best = (pf, core_floor, t, mgn, agg, frozenset(enabled), mtr)
-    return best
-
-
-def test_none_mode_with_legacy_grid_matches_pre_asnorm_selection():
-    # With the added axes pinned to their single legacy values, the reworked selector must return
-    # the byte-identical operating point the pre-asnorm code would have — no silent drift.
-    selected_any = False
+def test_refit_enabled_set_reproducible_from_gate_officials():
+    # The audit block re-derives each official's enable path via gate_officials at the refit's
+    # (purity, core, collapse, score_norm, z) knobs; that re-derivation must reproduce EXACTLY the
+    # enabled set the selected operating point carries, or the audit could misattribute an enable.
+    reproduced_any = False
     for seed in range(8):
         samples = _random_samples(seed)
-        for bar in (0.80, 0.90, 0.98):
-            legacy = _legacy_select(samples, precision_bar=bar)
-            new = select_operating_point(
-                samples,
-                thresholds=LEGACY_THRESHOLDS,
-                core_floors=DEFAULT_CORE_FLOORS,
-                purity_floors=DEFAULT_PURITY_FLOORS,
-                margins=DEFAULT_MARGINS,
-                aggregations=DEFAULT_AGGREGATIONS,
-                collapse_bounds=(0.85,),
-                score_norms=("none",),
-                min_core=GATE_A_MIN_CORE,
-                precision_bar=bar,
-            )
-            if legacy is None:
-                assert new is None
-                continue
-            selected_any = True
-            pf, core_floor, t, mgn, agg, enabled, mtr = legacy
-            assert (new.purity_floor, new.core_floor, new.threshold, new.margin) == (
-                pf,
-                core_floor,
-                t,
-                mgn,
-            )
-            assert new.aggregation == agg
-            assert frozenset(new.enabled) == enabled
-            assert new.metrics.macro_precision == mtr.macro_precision
-            assert new.metrics.recall == mtr.recall
-    assert selected_any  # guard against a vacuous all-None comparison
+        op = select_operating_point(samples, precision_bar=0.90)
+        if op is None:
+            continue
+        reproduced_any = True
+        filtered = [s for s in samples if s.purity >= op.purity_floor]
+        decisions = gate_officials(
+            filtered,
+            core_floor=op.core_floor,
+            min_core=GATE_A_MIN_CORE,
+            collapse_bound=op.collapse_bound,
+            score_norm=op.score_norm,
+            z_floor=op.z_floor,
+        )
+        assert {p for p, d in decisions.items() if d.enabled} == op.enabled
+    assert reproduced_any  # guard against a vacuous all-None sweep
 
 
 # --- fixtures + performance -------------------------------------------------------------------
@@ -386,37 +306,43 @@ def _unit(vec):
     return tuple((arr / (norm if norm else 1.0)).tolist())
 
 
-def _random_samples(seed, *, n_officials=4, n_meetings=6, dim=16, noise=0.6, n_neg=4):
+def _random_samples(seed, *, n_officials=4, n_meetings=6, dim=16, noise=0.45, n_neg=4):
     """Deterministic messy gallery: officials with moderate coherence + near-orthogonal negatives.
 
-    Moderate noise means some officials fail the coherent-core check at the higher floors, so the
-    selection is non-trivial (recall < 1) and exercises the grid + tie-break.
+    Each official speaks across three distinct meetings anchored by two evidence families
+    (adjacency + vote), so a coherent official can clear the consensus gate; the moderate noise
+    means some fail the coherent-core check at higher floors, keeping the selection non-trivial.
     """
     rng = np.random.default_rng(seed)
     centers = [rng.standard_normal(dim) for _ in range(n_officials)]
     samples = []
     for o in range(n_officials):
-        for mk in rng.choice(n_meetings, size=3, replace=False):
-            samples.append(
-                Sample(o + 1, f"m{int(mk)}", _unit(centers[o] + noise * rng.standard_normal(dim)))
-            )
+        for i, mk in enumerate(rng.choice(n_meetings, size=3, replace=False)):
+            basis = ADJ if i % 2 == 0 else VOTE  # two families across the three meetings
+            vec = _unit(centers[o] + noise * rng.standard_normal(dim))
+            samples.append(Sample(o + 1, f"m{int(mk)}", vec, basis=basis))
     for _ in range(n_neg):
         mk = int(rng.integers(0, n_meetings))
         samples.append(Sample(None, f"m{mk}", _unit(rng.standard_normal(dim))))
     return samples
 
 
-def _scale_samples(seed=0, *, n_officials=12, meetings=21, dim=256, noise=0.7):
-    """~47 positives / ~63 negatives across 21 meetings — the id=2-comparable full-scale shape."""
+def _scale_samples(seed=0, *, n_officials=12, meetings=21, dim=256, noise=0.55):
+    """~47 positives / ~63 negatives across 21 meetings — the id=2-comparable full-scale shape.
+
+    Bases alternate by meeting parity, so an official who speaks across even- and odd-indexed
+    meetings carries both evidence families and can clear the consensus gate — exercising the real
+    Gate-A path (not a trivially-empty gallery) under the perf budget.
+    """
     rng = np.random.default_rng(seed)
     centers = [rng.standard_normal(dim) for _ in range(n_officials)]
     samples = []
     for m in range(meetings):
+        basis = ADJ if m % 2 == 0 else VOTE
         # a random handful of officials speak at each meeting (~47 positives total)
         for o in rng.choice(n_officials, size=int(rng.integers(1, 4)), replace=False):
-            samples.append(
-                Sample(int(o) + 1, f"m{m}", _unit(centers[o] + noise * rng.standard_normal(dim)))
-            )
+            vec = _unit(centers[o] + noise * rng.standard_normal(dim))
+            samples.append(Sample(int(o) + 1, f"m{m}", vec, basis=basis))
         for _ in range(3):  # 3 negatives/meeting
             samples.append(Sample(None, f"m{m}", _unit(rng.standard_normal(dim))))
     return samples
@@ -524,3 +450,131 @@ def test_nested_lomo_provenance_carries_recall_by_confidence():
     # every positive was drawn at the default inferred_high tier; the negative never counts
     assert rbc["inferred_high"]["positives"] == 6
     assert rbc["confirmed"]["positives"] == 0
+
+
+# --- Phase C: Sample.family, consensus gate decisions, Hummell subset -------------------------
+
+
+def test_sample_family_from_basis_and_confidence():
+    assert Sample(1, "m", A, basis="rollcall").family == "adjacency"
+    assert Sample(1, "m", A, basis="vote_anchor").family == "vote"
+    assert Sample(1, "m", A, basis="discourse").family == "discourse"
+    # confirmed collapses to the human family regardless of basis
+    assert Sample(1, "m", A, basis="discourse", confidence="confirmed").family == "human"
+    # an unknown basis becomes its own family (forward-compatible)
+    assert Sample(1, "m", A, basis="new_signal").family == "new_signal"
+
+
+def test_gate_official_consensus_path_and_fields():
+    # Two families across three meetings on the coherent voice -> consensus enable, and the decision
+    # exposes the audit substrate (families present + which agree on the coherent voice).
+    d = gate_official(_two_family(1, A), collapsed=False, core_floor=0.5, min_core=2)
+    assert d.enabled and d.path == "consensus"
+    assert d.families == {"adjacency": 2, "vote": 1}
+    assert set(d.core_families) == {"adjacency", "vote"}
+    assert d.core_meetings == 3
+
+
+def test_gate_official_single_family_reason():
+    d = gate_official(
+        [_s(1, "m1", A, ADJ), _s(1, "m2", A, ADJ), _s(1, "m3", A, ADJ)],
+        collapsed=False,
+        core_floor=0.5,
+        min_core=2,
+    )
+    assert not d.enabled and d.path == "not_enabled"
+    assert "single family" in d.reason
+
+
+def test_gate_official_collapse_vetoes_before_consensus():
+    # Even a would-be 2-family consensus official is vetoed when flagged collapsed (one voice, two
+    # names): the collapse guard runs first and no consensus rescues it.
+    d = gate_official(_two_family(1, A), collapsed=True, core_floor=0.5, min_core=2)
+    assert not d.enabled and d.path == "not_enabled" and "collapse" in d.reason
+
+
+def test_gate_official_hummell_subset_survives_scattered_minority():
+    # The Hummell case: four coherent anchors (2 families across 3 meetings) + six scattered anchors
+    # pointing at inconsistent voices. The coherent-subset selection keeps the four and discards the
+    # six, so the noisy minority does NOT knock out the coherent majority -> still enabled.
+    rng = np.random.default_rng(3)
+    voice = _unit(rng.standard_normal(24))
+
+    def near():
+        return _unit(np.asarray(voice) + 0.12 * rng.standard_normal(24))
+
+    coherent = [
+        _s(1, "m1", near(), ADJ),
+        _s(1, "m2", near(), ADJ),
+        _s(1, "m2", near(), VOTE),
+        _s(1, "m3", near(), VOTE),
+    ]
+    scattered = [_s(1, f"s{i}", _unit(rng.standard_normal(24)), "discourse") for i in range(6)]
+    d = gate_official(coherent + scattered, collapsed=False, core_floor=0.35, min_core=2)
+    assert d.enabled and d.path == "consensus"
+    assert d.discarded_by_family.get("discourse") == 6  # the scattered minority was discarded
+    assert d.core_meetings == 3
+
+
+def test_gate_officials_maps_every_official():
+    train = _two_family(1, A) + [_s(2, "m4", B, ADJ), _s(2, "m5", B, ADJ)]
+    decisions = gate_officials(train, core_floor=0.5, min_core=2, collapse_bound=0.85)
+    assert set(decisions) == {1, 2}
+    assert decisions[1].enabled and not decisions[2].enabled  # 2-family vs single-family
+
+
+# --- Phase C: trusted-tier recall + enablement delta -----------------------------------------
+
+
+def test_trusted_tier_recall_counts_only_trusted_positives():
+    records = [
+        (True, 1, 1),  # trusted, recalled
+        (True, 2, None),  # trusted, missed
+        (False, 3, 3),  # UNTRUSTED positive -> excluded even though it was "recalled"
+        (True, None, 4),  # a negative -> never counts
+    ]
+    out = trusted_tier_recall(records)
+    assert out == {"positives": 2, "recalled": 1, "recall": 0.5}
+
+
+def test_trusted_tier_recall_empty_is_none():
+    assert trusted_tier_recall([]) == {"positives": 0, "recalled": 0, "recall": None}
+    # a corpus of only untrusted positives yields no headline (not a misleading 0.0 over noise)
+    assert trusted_tier_recall([(False, 1, None), (False, 2, 2)])["recall"] is None
+
+
+def test_nested_lomo_provenance_carries_trusted_recall():
+    samples = [
+        *_two_family(1, A, ("m1", "m2", "m3", "m4")),
+        *_two_family(2, B, ("m5", "m6", "m7", "m8")),
+        _s(None, "m9", C),
+    ]
+    _m, prov = nested_leave_one_meeting_out(samples, precision_bar=0.9)
+    tr = prov["trusted_recall"]
+    assert set(tr) == {"positives", "recalled", "recall"}
+    assert tr["positives"] > 0 and tr["recall"] == 1.0  # clean separation -> perfect trusted recall
+
+
+def test_enablement_delta_gained_lost_with_reasons():
+    delta = enablement_delta(
+        previous_enabled={1, 2},
+        current_enabled={2, 3},
+        current_reasons={2: "consensus", 3: "consensus", 1: "single family (adjacency) ..."},
+        names={1: "Alice", 2: "Bob", 3: "Cara"},
+    )
+    assert [g["person_id"] for g in delta["gained"]] == [3]
+    assert delta["gained"][0]["name"] == "Cara" and delta["gained"][0]["reason"] == "consensus"
+    assert [z["person_id"] for z in delta["lost"]] == [1]  # demotion is visible
+    assert delta["lost"][0]["name"] == "Alice" and "single family" in delta["lost"][0]["reason"]
+
+
+def test_enablement_delta_no_change():
+    delta = enablement_delta({1, 2}, {1, 2}, current_reasons={1: "consensus", 2: "consensus"})
+    assert delta == {"gained": [], "lost": []}
+
+
+def test_consensus_constants_are_sane():
+    # The consensus meeting floor is strictly above the confirmed-waiver's 2 (an unconfirmed
+    # official clears a higher bar), and independence needs at least two families.
+    assert CONSENSUS_MIN_CORE_MEETINGS >= 3
+    assert CONSENSUS_MIN_FAMILIES >= 2

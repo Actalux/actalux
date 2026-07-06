@@ -30,6 +30,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import html
 import logging
 from collections import defaultdict
 from pathlib import Path
@@ -48,10 +49,16 @@ from actalux.diarization.enrollment import (
     superseded_doc_ids,
     voiceprint_row,
 )
+from actalux.diarization.families import family_of
 from actalux.diarization.matching import (
     CURVE_PRECISION_BARS,
+    DEFAULT_CORE_FLOORS,
+    GATE_A_COLLAPSE_BOUND,
+    GATE_A_MIN_CORE,
     Sample,
+    enablement_delta,
     evaluate_grid,
+    gate_officials,
     nested_lomo_multi_bar,
     pareto_frontier,
     select_operating_point,
@@ -62,6 +69,15 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 AUDIO_DIR = Path("data/audio")
+# The generated audit sheets are a review artifact (cued YouTube embeds + the metric block), never
+# a publish surface; they live in a gitignored dir by default so a run leaves nothing tracked.
+AUDIT_DIR = Path("data/audit_sheets")
+# A cued embed plays ~this many seconds from the clip start — long enough to identify a voice by
+# ear, short enough to keep the sheet skimmable (matches the blind-ID sheet's short-clip pattern).
+AUDIT_CUE_SECONDS = 10
+# At most this many evidence pointers per enabled official on the sheet (distinct meetings first) —
+# enough to corroborate by ear without turning the sheet into a full transcript dump.
+AUDIT_MAX_EVIDENCE = 3
 WARP_DOWNLOAD_RETRIES = 6
 # A verdict computed on a partial corpus is not comparable to the baseline and must never
 # overwrite the gallery: run 28684759549 measured only 46/74 meetings (YouTube bot-checks)
@@ -164,6 +180,7 @@ def build_meeting_samples(
                     pooled.vector,
                     purity=pooled.purity,
                     confidence=ec.confidence,
+                    basis=ec.source_basis,  # carries the evidence family into the consensus gate
                 )
             )
             if model_id == primary_model:
@@ -252,6 +269,286 @@ def _ab_report(
     return ab
 
 
+def _gate_decisions_for_report(samples: list[Sample], refit: Any) -> dict[int, Any]:
+    """Per-official Gate-A decisions reproducing the refit's enabled set (audit substrate).
+
+    At the refit operating point when one exists (same purity filter + core/collapse/asnorm knobs),
+    so the audit's enable paths match exactly who was persisted. When the run is not_cleared (no
+    refit), a diagnostic pass at the most permissive swept core floor explains WHY nobody enabled
+    (single-family / too-few-meetings), not a bare "not enabled".
+    """
+    if refit is not None:
+        filtered = [s for s in samples if s.purity >= refit.purity_floor]
+        return gate_officials(
+            filtered,
+            core_floor=refit.core_floor,
+            min_core=GATE_A_MIN_CORE,
+            collapse_bound=refit.collapse_bound,
+            score_norm=refit.score_norm,
+            z_floor=refit.z_floor,
+        )
+    return gate_officials(
+        samples,
+        core_floor=min(DEFAULT_CORE_FLOORS),
+        min_core=GATE_A_MIN_CORE,
+        collapse_bound=GATE_A_COLLAPSE_BOUND,
+    )
+
+
+def _top_evidence(
+    cues: list[dict[str, Any]], allowed_families: set[str] | None = None
+) -> list[dict[str, Any]]:
+    """Up to AUDIT_MAX_EVIDENCE cued clips for an official, preferring distinct meetings.
+
+    ``allowed_families`` (the families that landed on the official's coherent voice) restricts the
+    clips to that evidence — so the sheet never cues an anchor the coherence gate DISCARDED (a
+    Hummell-style scattered discourse clip pointing at the wrong voice). ``None`` (a confirmed-
+    waiver official, with no computed core) keeps all cues: a human label is trusted regardless.
+    """
+    picked: list[dict[str, Any]] = []
+    seen: set[int] = set()
+    for c in cues:
+        if allowed_families is not None:
+            if family_of(c["basis"], c["confidence"]) not in allowed_families:
+                continue  # the coherence gate discarded this family's anchors; don't cue them
+        if c["document_id"] in seen:
+            continue
+        seen.add(c["document_id"])
+        picked.append(
+            {
+                "document_id": c["document_id"],
+                "video_id": c["video_id"],
+                "cluster_label": c["cluster_label"],
+                "basis": c["basis"],
+                "start_seconds": c["start_seconds"],
+                "end_seconds": c["end_seconds"],
+            }
+        )
+        if len(picked) >= AUDIT_MAX_EVIDENCE:
+            break
+    return picked
+
+
+def _build_audit(
+    decisions: dict[int, Any],
+    name_by_person: dict[int, str],
+    evidence_cues: dict[int, list[dict[str, Any]]],
+    enabled: set[int],
+) -> tuple[dict[str, Any], dict[int, str]]:
+    """Machine-readable per-official audit block + a ``{person_id: reason}`` map for the delta.
+
+    Each block carries the families present, the family-agreement summary (which families landed on
+    the coherent voice, in how many meetings, which anchors were discarded), the enable path
+    (confirmed_waiver | consensus | not_enabled+reason), and — for enabled officials — the top
+    evidence pointers (document_id, cluster_label, a start_seconds cue). No citizen identifier.
+    """
+    audit: dict[str, Any] = {}
+    reasons: dict[int, str] = {}
+    for person_id, d in sorted(decisions.items()):
+        reasons[person_id] = d.reason
+        entry: dict[str, Any] = {
+            "name": name_by_person.get(person_id),
+            # the RUN's actual enablement (empty on a not_cleared verdict), NOT the bare Gate-A
+            # pass: a not_cleared run persists nobody even if officials clear Gate A, so this must
+            # agree with enabled_person_ids. path/reason still describe the Gate-A decision (why).
+            "enabled": person_id in enabled,
+            "enable_path": d.path,
+            "reason": d.reason,
+            "families": d.families,
+            "family_agreement": {
+                "agreeing_families": sorted(d.core_families),
+                "in_core": d.core_families,
+                "core_meetings": d.core_meetings,
+                "discarded": d.discarded_by_family,
+            },
+            "confirmed_meetings": d.confirmed_meetings,
+        }
+        if person_id in enabled:
+            # restrict evidence to the families on the coherent voice (consensus); a confirmed
+            # waiver has no computed core (core_families empty -> None -> no family filter).
+            allowed = set(d.core_families) or None
+            entry["evidence"] = _top_evidence(evidence_cues.get(person_id, []), allowed)
+        audit[str(person_id)] = entry
+    return audit, reasons
+
+
+def _previous_calibration(
+    client: Client, place_id: int, entity_id: int | None
+) -> dict[str, Any] | None:
+    """The most recent prior voiceprint_calibration row for this place+entity (for the delta).
+
+    Read BEFORE this run's row is inserted, so it is the true predecessor. Scoped to the same
+    ``entity_id`` (a place-wide run compares to the previous place-wide run, a per-body run to that
+    body's) so a delta never mixes bodies. ``id`` is serial/monotonic, so max-id is most recent.
+    """
+    rows = fetch_all_rows(
+        lambda: (
+            client.table("voiceprint_calibration")
+            .select("id,entity_id,status,report")
+            .eq("place_id", place_id)
+        )
+    )
+    same = [r for r in rows if r.get("entity_id") == entity_id]
+    return max(same, key=lambda r: r.get("id") or 0) if same else None
+
+
+def _embed_url(video_id: str, start: float) -> str:
+    """A privacy-preserving (nocookie) YouTube embed cued to a ~AUDIT_CUE_SECONDS clip."""
+    s = max(0, int(start))
+    return (
+        f"https://www.youtube-nocookie.com/embed/{video_id}?start={s}&end={s + AUDIT_CUE_SECONDS}"
+    )
+
+
+def _fam_summary(counts: dict[str, Any]) -> str:
+    """'adjacency×2, vote×2' from a family->count map (audit sheet text)."""
+    return ", ".join(f"{html.escape(str(k))}×{v}" for k, v in sorted(counts.items())) or "—"
+
+
+def render_audit_sheet(
+    *, title: str, calibration_id: int | None, status: str, report: dict[str, Any]
+) -> str:
+    """Static, self-contained HTML review sheet (pure — returns the HTML string).
+
+    A metric block (trusted-tier recall headline + nested macro-precision/recall + citizen FP), one
+    row per ENABLED official with cued YouTube embeds (~AUDIT_CUE_SECONDS each, no audio download)
+    and its enable path, plus the run-over-run enablement delta (who gained / lost, with reasons).
+    Not a publish surface — no citizen data, only public officials the body already names.
+    """
+    audit = report.get("audit", {})
+    delta = report.get("delta", {})
+    tr = report.get("trusted_recall") or {}
+    esc = html.escape
+    tr_txt = f"{tr['recall']:.3f}" if tr.get("recall") is not None else "n/a"
+    parts: list[str] = [
+        "<!doctype html><html lang='en'><head><meta charset='utf-8'>",
+        "<meta name='viewport' content='width=device-width, initial-scale=1'>",
+        f"<title>{esc(title)}</title>",
+        "<style>"
+        "body{font-family:system-ui,-apple-system,sans-serif;margin:0;color:#1a1a1a;background:#faf8f4}"
+        ".wrap{max-width:900px;margin:0 auto;padding:24px}"
+        "h1{font-size:20px;margin:0 0 4px}.sub{color:#666;font-size:13px;margin-bottom:20px}"
+        ".metrics{display:flex;gap:24px;flex-wrap:wrap;border-top:2px solid #1a1a1a;"
+        "border-bottom:1px solid #ddd;padding:12px 0;margin-bottom:24px}"
+        ".metric b{display:block;font-size:22px}.metric span{font-size:12px;color:#666}"
+        ".accent{color:#C8553D}"
+        ".official{border-left:3px solid #C8553D;background:#fff;"
+        "padding:14px 16px;margin-bottom:16px}"
+        ".official h2{font-size:16px;margin:0 0 2px}"
+        ".mono{font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:12px;color:#555}"
+        ".clips{display:flex;gap:12px;flex-wrap:wrap;margin-top:10px}"
+        ".clip iframe{width:280px;aspect-ratio:16/9;border:0}"
+        ".clip figcaption{font-size:11px;color:#666;"
+        "font-family:'IBM Plex Mono',ui-monospace,monospace}"
+        ".delta{margin-top:8px}.gain{color:#2c7a3f}.loss{color:#C8553D}"
+        "table{border-collapse:collapse;font-size:13px}td{padding:2px 10px 2px 0}"
+        "</style></head><body><div class='wrap'>",
+        f"<h1>{esc(title)}</h1>",
+        f"<div class='sub'>calibration id {calibration_id} · status "
+        f"<b class='accent'>{esc(status)}</b> · review artifact, not a publish surface</div>",
+        "<div class='metrics'>",
+        f"<div class='metric'><b class='accent'>{tr_txt}</b>"
+        f"<span>trusted-tier recall "
+        f"({tr.get('recalled', 0)}/{tr.get('positives', 0)})</span></div>",
+        f"<div class='metric'><b>{report.get('macro_precision', 0):.3f}</b>"
+        "<span>nested macro-precision</span></div>",
+        f"<div class='metric'><b>{report.get('recall', 0):.3f}</b>"
+        "<span>nested recall (raw)</span></div>",
+        f"<div class='metric'><b>{report.get('fp_negatives', 0)}</b>"
+        "<span>citizen false positives</span></div>",
+        "</div>",
+    ]
+
+    enabled_entries = [(pid, e) for pid, e in audit.items() if e.get("enabled")]
+    parts.append(f"<h2 style='font-size:15px'>Enabled officials ({len(enabled_entries)})</h2>")
+    if not enabled_entries:
+        parts.append("<p class='mono'>No officials enabled this run.</p>")
+    for _pid, e in enabled_entries:
+        name = esc(str(e.get("name") or _pid))
+        fa = e.get("family_agreement", {})
+        parts.append("<div class='official'>")
+        parts.append(f"<h2>{name}</h2>")
+        parts.append(
+            f"<div class='mono'>path: {esc(e.get('enable_path', ''))} · "
+            f"{esc(e.get('reason', ''))}</div>"
+        )
+        parts.append(
+            f"<div class='mono'>families: {_fam_summary(e.get('families', {}))} · "
+            f"on coherent voice: {_fam_summary(fa.get('in_core', {}))} "
+            f"across {fa.get('core_meetings', 0)} meetings · "
+            f"discarded: {_fam_summary(fa.get('discarded', {}))}</div>"
+        )
+        clips = e.get("evidence", [])
+        if clips:
+            parts.append("<div class='clips'>")
+            for c in clips:
+                url = _embed_url(str(c["video_id"]), c["start_seconds"])
+                cap = (
+                    f"doc {c['document_id']} · {esc(str(c['cluster_label']))} · "
+                    f"@{c['start_seconds']}s ({esc(str(c['basis']))})"
+                )
+                parts.append(
+                    f"<figure class='clip'><iframe src='{esc(url)}' loading='lazy' "
+                    "allow='encrypted-media; picture-in-picture; fullscreen' allowfullscreen "
+                    f"title='{name} evidence'></iframe><figcaption>{cap}</figcaption></figure>"
+                )
+            parts.append("</div>")
+        parts.append("</div>")
+
+    gained, lost = delta.get("gained", []), delta.get("lost", [])
+    parts.append("<h2 style='font-size:15px'>Enablement delta vs previous calibration</h2>")
+    prev_id = delta.get("previous_calibration_id")
+    parts.append(
+        f"<div class='mono'>previous calibration id: {prev_id if prev_id else 'none'}</div>"
+    )
+    parts.append("<table class='delta'>")
+    for who in gained:
+        nm = esc(str(who.get("name") or who["person_id"]))
+        rs = esc(str(who.get("reason", "")))
+        parts.append(
+            f"<tr><td class='gain'>+ gained</td><td>{nm}</td><td class='mono'>{rs}</td></tr>"
+        )
+    for who in lost:
+        nm = esc(str(who.get("name") or who["person_id"]))
+        rs = esc(str(who.get("reason", "")))
+        parts.append(
+            f"<tr><td class='loss'>− lost (demoted)</td><td>{nm}</td>"
+            f"<td class='mono'>{rs}</td></tr>"
+        )
+    if not gained and not lost:
+        parts.append("<tr><td class='mono' colspan='3'>No change in enablement.</td></tr>")
+    parts.append("</table></div></body></html>")
+    return "".join(parts)
+
+
+def _write_audit_sheet(
+    args: argparse.Namespace,
+    place_id: int,
+    calibration_id: int,
+    status: str,
+    report: dict[str, Any],
+) -> None:
+    """Render + write the audit sheet to the (gitignored) audit dir. Jurisdiction-agnostic."""
+    state = getattr(args, "state", None)
+    place = getattr(args, "place", None)
+    body = getattr(args, "body", None)
+    out_dir = Path(getattr(args, "audit_dir", None) or AUDIT_DIR)
+    scope = "/".join(x for x in (state, place, body) if x) or f"place-{place_id}"
+    title = f"Voiceprint audit — {scope}"
+    html_str = render_audit_sheet(
+        title=title, calibration_id=calibration_id, status=status, report=report
+    )
+    out_dir.mkdir(parents=True, exist_ok=True)
+    slug = "_".join(x for x in (state, place, body) if x) or f"place{place_id}"
+    path = out_dir / f"{slug}_cal{calibration_id}.html"
+    path.write_text(html_str, encoding="utf-8")
+    logger.info(
+        "wrote audit sheet %s (%d enabled official(s))",
+        path,
+        sum(1 for e in report["audit"].values() if e.get("enabled")),
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Recalibrate voiceprints for a place (candidate).")
     parser.add_argument("--state", required=True, help="place state slug, e.g. mo")
@@ -267,6 +564,11 @@ def main() -> None:
     parser.add_argument("--limit", type=int, help="cap the number of meetings processed")
     parser.add_argument("--proxy", help="SOCKS proxy for yt-dlp audio download (WARP in CI)")
     parser.add_argument("--keep-audio", action="store_true", help="don't delete downloaded audio")
+    parser.add_argument(
+        "--audit-dir",
+        default=str(AUDIT_DIR),
+        help="dir for the generated per-run audit sheet (gitignored review artifact)",
+    )
     parser.add_argument(
         "--force",
         action="store_true",
@@ -438,6 +740,7 @@ def _apply(
     retries = WARP_DOWNLOAD_RETRIES if args.proxy else 1
     samples_by_model: dict[str, list[Sample]] = {m: [] for m in models}
     pooled_officials: list[tuple[EnrollableCluster, Any]] = []  # (cluster, Pooled), primary only
+    evidence_cues: dict[int, list[dict[str, Any]]] = defaultdict(list)  # person_id -> cued clips
     processed_docs: set[int] = set()
 
     for doc_id in docs_to_process:
@@ -472,6 +775,27 @@ def _apply(
         # embedded -> this meeting's stale gallery rows will be refreshed or cleared, even if
         # zero clusters survive pooling (so a now-empty poisoned meeting doesn't keep old rows).
         processed_docs.add(doc_id)
+        # One cued clip per official cluster this meeting: the LONGEST span (clearest voice to ID by
+        # ear), for the audit sheet's YouTube embeds + the machine-readable evidence pointers. No
+        # negative/citizen cluster is ever cued.
+        for ec in clusters:
+            spans = cluster_spans(turns, ec.cluster_label)
+            if not spans:
+                continue
+            start, end = max(spans, key=lambda s: s[1] - s[0])
+            evidence_cues[ec.person_id].append(
+                {
+                    "person_id": ec.person_id,
+                    "name": ec.canonical_name,
+                    "document_id": doc_id,
+                    "video_id": video_id,
+                    "cluster_label": ec.cluster_label,
+                    "basis": ec.source_basis,
+                    "confidence": ec.confidence,  # for the evidence-family filter (audit sheet)
+                    "start_seconds": round(start, 1),
+                    "end_seconds": round(end, 1),
+                }
+            )
 
         meeting_samples, meeting_pooled = build_meeting_samples(
             turns_by_model,
@@ -503,6 +827,7 @@ def _apply(
         processed_docs,
         superseded,
         args,
+        evidence_cues=evidence_cues,
     )
 
 
@@ -516,6 +841,7 @@ def _finish(
     processed_docs: set[int],
     superseded: set[int],
     args: argparse.Namespace,
+    evidence_cues: dict[int, list[dict[str, Any]]] | None = None,
 ) -> None:
     """Nested-LOMO estimate + full-data refit, then persist the candidate gallery + record.
 
@@ -558,6 +884,10 @@ def _finish(
     # so mixing them would inflate or deflate the estimate. Lifted to the top level for prominence
     # (it already rides inside `prov`). Reporting only — the verdict/selection below is untouched.
     report["recall_by_confidence"] = prov["recall_by_confidence"]
+    # HEADLINE recall the operator reads: over TRUSTED positives only (human-confirmed OR multi-
+    # family-consensus in-fold). The id=5 discourse flood made raw recall meaningless — dominated by
+    # unverified single-family positives the gate refused to enable; this excludes them.
+    report["trusted_recall"] = prov["trusted_recall"]
     if refit is not None:
         report["refit"] = {
             "purity_floor": refit.purity_floor,
@@ -597,6 +927,26 @@ def _finish(
                 entry.get("n_enabled", 0),
             )
 
+    # Per-official audit block (families, agreement, enable path, discarded anchors, evidence cues)
+    # + run-over-run enablement delta vs the previous calibration for this entity. The delta reads
+    # the previous row BEFORE this run's row is inserted (so it is the true predecessor); demotion
+    # (loss of enablement) is automatic — the block just makes it visible. Reporting only.
+    name_by_person = {ec.person_id: ec.canonical_name for ec, _ in pooled_officials}
+    # A not_cleared run enables nobody; drive the audit's diagnostic pass (why nobody enabled)
+    # not the refit's would-be enable set, so the audit never disagrees with the persisted verdict.
+    decisions = _gate_decisions_for_report(samples, refit if cleared else None)
+    audit, reasons = _build_audit(decisions, name_by_person, evidence_cues or {}, enabled)
+    report["audit"] = audit
+    prev = _previous_calibration(client, place_id, entity_id)
+    prev_enabled = (
+        set(prev["report"].get("enabled_person_ids", []))
+        if prev and isinstance(prev.get("report"), dict)
+        else set()
+    )
+    delta = enablement_delta(prev_enabled, enabled, current_reasons=reasons, names=name_by_person)
+    delta["previous_calibration_id"] = prev["id"] if prev else None
+    report["delta"] = delta
+
     logger.info(
         "nested LOMO: macroP=%.3f recall=%.3f fp_neg=%d (%d pos/%d neg, %d abstained folds)",
         nested.macro_precision,
@@ -606,7 +956,20 @@ def _finish(
         n_neg,
         prov["abstained_folds"],
     )
+    tr = report["trusted_recall"]
+    logger.info(
+        "TRUSTED-tier recall: %s (%d/%d positives)",
+        f"{tr['recall']:.3f}" if tr["recall"] is not None else "n/a (no trusted positives)",
+        tr["recalled"],
+        tr["positives"],
+    )
     logger.info("verdict: %s (%d officials enabled)", status, len(enabled))
+    for who in delta["gained"]:
+        logger.info(
+            "  + gained enablement: %s (%s)", who["name"] or who["person_id"], who["reason"]
+        )
+    for who in delta["lost"]:
+        logger.info("  - lost enablement:  %s (%s)", who["name"] or who["person_id"], who["reason"])
     for tier, stat in report["recall_by_confidence"].items():
         if stat["positives"]:
             logger.info(
@@ -671,6 +1034,12 @@ def _finish(
         stale,
         pruned,
     )
+
+    # Generate the static audit sheet (cued YouTube embeds + metric block + delta). Only on a real
+    # run (evidence_cues threaded from _apply); the unit tests call _finish without cues, so no file
+    # is written. Never a publish surface — a gitignored review artifact.
+    if evidence_cues is not None:
+        _write_audit_sheet(args, place_id, calibration_id, status, report)
 
 
 def _delete_stale(client: Client, processed_docs: set[int], calibration_id: int) -> int:
