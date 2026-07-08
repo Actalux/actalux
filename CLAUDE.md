@@ -44,15 +44,38 @@ Universal (all bodies):
 - No editorializing, no opinions, no inferred intent
 - The ingest-time PII guard (SSN/DOB and similar) blocks records pre-DB
   regardless of body — "as published" never means publishing an SSN
+- **Named-in-transcript ≠ tracked entity — two different things.** (a) *Naming a
+  turn in one transcript* attributes a passage to a speaker from their own
+  self-identification ("my name is …") or an on-the-record introduction. (b) A
+  *tracked entity* is a persistent, cross-meeting record of a person — a
+  person/subject row and a voiceprint gallery used to recognize them in future
+  meetings. **Only tracked officials get (b).** Everyone else who is nameable is
+  named per-document only: no persistent entity, no voiceprint, no cross-meeting
+  linkage. The speaker's own words are the source for (a); (b) additionally
+  requires that the person be an official of that body. Self-identification is
+  necessary but never sufficient for (b), and the per-body protected classes
+  below can forbid even (a).
 
 School district (mo/clayton/schools):
-- Board and administration policy only — no individual personnel, teachers,
-  or students (protects minors and employees)
+- **Tracked entities: board and administration only.** Only elected board members
+  and district administration (superintendent, cabinet) get a persistent
+  cross-meeting record + voiceprint.
+- **Never named at all: individual personnel, teachers, students** (protects
+  minors and employees). This overrides self-identification — a district employee
+  who self-identifies ("I work in the counseling office") is still not named.
+- **Named-in-transcript only: public participants.** A member of the public giving
+  comment, an outside presenter, a contractor, or a City/other-body official
+  appearing before the board may be identified *in that transcript* when they
+  state their own name or are introduced on the record — but is never tracked (no
+  entity, no voiceprint). The protected class above always wins over this.
 
 City government (mo/clayton/council, mo/clayton/plan-commission, …):
 - The full public record as the body published it — public officials, land-use
   applicants, the subject property, and hearing participants appear as they do
-  in the official minutes; no redaction beyond the universal PII guard
+  in the official minutes; no redaction beyond the universal PII guard.
+- Tracked entities + voiceprints are for the body's own officials; other named
+  participants (applicants, presenters, members of the public) are named
+  per-record only, per the universal tracked-vs-named rule above.
 
 ## Tech stack
 
