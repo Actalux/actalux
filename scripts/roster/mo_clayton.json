@@ -477,6 +477,14 @@
         "term_start": null, "term_start_basis": null,
         "term_end": null, "term_end_basis": null,
         "source": "APPOINTED official, FORMER. doc 257 (2019-07-01 budget) 'Timothy Dilg, Ed.D. Assistant Superintendent'."
+      },
+      {
+        "canonical_name": "Jason Wilson",
+        "aliases": ["Jason Wilson"],
+        "role": "Director",
+        "term_start": "2020-02-19", "term_start_basis": "observed",
+        "term_end": "2021-04-21", "term_end_basis": "observed",
+        "source": "FORMER board member. doc 2088 (2020-02-19 BOE meeting) speaks as a board member re: a board subcommittee ('my section was board members listening to concerns from the community'); doc 2097 (2021-04-21 BOE meeting) board policy discussion. Term dates are the OBSERVED corpus window (first/last seen), not cited appointment/departure dates."
       }
     ],
     "plan-commission": [
