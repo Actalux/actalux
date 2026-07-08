@@ -424,8 +424,11 @@ def test_render_audit_sheet_has_embeds_metric_block_and_delta():
         title="Voiceprint audit — mo/clayton", calibration_id=8, status="candidate", report=report
     )
     assert "<!doctype html>" in out.lower()
-    # the enabled official's cued embed appears (nocookie, ~10s window; & is html-escaped)
-    assert "youtube-nocookie.com/embed/abc123?start=90&amp;end=100" in out
+    # the enabled official's evidence is a cued watch LINK (embeds are dead — YouTube error 153),
+    # opening at the clip second; no iframe/embed is emitted
+    assert "youtube.com/watch?v=abc123&amp;t=90s" in out
+    assert "Play @ 1:30" in out
+    assert "iframe" not in out and "nocookie" not in out
     assert "Alice" in out and "Bob" not in out  # only enabled officials get a row
     # metric block + delta (including the demotion)
     assert "trusted-tier recall" in out

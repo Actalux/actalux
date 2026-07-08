@@ -69,11 +69,11 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 AUDIO_DIR = Path("data/audio")
-# The generated audit sheets are a review artifact (cued YouTube embeds + the metric block), never
-# a publish surface; they live in a gitignored dir by default so a run leaves nothing tracked.
+# The generated audit sheets are a review artifact (cued YouTube watch links + the metric block),
+# never a publish surface; they live in a gitignored dir by default so a run leaves nothing tracked.
 AUDIT_DIR = Path("data/audit_sheets")
-# A cued embed plays ~this many seconds from the clip start — long enough to identify a voice by
-# ear, short enough to keep the sheet skimmable (matches the blind-ID sheet's short-clip pattern).
+# A cued watch link opens YouTube ~this many seconds before the reviewer should stop — long enough
+# to identify a voice by ear, short enough to keep the sheet skimmable (matches the blind-ID sheet).
 AUDIT_CUE_SECONDS = 10
 # At most this many evidence pointers per enabled official on the sheet (distinct meetings first) —
 # enough to corroborate by ear without turning the sheet into a full transcript dump.
@@ -392,12 +392,23 @@ def _previous_calibration(
     return max(same, key=lambda r: r.get("id") or 0) if same else None
 
 
-def _embed_url(video_id: str, start: float) -> str:
-    """A privacy-preserving (nocookie) YouTube embed cued to a ~AUDIT_CUE_SECONDS clip."""
+def _watch_url(video_id: str, start: float) -> str:
+    """A YouTube watch link cued to the evidence clip's start second.
+
+    Embeds are unusable for these sources: the source channels disable embedding (YouTube
+    error 153), so an iframe renders only an error screen. A cued watch link opens YouTube at
+    the clip's exact second — the same reliable path the blind-ID sheet uses.
+    """
     s = max(0, int(start))
-    return (
-        f"https://www.youtube-nocookie.com/embed/{video_id}?start={s}&end={s + AUDIT_CUE_SECONDS}"
-    )
+    return f"https://www.youtube.com/watch?v={video_id}&t={s}s"
+
+
+def _hms(start: float) -> str:
+    """``start`` seconds as a compact ``m:ss`` / ``h:mm:ss`` stamp for link text."""
+    s = max(0, int(start))
+    m, sec = divmod(s, 60)
+    h, m = divmod(m, 60)
+    return f"{h}:{m:02d}:{sec:02d}" if h else f"{m}:{sec:02d}"
 
 
 def _fam_summary(counts: dict[str, Any]) -> str:
@@ -411,8 +422,8 @@ def render_audit_sheet(
     """Static, self-contained HTML review sheet (pure — returns the HTML string).
 
     A metric block (trusted-tier recall headline + nested macro-precision/recall + citizen FP), one
-    row per ENABLED official with cued YouTube embeds (~AUDIT_CUE_SECONDS each, no audio download)
-    and its enable path, plus the run-over-run enablement delta (who gained / lost, with reasons).
+    row per ENABLED official with cued YouTube watch links (open at the clip second, no audio
+    download) and its enable path, plus the run-over-run enablement delta (who gained / lost).
     Not a publish surface — no citizen data, only public officials the body already names.
     """
     audit = report.get("audit", {})
@@ -437,7 +448,9 @@ def render_audit_sheet(
         ".official h2{font-size:16px;margin:0 0 2px}"
         ".mono{font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:12px;color:#555}"
         ".clips{display:flex;gap:12px;flex-wrap:wrap;margin-top:10px}"
-        ".clip iframe{width:280px;aspect-ratio:16/9;border:0}"
+        ".clip{margin:0;display:flex;flex-direction:column;gap:4px}"
+        ".clip .play{display:block;padding:10px 12px;background:#1a1a1a;color:#fff;"
+        "text-decoration:none;font-size:13px}.clip .play:hover{background:#333}"
         ".clip figcaption{font-size:11px;color:#666;"
         "font-family:'IBM Plex Mono',ui-monospace,monospace}"
         ".delta{margin-top:8px}.gain{color:#2c7a3f}.loss{color:#C8553D}"
@@ -482,15 +495,16 @@ def render_audit_sheet(
         if clips:
             parts.append("<div class='clips'>")
             for c in clips:
-                url = _embed_url(str(c["video_id"]), c["start_seconds"])
+                url = _watch_url(str(c["video_id"]), c["start_seconds"])
                 cap = (
                     f"doc {c['document_id']} · {esc(str(c['cluster_label']))} · "
                     f"@{c['start_seconds']}s ({esc(str(c['basis']))})"
                 )
                 parts.append(
-                    f"<figure class='clip'><iframe src='{esc(url)}' loading='lazy' "
-                    "allow='encrypted-media; picture-in-picture; fullscreen' allowfullscreen "
-                    f"title='{name} evidence'></iframe><figcaption>{cap}</figcaption></figure>"
+                    f"<figure class='clip'>"
+                    f"<a class='play' href='{esc(url)}' target='_blank' rel='noopener'>"
+                    f"&#9654; Play @ {_hms(c['start_seconds'])} (~{AUDIT_CUE_SECONDS}s)</a>"
+                    f"<figcaption>{cap}</figcaption></figure>"
                 )
             parts.append("</div>")
         parts.append("</div>")
