@@ -42,6 +42,7 @@ from actalux.identity.discourse import (  # noqa: E402
 )
 from actalux.identity.resolve import (  # noqa: E402
     _place_canonical_rules,
+    members_active_on,
     members_for_entity,
     persist_identities,
     turns_for_document,
@@ -73,7 +74,7 @@ def _docs_with_turns(client: Client, place_id: int, body: str | None) -> list[di
     docs = fetch_all_rows(
         lambda: (
             client.table("documents")
-            .select("id,entity_id,replaces_id")
+            .select("id,entity_id,replaces_id,meeting_date")
             .in_("entity_id", entity_ids)
             .eq("document_type", "transcript")
         )
@@ -151,7 +152,12 @@ def main() -> None:
     usage: dict[str, int] = {}
     start = time.monotonic()
     for doc in docs:
-        members = members_for_entity(service, doc["entity_id"])
+        # Tenure guard (same as resolve_document): restrict the roster enum the LLM sees to
+        # members whose term covers this meeting, so an out-of-tenure official can't be part of
+        # the closed vocabulary. Fail-open on an undated document (members_active_on).
+        members = members_active_on(
+            members_for_entity(service, doc["entity_id"]), doc.get("meeting_date")
+        )
         rules = _place_canonical_rules(service, doc["entity_id"])
         turns = turns_for_document(service, doc["id"], rules)
         claims: list[DiscourseClaim] = []

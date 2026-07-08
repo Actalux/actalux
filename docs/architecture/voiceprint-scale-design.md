@@ -58,6 +58,31 @@ metric reads perfect over it. Metrics-SLA is necessary but not sufficient. Recom
 - **Auto-DEMOTION fully automatic** (regression on any later run → candidate). Adding a name
   gates on a human; removing one never waits.
 
+## Tenure guard (roster is date-scoped to the meeting)
+
+Every text family draws candidates from the body roster, but membership is time-bounded: an
+official holds a seat only within their `memberships.[start_date, end_date]` window. Without a
+date filter a name spoken at a meeting *before* a member was seated — a same-surname
+predecessor, an incidental mention — can anchor that not-yet-seated member. Observed failure:
+2020-2021 board meetings were labeled with an official first sworn in on 2022-04-20.
+
+`RosterMember` now carries `term_start` / `term_end` (ISO `YYYY-MM-DD` or None; None = open on
+that side / still seated), populated by `members_for_entity` from the membership row.
+`members_active_on(members, meeting_date)` keeps a member iff `term_start <= meeting_date <=
+term_end` **inclusive** (lexicographic string compare, correct for ISO dates). Both the
+deterministic resolver (`resolve_document`, gating `resolve_identities` **and** `align_votes`)
+and the LLM discourse labeler's caller (`scripts/label_discourse.py`, gating the closed roster
+enum the model sees) filter the roster through it *before* any anchoring runs, so an
+out-of-tenure official is structurally unanchorable for that meeting.
+
+**Fail-open on undated documents (deliberate):** when `meeting_date` is null/empty, tenure is
+indeterminate and the guard returns the roster **unchanged** — it never excludes everyone.
+Failing closed would erase legitimate current officials on any transcript we couldn't date;
+the guard exists to remove *provably out-of-window* candidates, not to require a date. Analytic
+consequence: an undated transcript gets no tenure protection (accepted — the alternative drops
+real anchors), and correctness of the guard depends on membership `start_date`/`end_date` being
+populated (a member with a null window is treated as open-ended and always eligible).
+
 ## Coverage compounding (why this reaches the 65-85% ceiling)
 
 Textual evidence only needs to label each official SOMEWHERE; the enrolled voiceprints then

@@ -234,6 +234,12 @@ class RosterMember:
     canonical_name: str
     aliases: frozenset[str]  # normalized alias keys
     title: str = ""  # this member's OWN per-body roster role (memberships.role), display form
+    # Membership term window (memberships.start_date/end_date), ISO date strings "YYYY-MM-DD"
+    # or None. None means open-ended on that side (open-start / still-seated). ISO dates compare
+    # correctly lexicographically, so members_active_on() can range-check with plain string <=.
+    # Kept last + defaulted so existing positional constructions are unaffected.
+    term_start: str | None = None
+    term_end: str | None = None
 
 
 @dataclass(frozen=True)
@@ -771,6 +777,35 @@ def resolve_identities(
     return sorted(proposals, key=lambda p: p.cluster_label)
 
 
+def members_active_on(members: list[RosterMember], meeting_date: str | None) -> list[RosterMember]:
+    """Members whose term window covers ``meeting_date`` (the tenure guard; pure, no DB).
+
+    An official is a candidate for a meeting only while they hold the seat. Without this a
+    name spoken at a meeting *before* a member was seated (a predecessor sharing the surname,
+    an incidental mention) can anchor that not-yet-seated member — the observed failure where
+    2020-2021 board meetings were labeled with an official first sworn in 2022-04-20.
+
+    A member is kept iff ``term_start <= meeting_date <= term_end`` (INCLUSIVE), with a null
+    ``term_start`` open on the start side and a null ``term_end`` open on the end side (still
+    seated). Dates are ISO ``YYYY-MM-DD`` strings, so the bound checks are plain lexicographic
+    comparisons (correct for that format).
+
+    Fail-OPEN on an undated document: if ``meeting_date`` is None/empty we cannot determine
+    tenure, so ALL members are returned unchanged rather than excluding everyone — dropping
+    legitimate current officials on an undated transcript would be the worse error.
+    """
+    if not meeting_date:
+        return members  # undated: tenure indeterminate -> keep all (never fail closed)
+    kept: list[RosterMember] = []
+    for m in members:
+        if m.term_start and meeting_date < m.term_start:
+            continue  # meeting predates the member's term
+        if m.term_end and meeting_date > m.term_end:
+            continue  # meeting postdates the member's term
+        kept.append(m)
+    return kept
+
+
 # --- DB-facing orchestration ------------------------------------------------------
 
 
@@ -781,10 +816,14 @@ def members_for_entity(client: Client, entity_id: int) -> list[RosterMember]:
     can hold different titles on different bodies, so the role is read from the membership row
     for THIS entity, not from any body-agnostic field. The title feeds only the presenter
     appositive pattern (name+own-title co-occurrence); a null role leaves it blank.
+
+    Each member also carries its term window (``memberships.start_date``/``end_date``) so the
+    caller can gate candidates by the meeting date (:func:`members_active_on`). start/end come
+    back as ISO date strings (``YYYY-MM-DD``) or None; a null end means still seated.
     """
     mems = (
         client.table("memberships")
-        .select("subject_id,role")
+        .select("subject_id,role,start_date,end_date")
         .eq("entity_id", entity_id)
         .execute()
         .data
@@ -792,10 +831,11 @@ def members_for_entity(client: Client, entity_id: int) -> list[RosterMember]:
     subject_ids = {m["subject_id"] for m in mems}
     if not subject_ids:
         return []
-    # First membership row per subject wins the title (the seeder keeps one row per body).
-    role_by_subject: dict[int, str] = {}
+    # First membership row per subject wins its role AND term window (the seeder keeps one row
+    # per body). Same first-row-wins rule for all three fields, so they stay mutually consistent.
+    first_membership: dict[int, dict[str, Any]] = {}
     for m in mems:
-        role_by_subject.setdefault(m["subject_id"], m.get("role") or "")
+        first_membership.setdefault(m["subject_id"], m)
     subjects = (
         client.table("subjects")
         .select("id,slug,canonical_name")
@@ -817,7 +857,9 @@ def members_for_entity(client: Client, entity_id: int) -> list[RosterMember]:
             slug=s["slug"],
             canonical_name=s["canonical_name"],
             aliases=frozenset(by_alias.get(s["id"], set())),
-            title=role_by_subject.get(s["id"], ""),
+            title=(first_membership.get(s["id"], {}).get("role") or ""),
+            term_start=first_membership.get(s["id"], {}).get("start_date"),
+            term_end=first_membership.get(s["id"], {}).get("end_date"),
         )
         for s in subjects
     ]
@@ -946,6 +988,25 @@ def _wins_cluster(
     )
 
 
+def _meeting_date_for_document(client: Client, document_id: int) -> str | None:
+    """The document's ``meeting_date`` (ISO ``YYYY-MM-DD``), or ``None`` if undated/missing.
+
+    A targeted single-column select — deliberately NOT ``db.get_document`` (``select *``,
+    which pulls the full ``content`` blob) — so this batch-per-document tenure read never
+    serializes each transcript's body just to gate the roster by one date. Mirrors the
+    lightweight meeting-date read in ``vote_align.vote_reference_for_document``.
+    """
+    row = (
+        client.table("documents")
+        .select("meeting_date")
+        .eq("id", document_id)
+        .limit(1)
+        .execute()
+        .data
+    )
+    return row[0]["meeting_date"] if row else None
+
+
 def _place_canonical_rules(client: Client, entity_id: int) -> list[CorrectionRule]:
     """The place's canonical name-correction rules for the body's entity, or []."""
     row = client.table("entities").select("place_id").eq("id", entity_id).limit(1).execute().data
@@ -981,6 +1042,10 @@ def resolve_document(
     )
 
     members = members_for_entity(client, entity_id)
+    # Tenure guard: gate the roster to members whose term covers this meeting BEFORE either
+    # evidence family runs, so an official can never be anchored on a meeting outside their
+    # membership window (fail-open on an undated document — see members_active_on).
+    members = members_active_on(members, _meeting_date_for_document(client, document_id))
     rules = _place_canonical_rules(client, entity_id)
     turns = turns_for_document(client, document_id, rules)
     proposals = resolve_identities(turns, members, presenter_tally)

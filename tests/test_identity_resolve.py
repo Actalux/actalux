@@ -14,6 +14,7 @@ from actalux.identity.resolve import (
     ResolverTurn,
     RosterMember,
     _rows_to_turns,
+    members_active_on,
     persist_identities,
     resolve_identities,
 )
@@ -733,6 +734,112 @@ def test_to_row_shape():
         "confidence": "inferred_high",
         "basis": "rollcall",
     }
+
+
+# --- tenure guard: members_active_on -------------------------------------------------------
+# A member is a candidate for a meeting only while they hold the seat. The load-bearing rule:
+# keep iff term_start <= meeting_date <= term_end (inclusive), nulls open the respective side,
+# and an undated meeting keeps EVERYONE (fail open — never drop legitimate officials).
+
+
+def _tm(slug: str, start: str | None = None, end: str | None = None) -> RosterMember:
+    """A minimal RosterMember carrying only a slug + term window (for tenure tests)."""
+    sid = 1000 + (abs(hash(slug)) % 1000)
+    return RosterMember(sid, slug, slug, frozenset(), term_start=start, term_end=end)
+
+
+def test_members_active_on_within_term_is_kept():
+    m = _tm("a", "2020-01-01", "2022-12-31")
+    assert members_active_on([m], "2021-06-15") == [m]
+
+
+def test_members_active_on_before_term_is_dropped():
+    m = _tm("a", "2022-04-20", "2026-04-20")
+    assert members_active_on([m], "2020-06-15") == []
+
+
+def test_members_active_on_after_term_is_dropped():
+    m = _tm("a", "2018-04-20", "2021-04-20")
+    assert members_active_on([m], "2022-06-15") == []
+
+
+def test_members_active_on_open_start_keeps_before_end():
+    # term_start None -> open on the start side; only the end bound applies.
+    m = _tm("a", None, "2021-12-31")
+    assert members_active_on([m], "1999-01-01") == [m]
+    assert members_active_on([m], "2022-01-01") == []
+
+
+def test_members_active_on_open_end_keeps_after_start():
+    # term_end None -> still seated; only the start bound applies.
+    m = _tm("a", "2020-01-01", None)
+    assert members_active_on([m], "2099-01-01") == [m]
+    assert members_active_on([m], "2019-12-31") == []
+
+
+def test_members_active_on_both_open_always_kept():
+    m = _tm("a", None, None)
+    assert members_active_on([m], "1900-01-01") == [m]
+    assert members_active_on([m], "2500-01-01") == [m]
+
+
+def test_members_active_on_exact_start_boundary_is_inclusive():
+    m = _tm("a", "2022-04-20", "2026-04-20")
+    assert members_active_on([m], "2022-04-20") == [m]  # seated ON the start date
+
+
+def test_members_active_on_exact_end_boundary_is_inclusive():
+    m = _tm("a", "2018-04-20", "2022-04-20")
+    assert members_active_on([m], "2022-04-20") == [m]  # seated THROUGH the end date
+
+
+def test_members_active_on_undated_meeting_keeps_all_fail_open():
+    # The critical edge case: an undated document cannot be tenure-checked, so NOTHING is
+    # dropped — filtering everyone out would erase legitimate current officials.
+    members = [_tm("a", "2022-04-20", "2026-04-20"), _tm("b", None, None), _tm("c", "1990-01-01")]
+    assert members_active_on(members, None) == members
+    assert members_active_on(members, "") == members
+
+
+def test_members_active_on_preserves_order_and_filters_mixed_roster():
+    a = _tm("a", "2020-01-01", "2021-12-31")  # covers 2021
+    b = _tm("b", "2022-04-20", None)  # not seated until 2022
+    c = _tm("c", None, None)  # always seated
+    assert members_active_on([a, b, c], "2021-06-15") == [a, c]
+
+
+def test_tenure_guard_excludes_out_of_tenure_official_from_resolution():
+    """The Growe bug end to end: an official first seated 2022 is not anchored on a 2020 meeting.
+
+    Composes members_active_on with resolve_identities exactly as resolve_document does — the
+    roster is date-filtered BEFORE resolution, so the out-of-tenure member is never a candidate.
+    """
+    growe = RosterMember(
+        99,
+        "jason-growe",
+        "Jason Growe",
+        frozenset({"jason growe", "growe"}),
+        term_start="2022-04-20",
+    )
+    members = _members() + [growe]
+    turns = [_t("CLERK", "Jason Growe"), _t("M1", "here")]
+
+    # Control: with tenure ignored the roll call DOES anchor Growe.
+    assert any(p.slug == "jason-growe" for p in resolve_identities(turns, members))
+
+    # Guarded: filtered to the 2020 meeting date, Growe is dropped and never proposed.
+    active_2020 = members_active_on(members, "2020-06-15")
+    assert all(m.slug != "jason-growe" for m in active_2020)
+    assert resolve_identities(turns, active_2020) == []
+
+    # A 2023 meeting (within his term) resolves him normally.
+    active_2023 = members_active_on(members, "2023-06-15")
+    props_2023 = resolve_identities(turns, active_2023)
+    assert any(p.slug == "jason-growe" for p in props_2023)
+
+    # Undated document: fail open — Growe is kept and resolves again.
+    active_undated = members_active_on(members, None)
+    assert any(p.slug == "jason-growe" for p in resolve_identities(turns, active_undated))
 
 
 class _IdentTable:
