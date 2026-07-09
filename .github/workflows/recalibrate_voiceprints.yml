@@ -144,3 +144,15 @@ jobs:
           EMBEDDERS="${EMBEDDERS// /}"
           [ -n "$EMBEDDERS" ] && ARGS="$ARGS --embedders $EMBEDDERS"
           uv run --group diarization python scripts/recalibrate_voiceprints.py $ARGS
+
+      # The audit sheet (cued quarantine/collapse adjudication queues) is written to a
+      # gitignored dir on this runner — without the upload it dies with the VM, and the
+      # quarantined-negative details exist nowhere else (the DB report carries counts only).
+      - name: Upload audit sheet
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-sheet-${{ inputs.state }}-${{ inputs.place }}-${{ inputs.body || 'place-wide' }}
+          path: data/audit_sheets/*.html
+          if-no-files-found: ignore
+          retention-days: 30
