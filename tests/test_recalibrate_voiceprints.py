@@ -435,6 +435,177 @@ def test_render_audit_sheet_has_embeds_metric_block_and_delta():
     assert "Zed" in out and "lost (demoted)" in out
 
 
+def test_build_meeting_samples_stamps_audit_provenance():
+    # Officials carry their cluster's own doc/label; negatives get the meeting's document_id —
+    # the receipt a quarantined sample needs to be cued for human review.
+    ec = _ec(1, "SPEAKER_00", "Alice", 1)
+    tbm = {"wp": {"SPEAKER_00": _turns(_A), "SPEAKER_09": _turns(_C)}}
+    per_model, _ = rc.build_meeting_samples(
+        tbm, [ec], ["SPEAKER_09"], "vid1", min_seconds=10.0, primary_model="wp", document_id=77
+    )
+    official = next(s for s in per_model["wp"] if s.person_id == 1)
+    negative = next(s for s in per_model["wp"] if s.person_id is None)
+    assert (official.document_id, official.cluster_label) == (1, "SPEAKER_00")
+    assert (negative.document_id, negative.cluster_label) == (77, "SPEAKER_09")
+
+
+def test_finish_quarantines_twin_negative_and_reports_clean_fp():
+    # A "citizen" negative that IS an official's voice (the cal-15 poison) must leave the
+    # metric with a receipt: clean fp_negatives stays 0, the quarantine is counted, and the
+    # would-match disclosure says the deployed operating point would have named it.
+    primary = "wp"
+    samples_by_model, pooled_officials = _clean_dual_model(primary, "ecapa")
+    twin = Sample(None, "vid5", _A, document_id=5, cluster_label="SPEAKER_07")
+    single = {primary: [*samples_by_model[primary], twin]}
+    client = _FakeClient()
+    rc._finish(
+        client,
+        place_id=5,
+        entity_id=None,
+        models=[primary],
+        samples_by_model=single,
+        pooled_officials=pooled_officials,
+        processed_docs={1, 2, 3, 4},
+        superseded=set(),
+        args=SimpleNamespace(precision_bar=0.9),
+    )
+    (_t, cal_row) = client.recorder["inserts"][0]
+    report = cal_row["report"]
+    assert cal_row["status"] == "candidate"
+    assert report["fp_negatives"] == 0  # the twin never reaches the citizen-FP metric
+    hyg = report["hygiene"]
+    assert hyg["quarantined_negatives"] == 1
+    assert hyg["quarantined_would_match_at_refit"] == 1  # the FP exposure quarantine hides
+    assert hyg["alien_positives"] == 0
+    # aggregate counts only — the quarantined negative's identifiers never persist
+    assert "SPEAKER_07" not in str(report["hygiene"])
+
+
+def test_finish_alien_positive_never_persists():
+    # The Patel-doc2549 shape end-to-end: a confirmed official's wrong-voice inferred anchor
+    # is vetted out — counted in the report, absent from the persisted gallery rows.
+    primary = "wp"
+    samples: list[Sample] = []
+    pooled_officials = []
+    for mk in (1, 2, 3, 4):
+        ec = _ec(1, "SPEAKER_00", "Alice", mk, confidence="confirmed")
+        tbm = {primary: {"SPEAKER_00": _turns(_A), "SPEAKER_09": _turns(_C)}}
+        per_model, pooled = rc.build_meeting_samples(
+            tbm, [ec], ["SPEAKER_09"], f"vid{mk}",
+            min_seconds=10.0, primary_model=primary, document_id=mk,
+        )  # fmt: skip
+        samples.extend(per_model[primary])
+        pooled_officials.extend(pooled)
+    alien_vec = _E[4]  # a different voice wearing Alice's name in meeting 5
+    ec5 = _ec(1, "SPEAKER_04", "Alice", 5, confidence="inferred_medium", basis="discourse")
+    per_model5, pooled5 = rc.build_meeting_samples(
+        {primary: {"SPEAKER_04": _turns(alien_vec)}}, [ec5], [], "vid5",
+        min_seconds=10.0, primary_model=primary, document_id=5,
+    )  # fmt: skip
+    samples.extend(per_model5[primary])
+    pooled_officials.extend(pooled5)
+
+    client = _FakeClient()
+    rc._finish(
+        client,
+        place_id=5,
+        entity_id=None,
+        models=[primary],
+        samples_by_model={primary: samples},
+        pooled_officials=pooled_officials,
+        processed_docs={1, 2, 3, 4, 5},
+        superseded=set(),
+        args=SimpleNamespace(precision_bar=0.9),
+    )
+    (_t, cal_row) = client.recorder["inserts"][0]
+    assert cal_row["status"] == "candidate"  # Alice enables via confirmed waiver
+    assert cal_row["report"]["hygiene"]["alien_positives"] == 1
+    persisted = [tuple(r["embedding"]) for _t2, rows in client.recorder["upserts"] for r in rows]
+    assert persisted and alien_vec not in persisted  # 4 genuine rows, never the alien
+
+
+def test_render_audit_sheet_hygiene_queues_and_collapse_pairs():
+    report = {
+        "trusted_recall": {"positives": 4, "recalled": 3, "recall": 0.75},
+        "macro_precision": 1.0,
+        "recall": 0.75,
+        "predictions": 6,
+        "fp_negatives": 0,
+        "hygiene": {"quarantined_negatives": 1, "near_band_negatives": 0, "alien_positives": 1},
+        "audit": {
+            "1": {
+                "name": "Alice",
+                "enabled": False,
+                "enable_path": "not_enabled",
+                "reason": "collapse: one voice anchored under multiple names",
+                "families": {"human": 2},
+                "family_agreement": {},
+                "confirmed_meetings": 2,
+                "collapse_pairs": [
+                    {
+                        "person_a": 1,
+                        "name_a": "Alice",
+                        "person_b": 2,
+                        "name_b": "Bob",
+                        "cosine": 0.91,
+                        "meeting_a": "vidA",
+                        "meeting_b": "vidB",
+                        "basis_a": "manual",
+                        "basis_b": "discourse",
+                        "confidence_a": "confirmed",
+                        "confidence_b": "inferred_medium",
+                        "cue_a": 30.0,
+                        "cue_b": 60.0,
+                    }
+                ],
+            },
+        },
+        "delta": {"gained": [], "lost": [], "previous_calibration_id": None},
+    }
+    hygiene_details = {
+        "quarantined_negatives": [
+            {
+                "document_id": 2559,
+                "video_id": "QTM",
+                "cluster_label": "SPEAKER_07",
+                "person_id": 23,
+                "person_name": "Stacy Siwak",
+                "score": 0.824,
+                "start_seconds": 933.0,
+            }
+        ],
+        "near_band_negatives": [],
+        "alien_positives": [
+            {
+                "document_id": 2549,
+                "video_id": "ELP",
+                "cluster_label": "SPEAKER_03",
+                "person_id": 100,
+                "person_name": "Nisha Patel",
+                "score": 0.061,
+                "start_seconds": 4969.0,
+            }
+        ],
+    }
+    out = rc.render_audit_sheet(
+        title="Voiceprint audit — mo/clayton/schools",
+        calibration_id=16,
+        status="candidate",
+        report=report,
+        hygiene_details=hygiene_details,
+    )
+    # collapse pairs: both sides named + cued so a human can break the veto by ear
+    assert "Collapse pairs (1)" in out
+    assert "youtube.com/watch?v=vidA&amp;t=30s" in out
+    assert "youtube.com/watch?v=vidB&amp;t=60s" in out
+    # quarantine queues, each row cued
+    assert "Quarantined negatives" in out and "Stacy Siwak" in out
+    assert "youtube.com/watch?v=QTM&amp;t=933s" in out
+    assert "Quarantined positives" in out and "Nisha Patel" in out
+    # metric block carries the honest support numbers
+    assert "nested predictions" in out and "quarantined negatives (unresolved)" in out
+
+
 def test_negative_labels_excludes_officials_and_short_clusters_longest_first():
     turns = [
         _turn("SPEAKER_00", 0, 30),  # official -> excluded

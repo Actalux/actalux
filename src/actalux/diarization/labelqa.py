@@ -165,26 +165,45 @@ def coherent_subset(
     return core if len(core) >= min_core else []
 
 
+def collapse_pairs(
+    labeled: list[tuple[int, tuple[float, ...]]], *, collapse_bound: float
+) -> list[tuple[int, int, float]]:
+    """The offending sample pairs behind a "one voice, many names" collapse.
+
+    ``labeled`` is ``[(person_id, vector), ...]`` across officials. Returns
+    ``(i, j, cosine)`` index pairs into ``labeled`` where the two samples carry DIFFERENT
+    person_ids yet cosine >= ``collapse_bound`` — each pair is one voice wearing two names.
+    Indices (not person_ids) so the caller can attach sample provenance (which meeting,
+    which anchor) and a human can break the collapse by ear; a bare suspect set cannot be
+    reviewed (the cal-15 Garganigo/Doherty/Wilson veto was unactionable for exactly that
+    reason).
+    """
+    if len(labeled) < 2:
+        return []
+    persons = np.array([p for p, _ in labeled])
+    vecs = _normalize(np.asarray([v for _, v in labeled], dtype=np.float64))
+    sim = vecs @ vecs.T
+    pairs: list[tuple[int, int, float]] = []
+    n = len(labeled)
+    for i in range(n):
+        for j in range(i + 1, n):
+            if persons[i] != persons[j] and sim[i, j] >= collapse_bound:
+                pairs.append((i, j, float(sim[i, j])))
+    return pairs
+
+
 def collapse_suspects(
     labeled: list[tuple[int, tuple[float, ...]]], *, collapse_bound: float
 ) -> set[int]:
     """person_ids implicated in a "one voice, many names" collapse.
 
-    ``labeled`` is ``[(person_id, vector), ...]`` across officials. If two samples with
-    DIFFERENT person_ids have cosine >= ``collapse_bound``, that single voice is anchored
-    to multiple names (a roll-call caller labeled as several members) — both person_ids are
-    flagged. Returns the set of suspect person_ids to exclude from positives.
+    The suspect set is exactly the union of ``collapse_pairs`` members (one mechanism —
+    the veto and the audit's pair evidence can never disagree). Both person_ids of every
+    pair are flagged: a confirmation cannot split one voice into two people, so neither
+    name is trustworthy until a human breaks the pair.
     """
-    if len(labeled) < 2:
-        return set()
-    persons = np.array([p for p, _ in labeled])
-    vecs = _normalize(np.asarray([v for _, v in labeled], dtype=np.float64))
-    sim = vecs @ vecs.T
     suspects: set[int] = set()
-    n = len(labeled)
-    for i in range(n):
-        for j in range(i + 1, n):
-            if persons[i] != persons[j] and sim[i, j] >= collapse_bound:
-                suspects.add(int(persons[i]))
-                suspects.add(int(persons[j]))
+    for i, j, _ in collapse_pairs(labeled, collapse_bound=collapse_bound):
+        suspects.add(int(labeled[i][0]))
+        suspects.add(int(labeled[j][0]))
     return suspects

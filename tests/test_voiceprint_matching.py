@@ -19,6 +19,7 @@ from actalux.diarization.matching import (
     GridPoint,
     Metrics,
     Sample,
+    best_from_grid,
     best_operating_point,
     build_sim,
     enabled_officials,
@@ -136,6 +137,72 @@ def test_best_operating_point_conservative_tiebreak():
     grid = [(0.5, 0.0, tied_lo), (0.7, 0.0, tied_hi)]
     t, _margin, _metrics = best_operating_point(grid, 0.98)
     assert t == 0.7  # equal recall -> prefer the higher (stricter) threshold
+
+
+def test_vacuous_zero_prediction_point_cannot_clear_the_bar():
+    # Regression (cal-15): a no-op point scores macro precision 1.0 over ZERO predictions,
+    # used to clear any bar, and — tying every real point at recall 0 — won the conservative
+    # tie-break in all 78 folds. It must be ineligible; a real point still wins a lower bar.
+    vacuous = Metrics(macro_precision=1.0, recall=0.0, predictions=0)
+    real = Metrics(macro_precision=0.9, recall=0.5, predictions=4)
+    grid = [(0.95, 0.2, vacuous), (0.5, 0.0, real)]
+    assert best_operating_point(grid, 0.98) is None  # nothing REAL clears 0.98 -> abstain
+    t, margin, chosen = best_operating_point(grid, 0.85)
+    assert (t, margin) == (0.5, 0.0) and chosen.predictions > 0
+
+
+def test_best_from_grid_skips_zero_prediction_points():
+    def _gp(threshold, metrics):
+        return GridPoint(
+            purity_floor=0.0,
+            collapse_bound=0.85,
+            score_norm="none",
+            core_floor=0.5,
+            z_floor=None,
+            aggregation="mean",
+            threshold=threshold,
+            margin=0.0,
+            enabled=frozenset({1}),
+            metrics=metrics,
+        )
+
+    vacuous = _gp(0.95, Metrics(macro_precision=1.0, recall=0.0, predictions=0))
+    real = _gp(0.5, Metrics(macro_precision=1.0, recall=0.4, predictions=4))
+    assert best_from_grid([vacuous], 0.9) is None
+    op = best_from_grid([vacuous, real], 0.9)
+    assert op is not None and op.threshold == 0.5
+
+
+def test_nested_lomo_abstains_rather_than_certifying_a_noop_matcher():
+    # The cal-15 shape at matching level: a coherent enabled official whose own voice also
+    # floods the negative pool. Every genuinely-predicting point fails the bar (each fold's
+    # in-train twin FPs cap precision at ~0.6), so every fold must ABSTAIN — not select the
+    # never-predicting corner and report a vacuous macroP=1.0 / abstained_folds=0.
+    samples = [
+        *_two_family(1, A, ("m1", "m2", "m3", "m4")),
+        _s(None, "m5", A),
+        _s(None, "m6", A),
+    ]
+    metrics, prov = nested_leave_one_meeting_out(samples, precision_bar=0.98)
+    assert prov["abstained_folds"] == prov["folds"]
+    assert metrics.predictions == 0 and metrics.recall == 0.0
+
+
+def test_gate_officials_attaches_collapse_pairs_only_on_request():
+    # p1's coherent voice also carries p2's name in m3 (one wrong anchor) -> one collapse
+    # component. The reporting path gets the reviewable pairs; the hot sweep path does not.
+    train = [_s(1, "m1", A), _s(1, "m2", A), _s(2, "m3", A), _s(2, "m4", B)]
+    decisions = gate_officials(
+        train, core_floor=0.0, min_core=2, collapse_bound=0.85, include_collapse_pairs=True
+    )
+    assert decisions[1].collapse_pairs and decisions[2].collapse_pairs
+    pair = decisions[1].collapse_pairs[0]
+    assert {pair["person_a"], pair["person_b"]} == {1, 2}
+    assert pair["cosine"] >= 0.85
+    assert {pair["meeting_a"], pair["meeting_b"]} <= {"m1", "m2", "m3"}  # never the distinct m4
+    hot = gate_officials(train, core_floor=0.0, min_core=2, collapse_bound=0.85)
+    assert hot[1].collapse_pairs == [] and hot[2].collapse_pairs == []
+    assert not hot[1].enabled and not hot[2].enabled  # the veto itself is unchanged
 
 
 # --- AS-norm (Gate A E#1) --------------------------------------------------------------------

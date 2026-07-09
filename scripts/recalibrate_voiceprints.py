@@ -50,17 +50,27 @@ from actalux.diarization.enrollment import (
     voiceprint_row,
 )
 from actalux.diarization.families import family_of
+from actalux.diarization.hygiene import (
+    NEAR_BAND_FLOOR,
+    QUARANTINE_BOUND,
+    NegativeQuarantine,
+    QuarantinedSample,
+    quarantine_twin_negatives,
+    vet_confirmed_positives,
+)
 from actalux.diarization.matching import (
     CURVE_PRECISION_BARS,
     DEFAULT_CORE_FLOORS,
     GATE_A_COLLAPSE_BOUND,
     GATE_A_MIN_CORE,
+    OperatingPoint,
     Sample,
     enablement_delta,
     evaluate_grid,
     gate_officials,
     nested_lomo_multi_bar,
     pareto_frontier,
+    predict,
     select_operating_point,
 )
 from actalux.errors import ActaluxError
@@ -156,6 +166,7 @@ def build_meeting_samples(
     *,
     min_seconds: float,
     primary_model: str,
+    document_id: int | None = None,
 ) -> tuple[dict[str, list[Sample]], list[tuple[EnrollableCluster, Any]]]:
     """Pool one meeting's per-model cluster turns into per-model calibration Samples.
 
@@ -164,7 +175,9 @@ def build_meeting_samples(
     difference is attributable to the embedder alone. The second return — ``pooled_officials`` — is
     the PRIMARY model's officials only; it is the sole persistable artifact, so an alternate
     embedder can never produce a gallery row (Option B). For a single-model run this yields the same
-    Samples, in the same order, that the pre-A/B path built inline.
+    Samples, in the same order, that the pre-A/B path built inline. ``document_id`` stamps the
+    NEGATIVE samples' audit provenance (officials carry their cluster's own document_id), so a
+    quarantined sample can be cued for human review.
     """
     per_model: dict[str, list[Sample]] = {m: [] for m in turns_by_model}
     pooled_officials: list[tuple[EnrollableCluster, Any]] = []
@@ -181,6 +194,8 @@ def build_meeting_samples(
                     purity=pooled.purity,
                     confidence=ec.confidence,
                     basis=ec.source_basis,  # carries the evidence family into the consensus gate
+                    document_id=ec.document_id,
+                    cluster_label=ec.cluster_label,
                 )
             )
             if model_id == primary_model:
@@ -189,7 +204,14 @@ def build_meeting_samples(
             pooled = pool_cluster(turns_by_label.get(lab, []), **POOL_PARAMS)
             if pooled is not None and pooled.seconds >= min_seconds:
                 per_model[model_id].append(
-                    Sample(None, video_id, pooled.vector, purity=pooled.purity)
+                    Sample(
+                        None,
+                        video_id,
+                        pooled.vector,
+                        purity=pooled.purity,
+                        document_id=document_id,
+                        cluster_label=lab,
+                    )
                 )
     return per_model, pooled_officials
 
@@ -202,14 +224,16 @@ def _confusion_report(metrics: Any) -> dict[str, Any]:
     """
     fp = sum(1 for true, _ in metrics.confusions if true is None)
     official_confusions = [[t, p] for t, p in metrics.confusions if t is not None]
+    per_person = metrics.per_person_precision
     return {
         "macro_precision": round(metrics.macro_precision, 4),
+        # macro averages across officials, so one bad official can hide behind good ones;
+        # the worst-official floor is the number the precision-first cardinal actually cares about.
+        "worst_official_precision": round(min(per_person.values()), 4) if per_person else None,
         "recall": round(metrics.recall, 4),
         "predictions": metrics.predictions,
         "fp_negatives": fp,
-        "per_official_precision": {
-            str(p): round(v, 4) for p, v in metrics.per_person_precision.items()
-        },
+        "per_official_precision": {str(p): round(v, 4) for p, v in per_person.items()},
         "official_confusions": official_confusions[:50],
     }
 
@@ -286,12 +310,14 @@ def _gate_decisions_for_report(samples: list[Sample], refit: Any) -> dict[int, A
             collapse_bound=refit.collapse_bound,
             score_norm=refit.score_norm,
             z_floor=refit.z_floor,
+            include_collapse_pairs=True,
         )
     return gate_officials(
         samples,
         core_floor=min(DEFAULT_CORE_FLOORS),
         min_core=GATE_A_MIN_CORE,
         collapse_bound=GATE_A_COLLAPSE_BOUND,
+        include_collapse_pairs=True,
     )
 
 
@@ -329,6 +355,40 @@ def _top_evidence(
     return picked
 
 
+def _cue_for(
+    evidence_cues: dict[int, list[dict[str, Any]]], person_id: int, video_id: str
+) -> float:
+    """The person's cue start in one meeting (0.0 when uncued) — for collapse-pair watch links."""
+    for c in evidence_cues.get(person_id, []):
+        if c["video_id"] == video_id:
+            return float(c["start_seconds"])
+    return 0.0
+
+
+def _named_collapse_pairs(
+    pairs: list[dict[str, Any]],
+    name_by_person: dict[int, str],
+    evidence_cues: dict[int, list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    """Collapse pairs enriched with names + per-side cue starts, so a human can break each by ear.
+
+    The cal-15 veto blocked three officials with only "one voice anchored under multiple names" —
+    unreviewable. Each row here says exactly WHICH two anchors are near-duplicates and cues both.
+    """
+    out = []
+    for p in pairs:
+        out.append(
+            {
+                **p,
+                "name_a": name_by_person.get(p["person_a"]),
+                "name_b": name_by_person.get(p["person_b"]),
+                "cue_a": _cue_for(evidence_cues, p["person_a"], p["meeting_a"]),
+                "cue_b": _cue_for(evidence_cues, p["person_b"], p["meeting_b"]),
+            }
+        )
+    return out
+
+
 def _build_audit(
     decisions: dict[int, Any],
     name_by_person: dict[int, str],
@@ -339,8 +399,9 @@ def _build_audit(
 
     Each block carries the families present, the family-agreement summary (which families landed on
     the coherent voice, in how many meetings, which anchors were discarded), the enable path
-    (confirmed_waiver | consensus | not_enabled+reason), and — for enabled officials — the top
-    evidence pointers (document_id, cluster_label, a start_seconds cue). No citizen identifier.
+    (confirmed_waiver | consensus | not_enabled+reason), for enabled officials the top evidence
+    pointers (document_id, cluster_label, a start_seconds cue), and for collapse-vetoed officials
+    the offending pairs with both sides cued. No citizen identifier.
     """
     audit: dict[str, Any] = {}
     reasons: dict[int, str] = {}
@@ -368,6 +429,10 @@ def _build_audit(
             # waiver has no computed core (core_families empty -> None -> no family filter).
             allowed = set(d.core_families) or None
             entry["evidence"] = _top_evidence(evidence_cues.get(person_id, []), allowed)
+        if getattr(d, "collapse_pairs", None):
+            entry["collapse_pairs"] = _named_collapse_pairs(
+                d.collapse_pairs, name_by_person, evidence_cues
+            )
         audit[str(person_id)] = entry
     return audit, reasons
 
@@ -416,19 +481,120 @@ def _fam_summary(counts: dict[str, Any]) -> str:
     return ", ".join(f"{html.escape(str(k))}×{v}" for k, v in sorted(counts.items())) or "—"
 
 
+def _pair_side(esc: Any, name: Any, meeting: str, cue: float, basis: Any, confidence: Any) -> str:
+    """One side of a collapse pair: a cued watch link + the anchor's origin."""
+    url = _watch_url(meeting, cue)
+    return (
+        f"<a href='{esc(url)}' target='_blank' rel='noopener'>{esc(str(name))}</a> "
+        f"<span class='mono'>@{_hms(cue)} ({esc(str(basis))}/{esc(str(confidence))})</span>"
+    )
+
+
+def _render_collapse_pairs(parts: list[str], audit: dict[str, Any]) -> None:
+    """The offending near-duplicate pairs behind any collapse veto, each side cued for review.
+
+    Pairs are attached to BOTH implicated officials' audit entries, so dedupe before rendering.
+    One of each pair's two anchors is mislabeled; a human listening to both clips can tell which
+    and break the veto (the cal-15 Garganigo/Doherty/Wilson block was unreviewable without this).
+    """
+    esc = html.escape
+    seen: set[tuple] = set()
+    rows: list[dict[str, Any]] = []
+    for e in audit.values():
+        for p in e.get("collapse_pairs", []):
+            key = (p["person_a"], p["person_b"], p["meeting_a"], p["meeting_b"], p["cosine"])
+            if key not in seen:
+                seen.add(key)
+                rows.append(p)
+    if not rows:
+        return
+    rows.sort(key=lambda p: -p["cosine"])
+    parts.append(
+        f"<h2 style='font-size:15px'>Collapse pairs ({len(rows)}) — one voice, two names; "
+        "listen to both sides</h2>"
+    )
+    parts.append("<table class='delta'>")
+    for p in rows:
+        side_a = _pair_side(
+            esc, p.get("name_a") or p["person_a"], p["meeting_a"], p.get("cue_a", 0.0),
+            p.get("basis_a"), p.get("confidence_a"),
+        )  # fmt: skip
+        side_b = _pair_side(
+            esc, p.get("name_b") or p["person_b"], p["meeting_b"], p.get("cue_b", 0.0),
+            p.get("basis_b"), p.get("confidence_b"),
+        )  # fmt: skip
+        parts.append(
+            f"<tr><td class='mono'>{p['cosine']:.3f}</td><td>{side_a}</td><td>{side_b}</td></tr>"
+        )
+    parts.append("</table>")
+
+
+_HYGIENE_QUEUES = (
+    (
+        "quarantined_negatives",
+        "Quarantined negatives — suspected unlabeled officials; adjudicate by ear",
+        "excluded from the citizen-FP metric until resolved: confirm as the official "
+        "(new anchor) or certify as a citizen",
+    ),
+    (
+        "near_band_negatives",
+        "Near-band negatives — still counted as citizens; boundary drift watch",
+        "kept in the metric; listed so a drifting quarantine boundary is visible",
+    ),
+    (
+        "alien_positives",
+        "Quarantined positives — anchors that contradict the official's confirmed voice",
+        "held out of the gallery and the metric; if the label is wrong, reject the anchor",
+    ),
+)
+
+
+def _render_hygiene_queues(
+    parts: list[str], hygiene_details: dict[str, list[dict[str, Any]]]
+) -> None:
+    """The three quarantine queues, each row a cued watch link + the offending score."""
+    esc = html.escape
+    for key, heading, note in _HYGIENE_QUEUES:
+        rows = hygiene_details.get(key, [])
+        if not rows:
+            continue
+        parts.append(f"<h2 style='font-size:15px'>{esc(heading)} ({len(rows)})</h2>")
+        parts.append(f"<div class='mono'>{esc(note)}</div>")
+        parts.append("<table class='delta'>")
+        for r in rows:
+            url = _watch_url(str(r["video_id"]), r["start_seconds"])
+            parts.append(
+                f"<tr><td class='mono'>{r['score']:.3f}</td>"
+                f"<td class='mono'>doc {r['document_id']} · {esc(str(r['cluster_label']))}</td>"
+                f"<td>vs {esc(str(r['person_name']))}</td>"
+                f"<td><a href='{esc(url)}' target='_blank' rel='noopener'>"
+                f"&#9654; {_hms(r['start_seconds'])}</a></td></tr>"
+            )
+        parts.append("</table>")
+
+
 def render_audit_sheet(
-    *, title: str, calibration_id: int | None, status: str, report: dict[str, Any]
+    *,
+    title: str,
+    calibration_id: int | None,
+    status: str,
+    report: dict[str, Any],
+    hygiene_details: dict[str, list[dict[str, Any]]] | None = None,
 ) -> str:
     """Static, self-contained HTML review sheet (pure — returns the HTML string).
 
-    A metric block (trusted-tier recall headline + nested macro-precision/recall + citizen FP), one
-    row per ENABLED official with cued YouTube watch links (open at the clip second, no audio
-    download) and its enable path, plus the run-over-run enablement delta (who gained / lost).
-    Not a publish surface — no citizen data, only public officials the body already names.
+    A metric block (trusted-tier recall headline + nested macro-precision/recall + citizen FP +
+    quarantine counts), one row per ENABLED official with cued YouTube watch links (open at the
+    clip second, no audio download) and its enable path, the collapse pairs blocking any vetoed
+    official (both sides cued), the hygiene quarantine queues awaiting human adjudication, plus
+    the run-over-run enablement delta (who gained / lost). ``hygiene_details`` (quarantined /
+    near-band negatives + alien positives, with cue starts) exists ONLY on this local sheet —
+    a quarantined negative may be a citizen, so its identifiers never reach the DB report.
     """
     audit = report.get("audit", {})
     delta = report.get("delta", {})
     tr = report.get("trusted_recall") or {}
+    hyg = report.get("hygiene", {})
     esc = html.escape
     tr_txt = f"{tr['recall']:.3f}" if tr.get("recall") is not None else "n/a"
     parts: list[str] = [
@@ -468,7 +634,11 @@ def render_audit_sheet(
         f"<div class='metric'><b>{report.get('recall', 0):.3f}</b>"
         "<span>nested recall (raw)</span></div>",
         f"<div class='metric'><b>{report.get('fp_negatives', 0)}</b>"
-        "<span>citizen false positives</span></div>",
+        "<span>citizen false positives (clean)</span></div>",
+        f"<div class='metric'><b>{report.get('predictions', 0)}</b>"
+        "<span>nested predictions</span></div>",
+        f"<div class='metric'><b>{hyg.get('quarantined_negatives', 0)}</b>"
+        "<span>quarantined negatives (unresolved)</span></div>",
         "</div>",
     ]
 
@@ -509,6 +679,10 @@ def render_audit_sheet(
             parts.append("</div>")
         parts.append("</div>")
 
+    _render_collapse_pairs(parts, audit)
+    if hygiene_details:
+        _render_hygiene_queues(parts, hygiene_details)
+
     gained, lost = delta.get("gained", []), delta.get("lost", [])
     parts.append("<h2 style='font-size:15px'>Enablement delta vs previous calibration</h2>")
     prev_id = delta.get("previous_calibration_id")
@@ -541,6 +715,7 @@ def _write_audit_sheet(
     calibration_id: int,
     status: str,
     report: dict[str, Any],
+    hygiene_details: dict[str, list[dict[str, Any]]] | None = None,
 ) -> None:
     """Render + write the audit sheet to the (gitignored) audit dir. Jurisdiction-agnostic."""
     state = getattr(args, "state", None)
@@ -550,7 +725,11 @@ def _write_audit_sheet(
     scope = "/".join(x for x in (state, place, body) if x) or f"place-{place_id}"
     title = f"Voiceprint audit — {scope}"
     html_str = render_audit_sheet(
-        title=title, calibration_id=calibration_id, status=status, report=report
+        title=title,
+        calibration_id=calibration_id,
+        status=status,
+        report=report,
+        hygiene_details=hygiene_details,
     )
     out_dir.mkdir(parents=True, exist_ok=True)
     slug = "_".join(x for x in (state, place, body) if x) or f"place{place_id}"
@@ -755,6 +934,9 @@ def _apply(
     samples_by_model: dict[str, list[Sample]] = {m: [] for m in models}
     pooled_officials: list[tuple[EnrollableCluster, Any]] = []  # (cluster, Pooled), primary only
     evidence_cues: dict[int, list[dict[str, Any]]] = defaultdict(list)  # person_id -> cued clips
+    # (document_id, cluster_label) -> longest-span start second, for EVERY embedded cluster —
+    # so a quarantined sample (official or negative) can be cued on the audit sheet by ear.
+    cue_starts: dict[tuple[int, str], float] = {}
     processed_docs: set[int] = set()
 
     for doc_id in docs_to_process:
@@ -790,8 +972,7 @@ def _apply(
         # zero clusters survive pooling (so a now-empty poisoned meeting doesn't keep old rows).
         processed_docs.add(doc_id)
         # One cued clip per official cluster this meeting: the LONGEST span (clearest voice to ID by
-        # ear), for the audit sheet's YouTube embeds + the machine-readable evidence pointers. No
-        # negative/citizen cluster is ever cued.
+        # ear), for the audit sheet's YouTube embeds + the machine-readable evidence pointers.
         for ec in clusters:
             spans = cluster_spans(turns, ec.cluster_label)
             if not spans:
@@ -810,6 +991,13 @@ def _apply(
                     "end_seconds": round(end, 1),
                 }
             )
+        # A cue start for EVERY embedded cluster (negatives included) so a quarantined sample
+        # is reviewable by ear on the LOCAL audit sheet. Local artifact only — a negative's
+        # identifiers still never reach the persisted report.
+        for entry in payload:
+            if entry["spans"]:
+                start, _end = max(entry["spans"], key=lambda s: s[1] - s[0])
+                cue_starts[(doc_id, entry["cluster_label"])] = round(start, 1)
 
         meeting_samples, meeting_pooled = build_meeting_samples(
             turns_by_model,
@@ -818,6 +1006,7 @@ def _apply(
             video_id,
             min_seconds=args.min_seconds,
             primary_model=models[0],
+            document_id=doc_id,
         )
         for model_id, model_samples in meeting_samples.items():
             samples_by_model[model_id].extend(model_samples)
@@ -842,7 +1031,75 @@ def _apply(
         superseded,
         args,
         evidence_cues=evidence_cues,
+        cue_starts=cue_starts,
     )
+
+
+def _clean_samples(
+    samples: list[Sample],
+) -> tuple[list[Sample], list[QuarantinedSample], NegativeQuarantine]:
+    """One model's hygiene pass: vet positives against confirmed voices, then quarantine
+    twin negatives against the vetted positives (order matters — an alien positive in the
+    comparison set would quarantine citizens matching the WRONG voice).
+
+    Returns ``(kept, alien_positives, negative_quarantine)``.
+    """
+    vetted, alien_positives = vet_confirmed_positives(samples)
+    neg_q = quarantine_twin_negatives(vetted)
+    return neg_q.kept, alien_positives, neg_q
+
+
+def _would_match_at_refit(
+    quarantined: list[QuarantinedSample], samples: list[Sample], refit: OperatingPoint | None
+) -> int | None:
+    """How many quarantined negatives the DEPLOYED operating point would have named.
+
+    The honest disclosure next to the clean citizen-FP count: each quarantined negative is
+    scored leave-its-meeting-out against the cleaned gallery at the refit point. If one is
+    later adjudicated a real citizen, this is exactly the FP count the quarantine hid.
+    ``None`` when there is no refit (not_cleared) — nothing would be deployed to match.
+    """
+    if refit is None:
+        return None
+    gallery_all = [s for s in samples if s.purity >= refit.purity_floor]
+    n = 0
+    for q in quarantined:
+        gallery = [s for s in gallery_all if s.meeting_key != q.sample.meeting_key]
+        pred = predict(
+            q.sample,
+            gallery,
+            refit.threshold,
+            refit.margin,
+            aggregation=refit.aggregation,
+            allowed=refit.enabled,
+        )
+        if pred is not None:
+            n += 1
+    return n
+
+
+def _quarantine_rows(
+    records: list[QuarantinedSample],
+    name_by_person: dict[int, str],
+    cue_starts: dict[tuple[int, str], float],
+) -> list[dict[str, Any]]:
+    """Audit-sheet rows (LOCAL artifact only) for quarantined samples, cued for review by ear."""
+    rows = []
+    for q in records:
+        key = (q.sample.document_id, q.sample.cluster_label)
+        rows.append(
+            {
+                "document_id": q.sample.document_id,
+                "video_id": q.sample.meeting_key,
+                "cluster_label": q.sample.cluster_label,
+                "person_id": q.person_id,
+                "person_name": name_by_person.get(q.person_id, str(q.person_id)),
+                "score": round(q.score, 3),
+                "start_seconds": cue_starts.get(key, 0.0),
+            }
+        )
+    rows.sort(key=lambda r: -r["score"])
+    return rows
 
 
 def _finish(
@@ -856,16 +1113,25 @@ def _finish(
     superseded: set[int],
     args: argparse.Namespace,
     evidence_cues: dict[int, list[dict[str, Any]]] | None = None,
+    cue_starts: dict[tuple[int, str], float] | None = None,
 ) -> None:
     """Nested-LOMO estimate + full-data refit, then persist the candidate gallery + record.
 
     Only the primary model (``models[0]``) drives the verdict and gallery — its samples and pooled
     officials are exactly what the pre-A/B path produced. Alternate embedders are measured off the
     same meetings and folded into ``report['ab']`` only; none of their vectors are persisted.
+    Every model's samples get the hygiene pass (``_clean_samples``) before any metric — alien
+    positives and twin negatives are quarantined with receipts, never scored as evaluation data.
     """
     from actalux.diarization.modal_runner import EMBED_MODEL
 
     primary = models[0]
+    hygiene_by_model: dict[str, tuple[list[QuarantinedSample], NegativeQuarantine]] = {}
+    for model_id, model_samples in samples_by_model.items():
+        kept, model_alien, model_neg_q = _clean_samples(model_samples)
+        samples_by_model[model_id] = kept
+        hygiene_by_model[model_id] = (model_alien, model_neg_q)
+    alien_positives, neg_quarantine = hygiene_by_model[primary]
     samples = samples_by_model[primary]
     n_pos = sum(1 for s in samples if s.person_id is not None)
     n_neg = sum(1 for s in samples if s.person_id is None)
@@ -881,9 +1147,16 @@ def _finish(
     nested, prov = multi[args.precision_bar]
     refit = select_operating_point(samples, precision_bar=args.precision_bar)
 
-    # CANDIDATE only if the honest (nested, no-circular) estimate clears the bar; the refit is
-    # the full-data operating point that would be deployed. Otherwise not_cleared.
-    cleared = refit is not None and nested.macro_precision >= args.precision_bar
+    # CANDIDATE only if the honest (nested, no-circular) estimate clears the bar AND actually
+    # predicted something held-out; the refit is the full-data operating point that would be
+    # deployed. Zero nested predictions make macro precision vacuously 1.0 (score()), so without
+    # the predictions guard a matcher that never matches anyone would be certified — the cal-15
+    # failure. Otherwise not_cleared.
+    cleared = (
+        refit is not None
+        and nested.macro_precision >= args.precision_bar
+        and nested.predictions > 0
+    )
     status = "candidate" if cleared else "not_cleared"
     # A not_cleared verdict enrolls NOTHING (enabled empty -> no rows upserted -> stale rows for
     # processed meetings are deleted, leaving no untrustworthy gallery behind).
@@ -902,6 +1175,21 @@ def _finish(
     # family-consensus in-fold). The id=5 discourse flood made raw recall meaningless — dominated by
     # unverified single-family positives the gate refused to enable; this excludes them.
     report["trusted_recall"] = prov["trusted_recall"]
+    # Hygiene receipts (aggregates ONLY — a quarantined negative may be a citizen, so its
+    # identifiers never persist; details live on the local audit sheet). fp_negatives above is
+    # therefore the CLEAN citizen-FP count; quarantined_negatives are unresolved until a human
+    # adjudicates them, and would_match_at_refit discloses how many the deployed operating point
+    # would have named — the FP exposure the quarantine hides if they turn out to be citizens.
+    report["hygiene"] = {
+        "quarantine_bound": QUARANTINE_BOUND,
+        "near_band_floor": NEAR_BAND_FLOOR,
+        "quarantined_negatives": len(neg_quarantine.quarantined),
+        "near_band_negatives": len(neg_quarantine.near_band),
+        "alien_positives": len(alien_positives),
+        "quarantined_would_match_at_refit": _would_match_at_refit(
+            neg_quarantine.quarantined, samples, refit
+        ),
+    }
     if refit is not None:
         report["refit"] = {
             "purity_floor": refit.purity_floor,
@@ -977,6 +1265,15 @@ def _finish(
         tr["recalled"],
         tr["positives"],
     )
+    hyg = report["hygiene"]
+    logger.info(
+        "hygiene: %d twin negative(s) quarantined (%s would match at refit), "
+        "%d near-band, %d alien positive(s) held out of gallery+metric",
+        hyg["quarantined_negatives"],
+        hyg["quarantined_would_match_at_refit"],
+        hyg["near_band_negatives"],
+        hyg["alien_positives"],
+    )
     logger.info("verdict: %s (%d officials enabled)", status, len(enabled))
     for who in delta["gained"]:
         logger.info(
@@ -1031,10 +1328,17 @@ def _finish(
     # Persist ONLY enabled officials whose pooled purity clears the refit floor (a not_cleared
     # verdict enrolls nothing). Upsert first, THEN delete stale rows for every processed meeting
     # -> no empty-gallery window, and no poison / non-enabled / now-rejected row survives.
+    # An alien positive (vetted out against the person's confirmed voice) never persists —
+    # the confirmed-waiver path must not carry a wrong-voice anchor into the gallery.
+    alien_keys = {
+        (q.person_id, q.sample.document_id, q.sample.cluster_label) for q in alien_positives
+    }
     rows = [
         voiceprint_row(ec, pooled, EMBED_MODEL, calibration_id=calibration_id)
         for ec, pooled in pooled_officials
-        if ec.person_id in enabled and pooled.purity >= purity_floor
+        if ec.person_id in enabled
+        and pooled.purity >= purity_floor
+        and (ec.person_id, ec.document_id, ec.cluster_label) not in alien_keys
     ]
     if rows:
         client.table("subject_voiceprints").upsert(
@@ -1049,11 +1353,23 @@ def _finish(
         pruned,
     )
 
-    # Generate the static audit sheet (cued YouTube embeds + metric block + delta). Only on a real
-    # run (evidence_cues threaded from _apply); the unit tests call _finish without cues, so no file
-    # is written. Never a publish surface — a gitignored review artifact.
+    # Generate the static audit sheet (cued watch links + metric block + delta + the hygiene
+    # quarantine queues). Only on a real run (evidence_cues threaded from _apply); the unit tests
+    # call _finish without cues, so no file is written. Never a publish surface — a gitignored
+    # review artifact; quarantined-negative identifiers exist ONLY here, never in the DB report.
     if evidence_cues is not None:
-        _write_audit_sheet(args, place_id, calibration_id, status, report)
+        hygiene_details = {
+            "quarantined_negatives": _quarantine_rows(
+                neg_quarantine.quarantined, name_by_person, cue_starts or {}
+            ),
+            "near_band_negatives": _quarantine_rows(
+                neg_quarantine.near_band, name_by_person, cue_starts or {}
+            ),
+            "alien_positives": _quarantine_rows(alien_positives, name_by_person, cue_starts or {}),
+        }
+        _write_audit_sheet(
+            args, place_id, calibration_id, status, report, hygiene_details=hygiene_details
+        )
 
 
 def _delete_stale(client: Client, processed_docs: set[int], calibration_id: int) -> int:

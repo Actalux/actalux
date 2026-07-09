@@ -21,7 +21,7 @@ import numpy as np
 from actalux.diarization.families import CONFIRMED_CONFIDENCE, family_of
 from actalux.diarization.labelqa import (
     coherent_subset,
-    collapse_suspects,
+    collapse_pairs,
 )
 
 # Operating-point search grid (cosine on L2-normalized vectors, so scores in [-1, 1]).
@@ -96,6 +96,9 @@ class Sample:
     ``basis`` is the enrollment basis (``rollcall`` / ``vote_anchor`` / ``discourse`` / …); it
     resolves to an evidence *family* via ``family`` for the consensus gate. It defaults to ``None``
     (family ``human``) so a sample built without a basis behaves as a single neutral family.
+    ``document_id`` / ``cluster_label`` are audit provenance (which cluster this voiceprint came
+    from) so a quarantined sample can be cued for human review; they play no part in scoring and
+    default to ``None`` for callers that don't need the receipt.
     """
 
     person_id: int | None
@@ -105,6 +108,8 @@ class Sample:
     idx: int = -1
     confidence: str = "inferred_high"
     basis: str | None = None
+    document_id: int | None = None
+    cluster_label: str | None = None
 
     @property
     def family(self) -> str:
@@ -239,6 +244,11 @@ class GateDecision:
     discarded_by_family: dict[str, int]
     confirmed_meetings: int
     collapsed: bool
+    # The offending cross-person near-duplicate pairs this person is party to (each with the
+    # other person, cosine, and both sides' meeting/basis/confidence), so a collapse veto is
+    # reviewable by ear instead of a bare person_id set. Populated only on the reporting path
+    # (``gate_officials(include_collapse_pairs=True)``) — empty on the hot sweep path.
+    collapse_pairs: list[dict[str, Any]] = field(default_factory=list)
 
 
 def gate_official(
@@ -364,6 +374,24 @@ def gate_official(
     )
 
 
+def _collapse_pair_details(flat: list[Sample], pairs: list[tuple[int, int, float]]) -> list[dict]:
+    """Reviewable provenance for each offending pair: who, how close, and both anchors' origin."""
+    return [
+        {
+            "person_a": flat[i].person_id,
+            "person_b": flat[j].person_id,
+            "cosine": round(c, 4),
+            "meeting_a": flat[i].meeting_key,
+            "meeting_b": flat[j].meeting_key,
+            "basis_a": flat[i].basis,
+            "basis_b": flat[j].basis,
+            "confidence_a": flat[i].confidence,
+            "confidence_b": flat[j].confidence,
+        }
+        for i, j, c in pairs
+    ]
+
+
 def gate_officials(
     train: list[Sample],
     *,
@@ -375,6 +403,7 @@ def gate_officials(
     cohort_min: int = ASNORM_MIN_COHORT,
     sigma_eps: float = ASNORM_SIGMA_EPS,
     confirmed_min_meetings: int = GATE_A_CONFIRMED_MIN_MEETINGS,
+    include_collapse_pairs: bool = False,
 ) -> dict[int, GateDecision]:
     """Gate every official in ``train`` -> ``{person_id: GateDecision}`` (the audit substrate).
 
@@ -383,14 +412,26 @@ def gate_officials(
     would defeat it), then decides each official via ``gate_official`` against the impostor cohort
     of every OTHER official's vectors. Negatives (``person_id`` None) are ignored, so they never
     enter the cohort or a decision. Applied ONLY within training folds (leakage-safe).
+
+    ``include_collapse_pairs`` attaches the offending near-duplicate pairs (with both sides'
+    meeting/basis provenance) to every implicated person's decision — the reporting path only;
+    the sweep's thousands of calls skip the detail-building.
     """
     by_person: dict[int, list[Sample]] = defaultdict(list)
     for s in train:
         if s.person_id is not None:
             by_person[s.person_id].append(s)
-    suspects = collapse_suspects(
-        [(p, s.embedding) for p, ss in by_person.items() for s in ss], collapse_bound=collapse_bound
-    )
+    flat: list[Sample] = []
+    labeled: list[tuple[int, tuple[float, ...]]] = []
+    for person, ss in by_person.items():
+        for s in ss:
+            flat.append(s)
+            labeled.append((person, s.embedding))
+    pairs = collapse_pairs(labeled, collapse_bound=collapse_bound)
+    suspects: set[int] = set()
+    for i, j, _ in pairs:
+        suspects.add(labeled[i][0])
+        suspects.add(labeled[j][0])
     decisions: dict[int, GateDecision] = {}
     for person, samples in by_person.items():
         cohort = [s.embedding for other, oss in by_person.items() if other != person for s in oss]
@@ -406,6 +447,12 @@ def gate_officials(
             sigma_eps=sigma_eps,
             confirmed_min_meetings=confirmed_min_meetings,
         )
+    if include_collapse_pairs and pairs:
+        details = _collapse_pair_details(flat, pairs)
+        for d in details:
+            for person in (d["person_a"], d["person_b"]):
+                if person in decisions:
+                    decisions[person].collapse_pairs.append(d)
     return decisions
 
 
@@ -507,8 +554,13 @@ def best_operating_point(
 
     On equal recall prefer the higher threshold, then the higher margin: at the precision-
     first cardinal ("never a wrong name"), a tie should resolve toward stricter matching.
+
+    A point that never predicts is NOT eligible: ``score()`` returns macro precision 1.0
+    over zero predictions, so without this guard a no-op matcher vacuously clears any bar
+    and — tying every real point at recall 0 — wins the conservative tie-break (the cal-15
+    failure: all 78 folds "chose" t=0.95/m=0.20 and never matched anyone).
     """
-    ok = [g for g in grid if g[2].macro_precision >= precision_bar]
+    ok = [g for g in grid if g[2].macro_precision >= precision_bar and g[2].predictions > 0]
     if not ok:
         return None
     return max(ok, key=lambda g: (g[2].recall, g[0], g[1]))
@@ -697,11 +749,15 @@ def best_from_grid(grid: list[GridPoint], precision_bar: float) -> OperatingPoin
     cardinal ("never a wrong name") settles a tie on stricter matching. This is exactly the
     pre-asnorm objective; the added axes only widen the grid it selects from. Grid order is fixed
     (``evaluate_grid``), so first-wins ties on (recall, threshold, margin) are deterministic.
+
+    A zero-prediction point is NOT eligible (its macro precision 1.0 is vacuous — see
+    ``best_operating_point``); a fold where nothing real clears the bar returns ``None``
+    and is counted as abstained, instead of being certified by a matcher that never matches.
     """
     best: OperatingPoint | None = None
     best_key: tuple[float, float, float] | None = None
     for gp in grid:
-        if gp.metrics.macro_precision < precision_bar:
+        if gp.metrics.macro_precision < precision_bar or gp.metrics.predictions == 0:
             continue
         key = (gp.metrics.recall, gp.threshold, gp.margin)
         if best_key is None or key > best_key:

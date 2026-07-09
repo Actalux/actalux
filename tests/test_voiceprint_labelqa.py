@@ -7,6 +7,7 @@ import pytest
 from actalux.diarization.labelqa import (
     coherent_core,
     coherent_subset,
+    collapse_pairs,
     collapse_suspects,
     mean_cosine_to_others,
 )
@@ -55,6 +56,27 @@ def test_collapse_ignores_distinct_voices():
 def test_collapse_ignores_same_person_duplicates():
     # The same person appearing twice is expected, not a collapse.
     assert collapse_suspects([(1, A), (1, A)], collapse_bound=0.9) == set()
+
+
+def test_collapse_pairs_returns_offending_indices_with_cosine():
+    # The pair evidence a human needs to break a collapse: WHICH two samples are one voice.
+    pairs = collapse_pairs([(1, A), (2, A), (3, B)], collapse_bound=0.9)
+    assert len(pairs) == 1
+    i, j, cosine = pairs[0]
+    assert (i, j) == (0, 1)
+    assert cosine == pytest.approx(1.0)
+
+
+def test_collapse_pairs_same_person_never_pairs():
+    assert collapse_pairs([(1, A), (1, A)], collapse_bound=0.9) == []
+
+
+def test_collapse_suspects_is_exactly_the_pair_union():
+    # One mechanism: the veto set and the reviewable pair evidence can never disagree.
+    labeled = [(1, A), (2, A), (3, B), (4, B), (5, C)]
+    pairs = collapse_pairs(labeled, collapse_bound=0.9)
+    union = {labeled[i][0] for i, _, _ in pairs} | {labeled[j][0] for _, j, _ in pairs}
+    assert collapse_suspects(labeled, collapse_bound=0.9) == union == {1, 2, 3, 4}
 
 
 # --- coherent_subset (the medoid-grown, Hummell-robust core) ----------------------------------

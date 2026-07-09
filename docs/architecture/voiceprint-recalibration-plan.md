@@ -124,11 +124,16 @@ One off-session GPU job (`scripts/recalibrate_voiceprints.py` + workflow), **per
    held-out negatives** as-is (no filtering in the test fold). A held-out sample whose
    label is actually wrong therefore *hurts* the score — the safe direction.
 4. **Metric.** Macro precision by official (talkative officials can't dominate), recall,
-   negative false-positive rate, and confusion pairs. Negatives that match any official
-   count as FP (conservative — a negative could be an un-anchored real official, which
-   would make the match correct; this *under*-estimates precision). Reported as
-   **aggregate counts only** — official-level confusion tallies, never any negative
+   negative false-positive rate, and confusion pairs. Reported as **aggregate counts
+   only** — official-level confusion tallies, never any negative
    cluster/doc/timestamp/speaker identifier (privacy, §11).
+   *(Superseded 2026-07-09 — see §5b.)* The original rule counted every negative→official
+   match as FP on the theory that this only *under*-estimates precision. Cal id=15 proved
+   it does the opposite at system level: the negative pool (longest unlabeled clusters) is
+   saturated with the enrolled officials' own voices (unlabeled in 50–72 of 79 fold
+   meetings), the resulting fake FPs kept every genuinely-predicting operating point below
+   the bar, and the selector fell into a zero-prediction corner that *vacuously* cleared
+   it — recall 0 reported as a passing candidate.
 5. **Final operating point (nested-CV discipline).** The nested-LOMO numbers are the
    honest *performance estimate*. The single operating point that gets persisted is then
    chosen by running the **same selection procedure refit on ALL meetings** (standard
@@ -148,6 +153,44 @@ One off-session GPU job (`scripts/recalibrate_voiceprints.py` + workflow), **per
 
 Because the GPU emits per-turn vectors, the whole nested sweep runs in one pass without
 re-embedding.
+
+## 5b. Sample hygiene + honest selection (2026-07-09; diagnosis in
+`data/audit_sheets/recall0_diagnosis_2026-07-09.md`, reviewed by two external models)
+
+Four changes, motivated by cal id=15 (trusted recall 0/60 at every bar with
+`abstained_folds=0` and status `candidate` — all vacuous):
+
+1. **Honest selection (F1).** `score()` returns macro precision 1.0 over zero
+   predictions, so a never-predicting operating point cleared any bar and won the
+   conservative tie-break in all 78 folds. `best_from_grid` / `best_operating_point` now
+   require `predictions > 0`; a fold where nothing real clears the bar **abstains** and is
+   counted. The verdict additionally requires the nested estimate to carry real
+   predictions — a no-op matcher can never again produce `candidate`.
+2. **Twin-negative quarantine (F2, `diarization/hygiene.py`).** "Unlabeled" is not
+   "citizen": a negative whose mean cosine to one official's samples ≥ `QUARANTINE_BOUND`
+   is excluded from the citizen-FP metric, counted in the report, and cued on the local
+   audit sheet for human adjudication (confirm-as-official → new anchor;
+   confirm-as-citizen → certified hard negative). Never silently dropped. Three-bucket
+   reporting: clean `fp_negatives` / `quarantined_negatives` (unresolved) /
+   `quarantined_would_match_at_refit` (the FP exposure the quarantine hides if they turn
+   out to be citizens). A `near_band` count makes boundary drift visible. Unresolved
+   quarantines should be adjudicated before any candidate→cleared promotion.
+3. **Confirmed-voice vetting (F3).** For any person with human-confirmed samples, samples
+   below `CONFIRMED_CORE_FLOOR` cosine-to-confirmed-centroid are quarantined out of the
+   metric AND the persisted gallery (the confirmed-waiver path previously persisted
+   unvetted inferred anchors; 2 of 47 cal-15 rows were provably another voice). Known
+   limit: few conflicting *confirmations* can survive the floor (centroid drag) — that
+   case belongs to the collapse guard + human review.
+4. **Reviewable collapse pairs (F4).** The collapse veto now attaches the offending
+   cross-person near-duplicate pairs (meeting, basis, confidence, cosine, both sides
+   cued) to the audit block and sheet, so a human can break a collapse by ear instead of
+   staring at a bare person-id set (the cal-15 Garganigo/Doherty/Wilson veto was
+   unreviewable).
+
+Leakage note: hygiene is data *cleaning* applied once to the full sample set (both train
+and held-out sides symmetrically), with every exclusion counted and reviewable — not a
+per-fold model choice. The clean citizen-FP number means "among clusters not acoustically
+ambiguous with enrolled officials"; the ambiguous ones are surfaced, never scored.
 
 ## 6. Generalizability (a new town must not repeat this)
 
@@ -174,6 +217,14 @@ re-embedding.
   old ≤0.80 grid stops too low).
 - Pooling = medoid + trimmed length-weighted mean: standard robust aggregation, cited.
 - Precision bar (default 0.98) — operator cardinal, unchanged.
+- `QUARANTINE_BOUND = 0.70` / `NEAR_BAND_FLOOR = 0.60` (§5b) — sourced from the measured
+  band (diagnosis 2026-07-09): same-voice twins score mean cosine 0.785–0.915 vs the
+  official's cross-meeting gallery; every measured different-voice score ≤ 0.49. The
+  bound splits the empty band erring toward quarantine (a quarantined citizen is
+  reviewed, not lost); the near-band count keeps the boundary observable.
+- `CONFIRMED_CORE_FLOOR = 0.40` (§5b) — sourced from the same diagnosis: the two known
+  wrong-voice anchors score 0.06–0.10 vs the person's confirmed centroid, every genuine
+  sample ≥ 0.66; the floor sits below all observed genuine variation.
 
 ## 8. Schema — `migrate_041` (additive, reversible, RLS service-only)
 
