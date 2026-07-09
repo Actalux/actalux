@@ -42,6 +42,14 @@ EMBED_MODEL = "pyannote/wespeaker-voxceleb-resnet34-LM"  # 256-d, cosine
 # (below this the pooling std collapses to NaN).
 EMBED_MAX_SECONDS = 180.0
 EMBED_MIN_SECONDS = 3.0
+# Per-TURN embedding (the enrollment path). These bound the work per cluster the way
+# EMBED_MAX_SECONDS bounds the whole-cluster concat, but per turn and by turn COUNT — a
+# single cumulative seconds budget cannot do that job: spending it on one long turn leaves
+# nothing for the rest, and pooling then sees too few turns to find a core. A speaker
+# embedding saturates well before 30 s, so capping each turn costs no accuracy and buys the
+# turn diversity pooling needs.
+EMBED_TURN_MAX_SECONDS = 30.0
+EMBED_MAX_TURNS = 12
 APP_NAME = "actalux-diarization"
 
 app = modal.App(APP_NAME)
@@ -138,25 +146,29 @@ def _load_embedder(model: str, token: str, device):  # noqa: ANN001, ANN202 - py
     return PretrainedSpeakerEmbedding(model, **emb_kwargs)
 
 
-def _embed_spans(waveform, sample_rate, spans, embedder, device):  # noqa: ANN001, ANN202 - pyannote/torch types not importable locally
+def _embed_spans(waveform, sample_rate, spans, embedder, device, max_seconds=EMBED_MAX_SECONDS):  # noqa: ANN001, ANN202 - pyannote/torch types not importable locally
     """L2-normalized voice embedding over the given ``[(start_s, end_s), ...]`` spans.
 
-    Concatenates the spans in order (capped for determinism + memory), embeds with
-    the wespeaker model, and L2-normalizes so cosine == dot product. Returns
+    Concatenates the spans in order (capped at ``max_seconds`` for determinism + memory),
+    embeds with the wespeaker model, and L2-normalizes so cosine == dot product. Returns
     ``(vector, seconds)`` with ``vector`` a ``list[float]``, or ``(None, seconds)``
     when the speech is too short / degenerate to embed reliably (NaN-prone).
+
+    ``max_seconds`` is the budget for THIS call: the whole-cluster concat spends
+    ``EMBED_MAX_SECONDS`` across its spans, while the per-turn path spends
+    ``EMBED_TURN_MAX_SECONDS`` on a single turn.
     """
     import numpy as np
     import torch
 
     slices, secs = [], 0.0
     for start_s, end_s in spans:
-        if secs >= EMBED_MAX_SECONDS:
+        if secs >= max_seconds:
             break
         a, b = int(start_s * sample_rate), int(end_s * sample_rate)
         # truncate a single long span to the remaining budget (a hard cap, not just a
-        # per-span check) so one long diarization turn cannot blow past EMBED_MAX_SECONDS.
-        b = min(b, a + int((EMBED_MAX_SECONDS - secs) * sample_rate))
+        # per-span check) so one long diarization turn cannot blow past the budget.
+        b = min(b, a + int((max_seconds - secs) * sample_rate))
         if b > a:
             slices.append(waveform[:, a:b])
             secs += (b - a) / sample_rate
@@ -170,26 +182,54 @@ def _embed_spans(waveform, sample_rate, spans, embedder, device):  # noqa: ANN00
     return [float(x) for x in (vec / norm).tolist()], secs
 
 
+def select_turn_spans(
+    spans: list[tuple[float, float]],
+    *,
+    max_turns: int = EMBED_MAX_TURNS,
+    per_turn_seconds: float = EMBED_TURN_MAX_SECONDS,
+) -> list[tuple[float, float]]:
+    """The turns to embed for one cluster: longest ``max_turns`` first, each truncated.
+
+    Pure (no audio, no model) so the selection is unit-testable. Longest-first keeps the
+    clearest speech; truncating each turn to ``per_turn_seconds`` — rather than spending one
+    cumulative budget in order — is what guarantees a long-monologue cluster still yields
+    several turns. Turns shorter than ``EMBED_MIN_SECONDS`` are dropped here (``_embed_spans``
+    would reject them anyway) so they never consume a slot.
+    """
+    ordered = sorted(spans, key=lambda s: (s[1] - s[0], -s[0]), reverse=True)
+    out: list[tuple[float, float]] = []
+    for start_s, end_s in ordered:
+        if len(out) >= max_turns:
+            break
+        end = min(end_s, start_s + per_turn_seconds)
+        if end - start_s >= EMBED_MIN_SECONDS:
+            out.append((start_s, end))
+    return out
+
+
 def _embed_turns(waveform, sample_rate, spans, embedder, device) -> list[dict]:  # noqa: ANN001, ANN202 - pyannote/torch types not importable locally
     """Embed each of a cluster's turns individually -> ``[{vector, seconds}, ...]``.
 
     The enrollment path embeds turns SEPARATELY (not a whole-cluster concat) so local
     pooling (Gate B, ``diarization/pooling.py``) can trim contaminated turns and reject a
-    cluster with no coherent core. Longest turns first, bounded by ``EMBED_MAX_SECONDS`` of
-    cumulative speech (determinism + memory); each turn goes through ``_embed_spans`` so it
-    inherits the same ``EMBED_MIN_SECONDS`` floor and L2 normalization.
+    cluster with no coherent core. Turns are chosen by :func:`select_turn_spans` — longest
+    ``EMBED_MAX_TURNS`` first, each capped at ``EMBED_TURN_MAX_SECONDS`` — and each goes
+    through ``_embed_spans`` under that per-turn budget, inheriting the ``EMBED_MIN_SECONDS``
+    floor and L2 normalization.
     """
-    ordered = sorted(spans, key=lambda s: s[1] - s[0], reverse=True)
     out: list[dict] = []
-    total = 0.0
-    for start_s, end_s in ordered:
-        if total >= EMBED_MAX_SECONDS:
-            break
-        vector, secs = _embed_spans(waveform, sample_rate, [(start_s, end_s)], embedder, device)
+    for span in select_turn_spans(spans):
+        vector, secs = _embed_spans(
+            waveform,
+            sample_rate,
+            [span],
+            embedder,
+            device,
+            max_seconds=EMBED_TURN_MAX_SECONDS,
+        )
         if vector is None:
             continue
         out.append({"vector": vector, "seconds": round(secs, 2)})
-        total += secs
     return out
 
 

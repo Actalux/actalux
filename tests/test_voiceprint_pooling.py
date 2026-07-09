@@ -63,3 +63,33 @@ def test_mismatched_lengths_raise():
         pool_turn_embeddings(
             [A, B], [1.0], trim_fraction=0.0, min_coherent_turns=1, purity_floor=0.0
         )
+
+
+def test_two_turn_cluster_is_rejected_by_the_trim():
+    """With the default trim the effective floor is 3 turns, not 2 — deliberately.
+
+    The 0.25 quantile of two similarities sits between them, so the tail-drop keeps one turn
+    and the cluster is rejected. Keeping it would mean skipping the trim, and at the production
+    ``purity_floor=0`` a 2-turn cluster holding two DIFFERENT voices (a diarization error) would
+    pool into a blended voiceprint. Pinned so the interaction is not "fixed" by accident.
+    """
+    near_a = (0.99, 0.141, 0.0)  # ~8 degrees off A: same voice, not identical
+    assert (
+        pool_turn_embeddings(
+            [A, near_a], [10.0, 10.0], trim_fraction=0.25, min_coherent_turns=2, purity_floor=0.0
+        )
+        is None
+    )
+
+
+def test_three_turn_cluster_pools_without_the_trim_starving_it():
+    """Three turns clear the trim — the smallest cluster the enrollment path can pool."""
+    near_a = (0.99, 0.141, 0.0)
+    p = pool_turn_embeddings(
+        [A, near_a, A],
+        [10.0, 10.0, 10.0],
+        trim_fraction=0.25,
+        min_coherent_turns=2,
+        purity_floor=0.5,
+    )
+    assert p is not None and p.n_turns == 3

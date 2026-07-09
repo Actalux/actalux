@@ -97,6 +97,14 @@ def pool_turn_embeddings(
     cos_to_medoid = sim[medoid]
 
     # Trim the bottom fraction by cosine-to-medoid (the contaminated tail).
+    #
+    # NOTE the interaction with ``min_coherent_turns``: a quantile cut on exactly 2 turns lands
+    # between their two similarities, so the tail-drop keeps 1 and the cluster is rejected. With
+    # the default trim the EFFECTIVE floor is therefore 3 turns, not 2. That is deliberate: the
+    # only way to keep a 2-turn cluster would be to skip the trim for it, and with
+    # ``purity_floor=0`` (the production setting, where coherence is delegated to Gate A) two
+    # turns of DIFFERENT voices — a diarization error — would pool into a blended voiceprint.
+    # Rejecting thin clusters is the precision-safe side of that trade.
     keep_at = float(np.quantile(cos_to_medoid, trim_fraction)) if trim_fraction > 0 else -np.inf
     kept = np.flatnonzero(cos_to_medoid >= keep_at)
     if kept.size < min_coherent_turns:
