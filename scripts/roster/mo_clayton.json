@@ -483,8 +483,8 @@
         "aliases": ["Jason Wilson"],
         "role": "Director",
         "term_start": "2020-02-19", "term_start_basis": "observed",
-        "term_end": "2021-04-21", "term_end_basis": "observed",
-        "source": "FORMER board member. doc 2088 (2020-02-19 BOE meeting) speaks as a board member re: a board subcommittee ('my section was board members listening to concerns from the community'); doc 2097 (2021-04-21 BOE meeting) board policy discussion. Term dates are the OBSERVED corpus window (first/last seen), not cited appointment/departure dates."
+        "term_end": "2024-04-10", "term_end_basis": "cited",
+        "source": "FORMER board member, departed at the 2024-04-10 reorganization. doc 2075 (4/10/24 BOE meeting transcript): 'I would also publicly like to thank Jason Wilson for his many years of service on the Board of Education' and 'thank Jason Wilson publicly for giving six years to the district', spoken as Pam and Leo are seated; Jason Growe is elected treasurer at the SAME meeting, so Growe (oath 2022-04-20, doc 182) and Wilson OVERLAPPED 2022-04 to 2024-04. term_start stays the observed first-seen (doc 2088, 2020-02-19); the 'six years' remark implies ~2018 but no seating record is in the corpus. Prior term_end 2021-04-21 was only last-seen, a mis-premise behind the systematic Jason->Growe discourse mislabels (corrected 2026-07-10)."
       }
     ],
     "plan-commission": [
