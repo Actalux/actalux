@@ -20,6 +20,8 @@ dependencies = [
     "openai>=1.50",
     "yt-dlp>=2025.1",
     "rapidfuzz>=3.0",
+    "pillow>=12.3.0",
+    "pytesseract>=0.3.13",
 ]
 
 [project.optional-dependencies]
