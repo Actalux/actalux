@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -391,3 +391,38 @@ def feed_label_slugs(
     """
     counts = Counter(slug for slug in cluster_verdict_map.values() if slug is not None)
     return {slug for slug, count in counts.items() if count > max_clusters_per_slug}
+
+
+def uniform_fullframe_slugs(
+    cluster_frames: Mapping[str, Sequence[FrameEvidence]], *, min_clusters: int = 2
+) -> set[str]:
+    """Feed labels the per-slug cap misses: one name on EVERY readable full-frame frame.
+
+    A speaker-view label normally tracks the active speaker, so across a document's
+    clusters the readable full-frame frames name several people. When the recording is
+    an account streaming a room feed, every readable frame names that one account
+    instead — the same slug wins multiple *distinct diarized voices* and no other slug
+    ever appears. Requiring zero label diversity is what separates this from a genuine
+    diarization over-split (a split voice reads the same name twice, but the document's
+    other frames still read other names).
+
+    ``cluster_frames`` is ``{cluster_label: frames}`` for ONE document. Returns the
+    offending slug when full-frame frames of >= ``min_clusters`` clusters match it and
+    the document's readable full-frame frames match no other slug; else empty.
+    """
+    slugs_by_cluster: dict[str, set[str]] = {}
+    all_slugs: set[str] = set()
+    for cluster, frames in cluster_frames.items():
+        matched = {
+            frame.matched_slug
+            for frame in frames
+            if frame.mode == "fullframe" and frame.matched_slug
+        }
+        if matched:
+            slugs_by_cluster[cluster] = matched
+            all_slugs |= matched
+    if len(all_slugs) != 1:
+        return set()
+    (slug,) = all_slugs
+    winning = sum(1 for matched in slugs_by_cluster.values() if slug in matched)
+    return {slug} if winning >= min_clusters else set()

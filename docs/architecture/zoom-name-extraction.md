@@ -62,3 +62,48 @@ citizen-safe (reading a published name is not enrollment).
 - OCR engine: tesseract (local, deterministic) vs macOS Vision — pick by measured
   accuracy on the small white-on-dark labels at 640px; may need the 720p/1080p stream.
 - Keep sampled frames as receipts? (data/ gitignored dir, like audit sheets.)
+
+## Z2 write policy — DECIDED 2026-07-11 (operator-approved)
+
+Z1 measured two rendering modes with different error profiles, so the tier is decided
+**per verdict by mode**, not globally:
+
+1. **Basis**: new `speaker_identities.basis` value `screen_name`
+   (migrate_046; also `subject_voiceprints.source_basis`). Own evidence family
+   `screen` in `families.py` — a platform-rendered name is a visual mechanism,
+   independent of adjacency/discourse/vote. Added to `NAME_ANCHOR_BASES` and to
+   `_MEDIUM_ENROLLABLE_BASES` in `enrollment.py`.
+2. **Tier by mode**:
+   - every supporting frame is **gallery tile** mode (green border on the speaker's
+     own labeled tile) → `inferred_high` — the label is physically attached to the
+     active speaker; roll-call grade.
+   - any supporting frame is **full-frame speaker-view** → `inferred_medium` — the
+     bottom-left label usually tracks the active speaker but is subject to the
+     account-feed trap below, so it stays under the public-display gate and earns
+     enablement only through cross-meeting family agreement.
+   - `cluster_verdict` already requires ≥2 agreeing frames (min_agree).
+3. **Feed guards (no write when tripped)**:
+   - per-doc slug cap (`feed_label_slugs`, >2 clusters won ⇒ account label); AND
+   - **full-frame diversity rule** (added after doc 2363): a slug that wins ≥2
+     clusters via full-frame frames in a document whose readable full-frame frames
+     contain NO other slug is the streaming account's label, not the speaker
+     (doc 2363: every readable frame = "Ryan Helle" across two diarized voices,
+     contradicting a roll-call anchor; contrast doc 2340 where full-frame labels
+     read five different names as the speaker view switches).
+4. **Against existing anchors** (`UNIQUE (document_id, cluster_label)` = one anchor
+   per cluster, which is correct — a second row at the same cluster would count the
+   SAME voice sample twice):
+   - **AGREE** (existing anchor names the same person): NO write. The frame receipt
+     is audit value; independent-family corroboration happens across meetings
+     (discourse anchor in doc A + screen anchor in doc B = 2 families), never by
+     stacking rows on one sample.
+   - **CONFLICT** (different person): NO write, surface for review — never
+     auto-reject (standing rule).
+   - **Rejected row at that cluster**: sticky; skip and surface.
+   - **No row**: insert the `screen_name` anchor at the mode-decided tier.
+5. **Non-roster names**: never written by Z2 (no subject exists). City bodies may
+   later feed the tier-2 name-the-public-record path; schools tiles include likely
+   students — the protected-class rule applies before ANY use. Z3 remains gated.
+6. **Writer**: `scripts/apply_zoom_verdicts.py` — reads a Z1 evidence JSON,
+   applies rules 2-5, dry-run by default, `--apply` to write; idempotent (a
+   `screen_name` row already present at (doc, cluster) is left alone).

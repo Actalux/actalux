@@ -16,16 +16,26 @@ from actalux.diarization.pooling import Pooled, pool_turn_embeddings
 # Name anchors are deterministic (a spoken name -> this voice), so enrolling from an auto
 # inferred_high with one of these bases is safe. 'presenter_intro', 'discourse', and 'vote_anchor'
 # seed at inferred_medium (below the public bar) — all corroborated name evidence whose imprecision
-# is contained by the gallery's own acoustic gates. basis='voiceprint' is NEVER enrollable --
-# that would let a biometric guess train the gallery (poison loop).
-NAME_ANCHOR_BASES = ("rollcall", "self_intro", "vote_anchor", "presenter_intro", "discourse")
+# is contained by the gallery's own acoustic gates. 'screen_name' (a Zoom-rendered label read off
+# the recording) enters at inferred_high only when the label sat on the speaker's own gallery tile,
+# else inferred_medium (docs/architecture/zoom-name-extraction.md, Z2). basis='voiceprint' is
+# NEVER enrollable -- that would let a biometric guess train the gallery (poison loop).
+NAME_ANCHOR_BASES = (
+    "rollcall",
+    "self_intro",
+    "vote_anchor",
+    "presenter_intro",
+    "discourse",
+    "screen_name",
+)
 # Bases admitted at inferred_medium (held below the public-display gate) yet still enrollable —
-# a presenter introduction, an LLM discourse label, and a vote-sequence alignment. A roll call /
-# self-intro must be inferred_high to enroll; these three are trusted one tier lower because their
-# error is contained downstream by the gallery's label-purity + calibration gates. vote_anchor is
-# held at medium (never public on text alone — the responding VOICE isn't certified a member; see
-# vote_align) but seeds the gallery, where the acoustic gates verify it.
-_MEDIUM_ENROLLABLE_BASES = ("presenter_intro", "discourse", "vote_anchor")
+# a presenter introduction, an LLM discourse label, a vote-sequence alignment, and a full-frame
+# Zoom speaker-view label. A roll call / self-intro must be inferred_high to enroll; these are
+# trusted one tier lower because their error is contained downstream by the gallery's
+# label-purity + calibration gates. vote_anchor is held at medium (never public on text alone —
+# the responding VOICE isn't certified a member; see vote_align) but seeds the gallery, where
+# the acoustic gates verify it.
+_MEDIUM_ENROLLABLE_BASES = ("presenter_intro", "discourse", "vote_anchor", "screen_name")
 
 
 @dataclass(frozen=True)

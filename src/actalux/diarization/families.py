@@ -31,10 +31,12 @@ FAMILY_ADJACENCY = (
 FAMILY_VOTE = "vote"  # a recorded-vote alignment anchor
 FAMILY_DISCOURSE = "discourse"  # an LLM discourse label inferred from meeting text
 FAMILY_HUMAN = "human"  # a human-confirmed / manually-entered label
+FAMILY_SCREEN = "screen"  # a platform-rendered name label read off the recording (Zoom OCR)
 
 # Fine basis -> coarse family. Roll call, self-intro, and presenter-intro are all *adjacency*
 # evidence (a spoken name adjacent to a diarization cluster) and so are NOT independent of one
-# another; vote and discourse are genuinely distinct mechanisms; 'manual' is human evidence.
+# another; vote, discourse, and screen_name are genuinely distinct mechanisms; 'manual' is
+# human evidence.
 FAMILY_OF_BASIS = {
     "rollcall": FAMILY_ADJACENCY,
     "self_intro": FAMILY_ADJACENCY,
@@ -42,6 +44,7 @@ FAMILY_OF_BASIS = {
     "vote_anchor": FAMILY_VOTE,
     "discourse": FAMILY_DISCOURSE,
     "manual": FAMILY_HUMAN,
+    "screen_name": FAMILY_SCREEN,
 }
 
 

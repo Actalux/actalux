@@ -26,6 +26,7 @@ from actalux.diarization.zoomlabels import (
     normalize_display_name,
     read_fullframe_label,
     read_tile_label,
+    uniform_fullframe_slugs,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures" / "zoom"
@@ -284,7 +285,7 @@ def test_frame_evidence_mode_explicit():
 
 def test_feed_label_slugs_flags_dominant_slug():
     # doc 2359 shape: one account name won 9 of 13 clusters (a room camera).
-    verdicts = {f"SPEAKER_{i:02d}": "ryan-helle" for i in range(9)}
+    verdicts: dict[str, str | None] = {f"SPEAKER_{i:02d}": "ryan-helle" for i in range(9)}
     verdicts.update({"SPEAKER_09": "carolyn-gaidis", "SPEAKER_10": None})
     verdicts.update({"SPEAKER_11": "helen-difate", "SPEAKER_12": None})
     assert feed_label_slugs(verdicts) == {"ryan-helle"}
@@ -304,3 +305,55 @@ def test_feed_label_slugs_knob_flags_two_clusters():
 def test_feed_label_slugs_ignores_none_and_empty():
     assert feed_label_slugs({}) == set()
     assert feed_label_slugs({"SPEAKER_00": None, "SPEAKER_01": None}) == set()
+
+
+# --- uniform_fullframe_slugs (zero-diversity account-feed guard) --------------
+
+
+def _ff(slug: str | None, mode: str = "fullframe") -> FrameEvidence:
+    raw = slug or ""
+    return FrameEvidence(1.0, "f.jpg", None, raw, slug, 90 if slug else 0, mode=mode)
+
+
+def test_uniform_fullframe_flags_doc_2363_shape():
+    # doc 2363: every readable full-frame frame reads the streaming account's name,
+    # across two distinct diarized voices — one of which held a roll-call anchor.
+    frames = {
+        "SPEAKER_00": [_ff("ryan-helle")] * 3 + [_ff(None)],
+        "SPEAKER_07": [_ff("ryan-helle")] * 3,
+        "SPEAKER_03": [_ff(None)],
+    }
+    assert uniform_fullframe_slugs(frames) == {"ryan-helle"}
+
+
+def test_uniform_fullframe_passes_doc_2340_shape():
+    # doc 2340: the speaker-view label tracks the active speaker — five names appear,
+    # including a legitimate over-split (two clusters reading the same person).
+    frames = {
+        "SPEAKER_03": [_ff("carolyn-gaidis")] * 4,
+        "SPEAKER_04": [_ff("helen-difate")] * 4,
+        "SPEAKER_05": [_ff("steve-lichtenfeld")] * 4,
+        "SPEAKER_08": [_ff("helen-difate"), _ff("steve-lichtenfeld"), _ff("steve-lichtenfeld")],
+    }
+    assert uniform_fullframe_slugs(frames) == set()
+
+
+def test_uniform_fullframe_single_cluster_not_flagged():
+    # One person dominating one cluster is just... that person speaking.
+    frames = {"SPEAKER_00": [_ff("ryan-helle")] * 4, "SPEAKER_01": [_ff(None)]}
+    assert uniform_fullframe_slugs(frames) == set()
+
+
+def test_uniform_fullframe_ignores_tile_mode_frames():
+    # Gallery-tile reads are physically attached to the speaker's own tile; a name
+    # repeated on tiles across clusters is NOT the account-feed failure mode.
+    frames = {
+        "SPEAKER_00": [_ff("stacy-siwak", mode="tile")] * 3,
+        "SPEAKER_01": [_ff("stacy-siwak", mode="tile")] * 3,
+    }
+    assert uniform_fullframe_slugs(frames) == set()
+
+
+def test_uniform_fullframe_empty_and_unreadable():
+    assert uniform_fullframe_slugs({}) == set()
+    assert uniform_fullframe_slugs({"SPEAKER_00": [_ff(None)]}) == set()
