@@ -26,8 +26,10 @@ from actalux.diarization.linking.evaluate import (
 from actalux.diarization.linking.observations import VoiceObservation
 
 # Threshold-grid resolution: percentiles of the upper-triangle scores, so the grid adapts to each
-# backend's own scale (cosine in [-1, 1] vs z-scored AS-norm) rather than a fixed magic range.
-DEFAULT_N_THRESHOLDS = 30
+# backend's own scale (cosine in [-1, 1] vs z-scored AS-norm) rather than a fixed magic range. Set
+# fine (not ~30) because a coarse grid can skip the best operating point at a strict purity floor
+# and understate a backend — observed 30 vs 80 swinging schools cosine F1@0.95 from 0.45 to 0.54.
+DEFAULT_N_THRESHOLDS = 80
 
 
 def cannot_link_same_meeting(obs: list[VoiceObservation]) -> set[frozenset[int]]:
@@ -112,6 +114,21 @@ def sweep_backend(
     eligible = [p for p in sweep if p["purity"] >= purity_floor]
     best = max(eligible, key=lambda p: p["across_meeting_f1"]) if eligible else None
     return best, sweep
+
+
+def best_at_floors(
+    sweep: list[dict[str, float]], floors: list[float]
+) -> dict[float, dict[str, float] | None]:
+    """For each purity floor, the swept point maximizing across-meeting F1 that clears it.
+
+    Reporting the whole frontier — not one floor — is what keeps a single strict floor from
+    misreading as a failure: a backend can look degenerate at 0.99 yet be strong at 0.90.
+    """
+    out: dict[float, dict[str, float] | None] = {}
+    for floor in floors:
+        eligible = [p for p in sweep if p["purity"] >= floor]
+        out[floor] = max(eligible, key=lambda p: p["across_meeting_f1"]) if eligible else None
+    return out
 
 
 def label_stats(true: list[Hashable | None], acoustic_cond: list[str]) -> dict[str, int]:

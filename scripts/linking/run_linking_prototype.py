@@ -33,16 +33,15 @@ import argparse
 import json
 import logging
 import os
-from collections.abc import Callable
 from pathlib import Path
 
-import numpy as np
 from supabase import Client
 
 from actalux.config import load_config
 from actalux.db import fetch_all_rows, get_client, get_place_by_path
 from actalux.diarization.enrollment import select_enrollable
 from actalux.diarization.linking.benchmark import (
+    best_at_floors,
     cannot_link_same_meeting,
     label_stats,
     sweep_backend,
@@ -52,7 +51,7 @@ from actalux.diarization.linking.observations import (
     embedding_matrix,
     load_observation_dir,
 )
-from actalux.diarization.linking.scoring import asnorm_matrix, cosine_matrix
+from actalux.diarization.linking.scoring import asnorm_matrix, cosine_matrix, diverse_cohort
 from actalux.errors import ActaluxError
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -93,16 +92,15 @@ def fetch_labels(
     return {(ec.document_id, ec.cluster_label): ec.person_id for ec in enrollable}
 
 
-def _fmt(point: dict[str, float] | None) -> str:
+def _fmt_point(point: dict[str, float] | None) -> str:
+    """One-line summary of one operating point (or a miss)."""
     if point is None:
-        return "  (no threshold cleared the purity floor)"
+        return "(none clears this floor)"
     return (
-        f"  thr={point['threshold']:+.3f}  nodes={int(point['n_nodes'])}  "
-        f"purity={point['purity']:.3f}  coverage={point['coverage']:.3f}\n"
-        f"  pair P/R/F1={point['pair_precision']:.3f}/{point['pair_recall']:.3f}/"
-        f"{point['pair_f1']:.3f}\n"
-        f"  ACROSS-MEETING F1={point['across_meeting_f1']:.3f}   "
-        f"across-condition F1={point['across_condition_f1']:.3f}"
+        f"thr={point['threshold']:+.3f} nodes={int(point['n_nodes'])} "
+        f"purity={point['purity']:.3f} recall={point['pair_recall']:.3f} "
+        f"F1={point['pair_f1']:.3f} acrMtg={point['across_meeting_f1']:.3f} "
+        f"acrCond={point['across_condition_f1']:.3f}"
     )
 
 
@@ -140,29 +138,32 @@ def run(args: argparse.Namespace) -> None:
     )
 
     embeddings = embedding_matrix(obs)
-    backends: dict[str, Callable[[np.ndarray], np.ndarray]] = {
-        "cosine": cosine_matrix,
-        "asnorm": asnorm_matrix,
+    cohort = diverse_cohort(embeddings, args.cohort_size)
+    score_matrices = {
+        "cosine": cosine_matrix(embeddings),
+        # AS-norm needs a DIVERSE impostor cohort; a self/random cohort degenerates on a
+        # speaker-imbalanced set (docs/architecture/linking-prototype-phase1.md, Build decisions).
+        "asnorm": asnorm_matrix(embeddings, cohort),
     }
-    best_by_backend: dict[str, dict | None] = {}
-    for name, score_fn in backends.items():
-        best, _ = sweep_backend(
-            score_fn(embeddings),
-            cannot_link,
-            true,
-            meeting_cond,
-            acoustic_cond,
-            purity_floor=args.purity_floor,
+    floors = sorted({0.99, 0.95, 0.90, args.purity_floor}, reverse=True)
+    frontier_by_backend: dict[str, dict[float, dict | None]] = {}
+    for name, scores in score_matrices.items():
+        _, sweep = sweep_backend(
+            scores, cannot_link, true, meeting_cond, acoustic_cond, purity_floor=0.0
         )
-        best_by_backend[name] = best
-        print(f"\n=== {name} ===\n{_fmt(best)}")
+        frontier = best_at_floors(sweep, floors)
+        frontier_by_backend[name] = frontier
+        print(f"\n=== {name} (cohort={len(cohort)}) ===")
+        for floor in floors:
+            print(f"  purity>={floor:.2f}: {_fmt_point(frontier[floor])}")
 
-    cos, asn = best_by_backend["cosine"], best_by_backend["asnorm"]
+    pf = args.purity_floor
+    cos, asn = frontier_by_backend["cosine"][pf], frontier_by_backend["asnorm"][pf]
     cos_f1 = cos["across_meeting_f1"] if cos else 0.0
     asn_f1 = asn["across_meeting_f1"] if asn else 0.0
     verdict = "GO" if asn_f1 > cos_f1 else "NO-GO"
     print(
-        f"\n=== GO/NO-GO (across-meeting F1 @ purity>={args.purity_floor}) ===\n"
+        f"\n=== GO/NO-GO (across-meeting F1 @ purity>={pf}) ===\n"
         f"  cosine={cos_f1:.3f}   asnorm={asn_f1:.3f}   delta={asn_f1 - cos_f1:+.3f}   -> {verdict}"
     )
 
@@ -173,12 +174,15 @@ def run(args: argparse.Namespace) -> None:
             json.dumps(
                 {
                     "body": f"{args.state}/{args.place}/{args.body}",
-                    "purity_floor": args.purity_floor,
+                    "purity_floor": pf,
+                    "cohort_size": len(cohort),
                     "n_clusters": len(obs),
                     "label_stats": stats,
                     "verdict": verdict,
-                    "cosine": cos,
-                    "asnorm": asn,
+                    "frontier": {
+                        name: {str(f): fr[f] for f in fr}
+                        for name, fr in frontier_by_backend.items()
+                    },
                 },
                 indent=2,
             )
@@ -192,6 +196,12 @@ def main() -> None:
     parser.add_argument("--place", required=True)
     parser.add_argument("--body", required=True)
     parser.add_argument("--cache-dir", default="data/linking_cache")
+    parser.add_argument(
+        "--cohort-size",
+        type=int,
+        default=32,
+        help="AS-norm impostor cohort size (farthest-point sampled; tunable hyperparameter)",
+    )
     parser.add_argument(
         "--purity-floor",
         type=float,

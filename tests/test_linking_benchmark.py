@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from actalux.diarization.linking.benchmark import (
+    best_at_floors,
     candidate_thresholds,
     cannot_link_same_meeting,
     evaluate_point,
@@ -12,7 +13,7 @@ from actalux.diarization.linking.benchmark import (
     sweep_backend,
 )
 from actalux.diarization.linking.observations import VoiceObservation, embedding_matrix
-from actalux.diarization.linking.scoring import cosine_matrix
+from actalux.diarization.linking.scoring import cosine_matrix, diverse_cohort
 
 
 def _obs(doc_id: int, label: str, vec: list[float], cond: str = "in_person") -> VoiceObservation:
@@ -103,6 +104,33 @@ def test_sweep_backend_recovers_two_officials() -> None:
     assert best["across_meeting_f1"] == 1.0
     assert best["across_condition_f1"] == 1.0  # each official's pair is zoom<->in_person
     assert len(sweep) >= 2
+
+
+def test_diverse_cohort_spreads_across_groups() -> None:
+    # six clusters in three distinct directions; FPS should pick one per direction
+    groups = [[1, 0], [0.99, 0.14], [0, 1], [0.14, 0.99], [-1, 0], [-0.99, 0.14]]
+    emb = np.asarray(groups, dtype=float)
+    cohort = diverse_cohort(emb, 3)
+    assert cohort.shape[0] == 3
+    off = cosine_matrix(cohort)[np.triu_indices(3, k=1)]
+    assert off.max() < 0.9  # the three picks are mutually dissimilar (not same-group siblings)
+
+
+def test_diverse_cohort_returns_all_when_k_ge_n() -> None:
+    emb = np.asarray([[1, 0], [0, 1]], dtype=float)
+    assert diverse_cohort(emb, 5).shape[0] == 2  # nothing to prune
+
+
+def test_best_at_floors_selects_and_reports_misses() -> None:
+    sweep = [
+        {"purity": 0.99, "across_meeting_f1": 0.1},
+        {"purity": 0.95, "across_meeting_f1": 0.5},
+        {"purity": 0.90, "across_meeting_f1": 0.8},
+    ]
+    got = best_at_floors(sweep, [0.99, 0.92, 1.0])
+    assert got[0.99]["across_meeting_f1"] == 0.1  # only the 0.99 point clears 0.99
+    assert got[0.92]["across_meeting_f1"] == 0.5  # 0.99 + 0.95 clear 0.92 -> max F1 = 0.5
+    assert got[1.0] is None  # nothing clears 1.0 -> honest miss
 
 
 def test_sweep_backend_reports_miss_when_floor_unreachable() -> None:

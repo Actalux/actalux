@@ -110,5 +110,45 @@ def asnorm_matrix(
     return 0.5 * (z + z.T)
 
 
+def diverse_cohort(embeddings: np.ndarray, k: int, *, seed_index: int = 0) -> np.ndarray:
+    """Farthest-point-sample ``k`` rows as a diversity impostor cohort for :func:`asnorm_matrix`.
+
+    AS-norm's cohort must approximate the *impostor* distribution. On a speaker-imbalanced set
+    (a few speakers own many clusters), a self-cohort or a random subsample is dominated by those
+    speakers' own siblings, which inflates the normalizer and suppresses the true-match scores —
+    empirically collapsing AS-norm to near-zero linking. Farthest-point sampling (greedy max-min
+    cosine distance) instead spreads the cohort across the embedding space, approximating
+    one-cluster-per-speaker without labels, which restores AS-norm's high-purity advantage.
+
+    Parameters
+    ----------
+    embeddings
+        The ``(N, D)`` centroid stack to sample from.
+    k
+        Target cohort size. If ``k >= N`` the whole set is returned (nothing to prune).
+    seed_index
+        The first point of the greedy sample; the result is deterministic given it.
+
+    Returns
+    -------
+    np.ndarray
+        A ``(min(k, N), D)`` subset, row order ascending by original index.
+    """
+    mat = np.asarray(embeddings, dtype=np.float64)
+    n = mat.shape[0]
+    if n == 0 or k >= n:
+        return mat
+    s = cosine_matrix(mat)
+    chosen = [seed_index]
+    nearest = s[seed_index].copy()  # per point: max cosine similarity to any chosen point
+    while len(chosen) < k:
+        masked = nearest.copy()
+        masked[chosen] = np.inf  # never re-select an already-chosen point
+        nxt = int(np.argmin(masked))  # the point whose nearest chosen neighbor is farthest
+        chosen.append(nxt)
+        nearest = np.maximum(nearest, s[nxt])
+    return mat[sorted(chosen)]
+
+
 # Future backend: ``plda_matrix(embeddings, ...) -> np.ndarray`` slots in here behind the same
 # "(N, D) centroids -> (N, N) similarity" contract as a calibrated cosine replacement.
