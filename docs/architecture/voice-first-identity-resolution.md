@@ -140,31 +140,53 @@ Pure agglomerative clustering on cosine would work if audio conditions were unif
 They are not: the same person over 2021 Zoom and in a 2024 in-person room-cam may not
 link, and our own collapse pairs show *different* people at 0.85–0.95 in bad audio. So
 cosine-threshold-alone is insufficient, and this is where the design earns or loses its
-keep. Proposed approach:
+keep.
 
-1. **Stratify by acoustic condition.** Link confidently *within* a condition first
-   (Zoom-gallery clusters link cleanly; in-person room-cam is noisier). Within-condition
-   similarity distributions are tighter and give a trustworthy threshold.
-2. **Bridge conditions via anchored officials.** A board member attends across eras. An
-   observation carrying a *very-high* evidence channel (self-intro, Zoom active-tile
-   label) is a near-certain identity; those anchored observations span conditions and
-   let us learn the cross-condition similarity offset — i.e., the officials themselves
-   are the bridges, exactly the operator's "voices in common meeting to meeting."
-3. **Seed with must-link / cannot-link.** Confirmed `voice_link`s (from strong evidence
-   or human confirmation) are must-links; rejected are cannot-links; within one meeting,
-   two distinct clusters are cannot-link (they are simultaneously present). Constrained
-   clustering respects these.
-4. **Leave uncertainty explicit.** A borderline join is `proposed`, not `confirmed`. An
+**This is a named research problem** — "speaker linking" / "longitudinal linking" /
+"cross-show diarization" — with a well-defined SOTA recipe but *no maintained
+open-source turnkey* (full prior-art triage:
+`cross-meeting-linking-prior-art-2026-07-11.md`). The decisive finding: **the fix for our
+0.85–0.95 cross-condition false-matches is score calibration, not a fancier embedder.**
+The SOTA recipe, adapted to our anchors + cannot-link constraints:
+
+1. **Pool multiple segments per cluster** into a multi-enrollment centroid (not one
+   segment) — the calibrated backends' gains come specifically from multi-enrollment,
+   which is exactly the recurring-official case.
+2. **Score the cross-recording cluster×cluster matrix with a calibrated backend, not raw
+   cosine** — this is the drift fix. Two cheap, interchangeable options:
+   - **AS-norm** (adaptive symmetric score normalization) against an impostor cohort
+     drawn from our own corpus: a far-field impostor that spuriously hits 0.9 is pulled
+     down because it *also* scores high against the cohort (theory: Swart & Brümmer 2017;
+     recipes in VBx / 3D-Speaker).
+   - **PLDA / sph-PLDA** replacing cosine (online-speaker-clustering, MIT) — calibrated
+     and multi-enrollment-aware.
+3. **Constrained complete-linkage agglomeration** over the normalized matrix:
+   **cannot-link** = two distinct clusters in the same meeting (hard, blocks merge);
+   **must-link** = self-intro / Zoom-label anchors (hard seeds); **complete-linkage**
+   (farthest-neighbor), not average/single, is the robust choice for linking
+   (Ghaemmaghami 2015), with cluster-voting over multiple segmentations for stability.
+   The officials carrying very-high-evidence anchors are the bridges that span
+   conditions — the operator's "voices in common meeting to meeting."
+4. **Second-embedder agreement gate** (orthogonal robustness lever): merge only when a
+   second embedder's normalized score agrees (ReDimNet-MIT or ERes2NetV2 from
+   3D-Speaker-Apache vs our wespeaker) — the ECAPA A/B harness already supports this.
+5. **Leave uncertainty explicit.** A borderline join is `proposed`, not `confirmed`. An
    unresolved recurring voice is a first-class object ("Speaker A, unidentified, appears
    in 40 meetings") — useful for within-corpus quote consistency and citizen-safe (no
    name, and non-officials never persist, §8).
-5. **Validate empirically before building downstream.** Measure link precision/recall on
-   the meetings where we DO have ground truth (self-intro + Zoom-labeled clusters), by
-   condition pair. If cross-condition bridging is unreliable, the design falls back to
-   within-condition nodes + evidence resolution per stratum — still better than today.
 
-**This stage is prototyped first as a standalone experiment** (§11 phase 1). The rest of
-the spec assumes it clears a measured bar; if it does not, we revise here, not downstream.
+**Prototype order (phase 1, standalone, measured):** (i) AS-norm at the linking stage —
+highest leverage, cheapest, directly targets the measured false-highs; (ii) sph-PLDA
+backend; (iii) constrained complete-linkage seeded by anchors + cannot-link; (iv) the
+second-embedder gate. We first hand-label a small linking benchmark (there is no public
+one for municipal audio) from the meetings where we DO have ground truth (self-intro +
+Zoom-labeled clusters) and measure cluster **purity / coverage** by condition pair. The
+rest of the spec assumes this stage clears a measured bar; if it does not, we revise here,
+not downstream.
+
+*Caveat carried from the triage:* that AS-norm cleanly resolves our specific far-field
+false-highs is a hypothesis to test, not a published result on municipal audio — it is
+the first thing to prototype, not a proven outcome.
 
 ## 7. Evidence taxonomy (channels, weights, failure modes)
 
@@ -266,10 +288,11 @@ proves out.
 
 ## 12. Open questions for interview (resolve before building)
 
-1. **Linking strategy** — pure unsupervised global clustering (cleanest, the operator's
-   framing) vs. anchored/seeded linking from strong-evidence observations (more robust to
-   audio drift). Recommendation: hybrid — seed from anchors, cluster within condition,
-   bridge via anchored officials. Confirm.
+1. **Linking strategy** — *largely resolved by the prior-art triage* (§6): the SOTA is a
+   calibrated-backend (AS-norm / sph-PLDA) constrained complete-linkage seeded by anchors
+   + cannot-link. Remaining choice: AS-norm vs sph-PLDA as the first backend to prototype
+   (recommendation: AS-norm first — cheapest, highest leverage), and whether to also
+   stratify by acoustic condition or let AS-norm's cohort handle drift directly. Confirm.
 2. **Evidence combination** — transparent weighted ledger (entity-res doc's suggestion,
    recommended for v1) vs. a probabilistic posterior. Start weighted?
 3. **First-cut scope** — prove on schools only, or design the general multi-body/multi-town
