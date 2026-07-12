@@ -1,0 +1,150 @@
+name: linking-prototype
+
+# Phase 1 of the voice-first pivot (docs/architecture/linking-prototype-phase1.md): build the
+# [E] embedding cache for a body (re-embed each ANCHORED cluster's turns on Modal, pool to one
+# 256-d centroid), then measure whether calibrated scoring (AS-norm) links an official's clusters
+# ACROSS meetings better than raw cosine. Read-only against the DB — no gallery writes, no
+# candidate calibration. Runs OFF-SESSION on a runner because the embed pass is long (yt-dlp
+# download + Modal per-turn embed per meeting) and in-session background jobs get reaped.
+#
+# Manual-trigger only. Prereq: the diarization Modal app must be deployed
+# (modal deploy src/actalux/diarization/modal_runner.py — provides embed_cluster_turns_remote).
+#
+# Required repository secrets:
+#   SUPABASE_URL / SUPABASE_KEY / SUPABASE_SERVICE_KEY   (read identities + turns)
+#   SUPABASE_PAT                                         (apply_migrations --check)
+#   MODAL_TOKEN_ID / MODAL_TOKEN_SECRET                  (invoke the embed GPU app)
+
+on:
+  workflow_dispatch:
+    inputs:
+      state:
+        description: "Place state slug (e.g. mo)"
+        required: true
+        default: "mo"
+      place:
+        description: "Place slug (e.g. clayton)"
+        required: true
+        default: "clayton"
+      body:
+        description: "body_slug to measure (e.g. schools, plan-commission)"
+        required: true
+        default: "schools"
+      purity_floor:
+        description: "Min cluster purity an operating point must clear (fair cosine-vs-asnorm comparison)"
+        required: false
+        default: "0.95"
+      min_seconds:
+        description: "Minimum pooled speech seconds to keep a cluster centroid"
+        required: false
+        default: "10"
+      limit:
+        description: "Cap the number of meetings embedded (blank = all)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+# The cache reads diarization_turns; never race the transcription/backfill/enroll/recalibrate
+# workflows that rewrite them (a mid-rewrite read would embed inconsistent turns).
+concurrency:
+  group: transcribe
+  cancel-in-progress: false
+
+jobs:
+  linking-prototype:
+    runs-on: ubuntu-latest
+    # ~2.8 min/meeting (WARP audio download dominates); schools' ~84 anchored meetings is ~4h.
+    timeout-minutes: 350
+    env:
+      ACTALUX_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      ACTALUX_SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      ACTALUX_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      ACTALUX_SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv + Python 3.11
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+          enable-cache: true
+
+      - name: Install dependencies (incl. the Modal client)
+        run: uv sync --no-dev --group diarization
+
+      - name: Install yt-dlp, ffmpeg, Cloudflare WARP
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg curl gpg lsb-release
+          curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg \
+            | sudo gpg --yes --dearmor -o /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" \
+            | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
+          sudo apt-get update -qq && sudo apt-get install -y -qq cloudflare-warp
+
+      - name: Connect Cloudflare WARP (proxy mode)
+        # Registration against the WARP API is flaky on hosted runners — retry the whole
+        # register/connect/verify sequence rather than failing a multi-hour run on it.
+        run: |
+          sudo systemctl enable --now warp-svc
+          sleep 6
+          for attempt in 1 2 3; do
+            warp-cli --accept-tos registration delete >/dev/null 2>&1 || true
+            if warp-cli --accept-tos registration new \
+               && warp-cli --accept-tos mode proxy \
+               && warp-cli --accept-tos connect; then
+              sleep 8
+              if curl -s --socks5-hostname 127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/trace \
+                 | grep -q "warp=on"; then
+                warp-cli --accept-tos status
+                exit 0
+              fi
+            fi
+            echo "WARP attempt ${attempt} failed; retrying in 20s"
+            warp-cli --accept-tos disconnect >/dev/null 2>&1 || true
+            sleep 20
+          done
+          echo "WARP not active after 3 attempts"; exit 1
+
+      - name: Verify schema is up to date
+        run: uv run python scripts/apply_migrations.py --check
+
+      - name: Build the embedding cache (download + Modal embed + pool, per anchored cluster)
+        env:
+          STATE: ${{ inputs.state }}
+          PLACE: ${{ inputs.place }}
+          BODY: ${{ inputs.body }}
+          MIN_SECONDS: ${{ inputs.min_seconds }}
+          LIMIT: ${{ inputs.limit }}
+        run: |
+          ARGS="--state $STATE --place $PLACE --body $BODY --proxy socks5h://127.0.0.1:40000"
+          [ -n "$MIN_SECONDS" ] && ARGS="$ARGS --min-seconds $MIN_SECONDS"
+          [ -n "$LIMIT" ] && ARGS="$ARGS --limit $LIMIT"
+          uv run --group diarization python scripts/linking/build_embedding_cache.py $ARGS
+
+      - name: Measure (cosine vs AS-norm, across-meeting F1 at the purity floor)
+        env:
+          STATE: ${{ inputs.state }}
+          PLACE: ${{ inputs.place }}
+          BODY: ${{ inputs.body }}
+          PURITY_FLOOR: ${{ inputs.purity_floor }}
+        run: |
+          uv run python scripts/linking/run_linking_prototype.py \
+            --state "$STATE" --place "$PLACE" --body "$BODY" \
+            --purity-floor "$PURITY_FLOOR" \
+            --out "data/linking_cache/results_${STATE}_${PLACE}_${BODY}.json"
+
+      # The cache (.npz centroids) + results JSON die with the VM without this — the cache is the
+      # only expensive artifact, reusable to re-measure offline with different scorers/thresholds.
+      - name: Upload embedding cache + results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linking-${{ inputs.state }}-${{ inputs.place }}-${{ inputs.body }}
+          path: data/linking_cache/**
+          if-no-files-found: ignore
+          retention-days: 30
