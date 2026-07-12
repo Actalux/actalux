@@ -293,11 +293,14 @@ proves out.
    + cannot-link. Remaining choice: AS-norm vs sph-PLDA as the first backend to prototype
    (recommendation: AS-norm first — cheapest, highest leverage), and whether to also
    stratify by acoustic condition or let AS-norm's cohort handle drift directly. Confirm.
-2. **Evidence combination** — transparent weighted ledger (entity-res doc's suggestion,
-   recommended for v1) vs. a probabilistic posterior. Start weighted?
-3. **First-cut scope** — prove on schools only, or design the general multi-body/multi-town
-   version up front. Scalability cardinal says general; cost says one body first.
-   Recommendation: general *model*, first *validation* on schools + PC.
+2. **Evidence combination** — *DECIDED 2026-07-11: transparent weighted ledger* (the
+   entity-res doc's suggestion). Each voice-node keeps an auditable ledger of evidence
+   observations with weights; the resolution score is their family-aware weighted sum. A
+   probabilistic posterior can replace it later if the ledger proves insufficient.
+3. **First-cut scope** — *DECIDED 2026-07-11: general design, validate on schools + PC.*
+   The model, schema, and algorithms are jurisdiction-general from day one (per the
+   scalability cardinal); the first empirical validation runs on the two Clayton bodies
+   that have ground truth (schools + PC), not Clayton-specific code.
 4. **`speaker_identities` fate** — derived projection vs. full retirement. Affects the
    search/reader/API surface; needs a compatibility check.
 5. **Unresolved recurring voices** — do we surface "Speaker A, unidentified, N meetings"
