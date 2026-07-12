@@ -77,3 +77,38 @@ Report coverage of the benchmark honestly (it is not the whole corpus).
 
 Production tables, the resolver's write path, retiring the name-first flow — all later
 phases. Phase 1 is measurement only: does drift-robust linking work on our audio?
+
+## Build decisions (2026-07-11) — what shipped vs. the plan above
+
+The scaffold above described the intent; three things resolved differently once the data was
+in hand, and the code reflects these (docstrings cite them):
+
+- **`acoustic_condition` is derived, not a DB field.** No `documents` column records
+  Zoom-vs-in-person, and the Z1 probe's per-frame `mode` (`tile`/`fullframe`/`none`) proved too
+  noisy for a clean per-doc label (`tile` detections scatter across 2017–2025; `fullframe` fires
+  on ~all docs). So the cache uses a **precise-positive proxy**: a meeting is `"zoom"` iff it
+  produced a `screen_name` identity (a Zoom gallery tile was OCR'd), else `"in_person"` (the
+  uncertain bucket). High precision on the positive, low recall — treated accordingly below.
+- **Primary metric is across-*meeting* F1, not across-*condition*.** Because the condition label
+  is only precise-positive, the headline go/no-go is the fundamental linking axis — pairwise F1
+  over cross-*meeting* pairs — obtained by passing `str(document_id)` as the categorical to the
+  library's general `per_condition_pair_f1`. Across-*condition* F1 (the zoom proxy) is reported
+  as a secondary, explicitly-noisier view. Within-meeting F1 is structurally ~0 (cannot-link
+  forbids same-meeting merges) and omitted from the headline.
+- **No separate `build_linking_benchmark.py`; `must_link` is empty for the clean run.** Benchmark
+  construction (person-id labels from DB anchors via `select_enrollable`; `cannot_link` from
+  same-meeting co-occurrence) is a set of pure functions in `linking/benchmark.py` plus the one DB
+  read in the runner — no serialized intermediate to drift. The clean measurement seeds **no**
+  `must_link`: seeding from the same anchors that form the ground truth would hand the linker its
+  answer. The library still supports `must_link` for the production (coverage-seeking) path.
+
+**Feasibility (DB inventory, 2026-07-11):** cross-condition officials (anchored in both a zoom-
+and a non-zoom-proxy meeting) — **schools 12 / plan-commission 9**; council is in-person-only by
+the proxy (a within-condition control at best); board-of-adjustment too thin. Schools + PC carry
+the measurement.
+
+**Pipeline shipped:** `scripts/linking/build_embedding_cache.py` (`[E]`, resumable per-doc `.npz`,
+reuses the recalibration embed→pool path) and `scripts/linking/run_linking_prototype.py` (thin CLI
+over `linking/benchmark.py`). Not yet run — the `[E]` pass is ~175 meetings of YouTube download +
+Modal GPU (hours, bot-check-gated), pending an operator go and a pilot on the cross-condition
+officials first.

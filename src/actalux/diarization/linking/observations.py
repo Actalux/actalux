@@ -126,3 +126,17 @@ def load_observations(path: Path) -> list[VoiceObservation]:
         )
         for i, m in enumerate(meta)
     ]
+
+
+def load_observation_dir(cache_dir: Path, *, pattern: str = "doc_*.npz") -> list[VoiceObservation]:
+    """Load and concatenate every per-document ``.npz`` under a cache dir, stably ordered.
+
+    The build pass writes one ``.npz`` per meeting (resumable); this reassembles them into one list
+    sorted by ``(document_id, cluster_label)`` so a benchmark and a run agree on index order
+    regardless of filesystem enumeration.
+    """
+    obs: list[VoiceObservation] = []
+    for path in sorted(Path(cache_dir).glob(pattern)):
+        obs.extend(load_observations(path))
+    obs.sort(key=lambda o: (o.document_id, o.cluster_label))
+    return obs
