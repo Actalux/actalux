@@ -46,6 +46,7 @@ from actalux.diarization.linking.benchmark import (
     label_stats,
     sweep_backend,
 )
+from actalux.diarization.linking.cohort import load_active_cohort
 from actalux.diarization.linking.observations import (
     VoiceObservation,
     embedding_matrix,
@@ -138,7 +139,17 @@ def run(args: argparse.Namespace) -> None:
     )
 
     embeddings = embedding_matrix(obs)
-    cohort = diverse_cohort(embeddings, args.cohort_size)
+    if args.cohort_source == "frozen":
+        # Production scoring: the frozen, external, target-disjoint cohort (migrate_047). Stationary
+        # as meetings are added, unlike the self-sampled cohort below.
+        cohort = load_active_cohort(client, place["id"])
+        if cohort.size == 0:
+            raise ActaluxError(
+                "no active frozen cohort for this place — build one (build_cohort.py) "
+                "or use --cohort-source self"
+            )
+    else:
+        cohort = diverse_cohort(embeddings, args.cohort_size)
     score_matrices = {
         "cosine": cosine_matrix(embeddings),
         # AS-norm needs a DIVERSE impostor cohort; a self/random cohort degenerates on a
@@ -197,10 +208,17 @@ def main() -> None:
     parser.add_argument("--body", required=True)
     parser.add_argument("--cache-dir", default="data/linking_cache")
     parser.add_argument(
+        "--cohort-source",
+        choices=("self", "frozen"),
+        default="self",
+        help="AS-norm cohort: 'self' (farthest-point sampled from the trial set; measurement) or "
+        "'frozen' (the active external cohort in linking_cohort_vectors; production)",
+    )
+    parser.add_argument(
         "--cohort-size",
         type=int,
         default=32,
-        help="AS-norm impostor cohort size (farthest-point sampled; tunable hyperparameter)",
+        help="self-cohort size (farthest-point sampled; ignored when --cohort-source frozen)",
     )
     parser.add_argument(
         "--purity-floor",
