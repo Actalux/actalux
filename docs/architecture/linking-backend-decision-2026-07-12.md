@@ -148,6 +148,35 @@ to 0.90 or via the evidence ledger over more meetings). Caveats still apply (poi
 officials → phase 2 needs leave-one-official-out + CI; pairwise F1 overweights prolific officials →
 add B-cubed / poisoning sim).
 
+## Phase-2 build notes (2026-07-13/14)
+
+Phase 2 shipped the recipe above as code (all tests green; nothing applied/pushed yet):
+
+- **Frozen cohort persistence — operator's Option-B reading.** The winning cohort is the *all-cluster*
+  (not officials-only) external set, which includes resident voices. The operator ruled that a
+  **nameless background/impostor cohort is not a "tracked voiceprint"** and so may be persisted
+  unlabeled — an explicit, auditable reading of Option B. It is stored **service-only** in
+  `linking_cohort_vectors` (migrate_047) with **no person/subject FK** (unlabeled by construction),
+  never committed to git.
+- **Cohort source is a plug-in, chosen by measurement.** The cohort only needs diverse voices +
+  matched acoustic conditions + target-disjointness — not Clayton residents specifically. Candidates:
+  in-domain council+PC, other municipalities' public meetings (scales with expansion), or an open
+  corpus (3D-Speaker is the ready cross-condition analogue). An external non-resident source would
+  moot the Option-B tension entirely; the winner is decided by a cohort-source **bake-off** before
+  freezing. `build_cohort.py` is source-agnostic.
+- **Calibrator — deliberate wespeaker deviation.** wespeaker's calibration is a Kaldi/shell recipe,
+  not a pip API; the light condition-aware calibrator is a pure-numpy ridge IRLS logistic regression
+  (no new dependency) implementing the same QMF method. **Measure-gated** — adopted only if it beats
+  AS-norm on the leave-one-official-out eval.
+- **Proposer safety.** `propose_identities.py` writes only `inferred_medium`/`voiceprint` (below the
+  public gate), never overwrites confirmed/rejected/inferred_high, propagates a name only from an
+  existing official anchor, and refuses ambiguous (two-official) nodes. Dry-run by default; `--write`
+  is gated.
+
+Gated (operator-triggered) before this runs for real: apply migrate_047, populate + activate the
+cohort, run the source bake-off, embed the all-cluster cache (Modal/CI), pick the LOO threshold, then
+dry-run → `--write`.
+
 ## Key references
 
 - Matejka et al., "Analysis of Score Normalization in Multilingual Speaker Recognition," Interspeech 2017 — the AS-norm cohort study (diverse multi-channel pool; per-identity; adaptive top-N).
