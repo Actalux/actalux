@@ -11,7 +11,10 @@ re-run skips documents already cached (including ones that legitimately produced
 Because YouTube bot-checks make downloads flaky and long, run this DETACHED (``nohup``), not as a
 harness background task.
 
-Population: only anchored (``select_enrollable``) clusters are embedded — the benchmark voices.
+Population: by default only anchored (``select_enrollable``) clusters are embedded — the benchmark
+voices. ``--include-unanchored`` instead embeds EVERY diarization cluster across all meetings (the
+all-cluster cache the identity proposer consumes, to name officials in meetings where they were
+never anchored).
 ``acoustic_condition`` is a PRECISE-positive proxy: ``"zoom"`` iff the meeting produced a
 ``screen_name`` identity (a Zoom gallery tile was OCR'd for someone in it), else ``"in_person"``
 (the uncertain bucket — a Zoom meeting whose tiles we never read also lands here). ``meeting_date``
@@ -30,6 +33,7 @@ import argparse
 import logging
 import os
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -57,6 +61,13 @@ POOL_PARAMS = {"trim_fraction": 0.25, "min_coherent_turns": 2, "purity_floor": 0
 # Match recalibrate_voiceprints --min-seconds default so a cached centroid corresponds to the same
 # clusters the calibration gallery would enroll.
 DEFAULT_MIN_SECONDS = 10.0
+
+
+@dataclass(frozen=True)
+class _BareCluster:
+    """An un-anchored diarization cluster — only its label; embedded so the proposer can name it."""
+
+    cluster_label: str
 
 
 def service_client() -> Client:
@@ -135,8 +146,13 @@ def _embed_document(
     proxy: str | None,
     min_seconds: float,
     keep_audio: bool,
+    turns: list | None = None,
 ) -> list[VoiceObservation] | None:
-    """Download + embed + pool one meeting's anchored clusters -> observations (None on failure)."""
+    """Download + embed + pool one meeting's clusters -> observations (None on failure).
+
+    ``turns`` may be supplied to avoid a second fetch (the all-cluster path already read them to
+    enumerate un-anchored labels); when None they are fetched here (the anchored-only path).
+    """
     from actalux.ingest.youtube import download_audio
 
     # put scripts/ (parent-of-parent) on the path for the same-dir transcribe_meetings import
@@ -144,7 +160,8 @@ def _embed_document(
     from transcribe_meetings import reconnect_warp
 
     video_id = doc["video_id"]
-    turns = get_diarization_turns(client, doc["id"])
+    if turns is None:
+        turns = get_diarization_turns(client, doc["id"])
     payload = [
         {"cluster_label": ec.cluster_label, "spans": cluster_spans(turns, ec.cluster_label)}
         for ec in clusters
@@ -186,6 +203,25 @@ def _embed_document(
     return obs
 
 
+def _clusters_for_document(
+    client: Client, doc_id: int, by_doc: dict[int, list], include_unanchored: bool
+) -> tuple[list, list | None]:
+    """Clusters to embed for one meeting, plus the turns (read once) when including un-anchored.
+
+    Anchored-only: the ``select_enrollable`` clusters; turns are read later in ``_embed_document``.
+    All-cluster: anchored clusters + a ``_BareCluster`` per remaining diarization label, and the
+    turns are returned so ``_embed_document`` need not re-read them.
+    """
+    anchored = by_doc.get(doc_id, [])
+    if not include_unanchored:
+        return list(anchored), None
+    turns = get_diarization_turns(client, doc_id)
+    anchored_labels = {ec.cluster_label for ec in anchored}
+    all_labels = {t["cluster_label"] for t in turns}
+    unanchored = [_BareCluster(label) for label in sorted(all_labels - anchored_labels)]
+    return list(anchored) + unanchored, turns
+
+
 def build(args: argparse.Namespace) -> None:
     client = service_client()
     place = get_place_by_path(client, args.state, args.place)
@@ -196,7 +232,14 @@ def build(args: argparse.Namespace) -> None:
 
     out_dir = Path(args.out_dir) / f"{args.state}_{args.place}_{args.body}"
     out_dir.mkdir(parents=True, exist_ok=True)
-    doc_ids = sorted(by_doc)
+    if args.include_unanchored:
+        # every meeting with video: an official may speak in one where they were never named
+        superseded = {d for d, doc in docs_by_id.items() if doc.get("replaces_id") is not None}
+        doc_ids = sorted(
+            d for d, doc in docs_by_id.items() if doc.get("video_id") and d not in superseded
+        )
+    else:
+        doc_ids = sorted(by_doc)
     if args.limit:
         doc_ids = doc_ids[: args.limit]
 
@@ -204,12 +247,13 @@ def build(args: argparse.Namespace) -> None:
 
     runner = ModalRunner()
     logger.info(
-        "%s/%s/%s: %d anchored meetings (%d zoom-proxy) -> %s",
+        "%s/%s/%s: %d meetings (%d zoom-proxy, unanchored=%s) -> %s",
         args.state,
         args.place,
         args.body,
         len(doc_ids),
         sum(1 for d in doc_ids if d in zoom_doc_ids),
+        args.include_unanchored,
         out_dir,
     )
     embedded = 0
@@ -218,15 +262,20 @@ def build(args: argparse.Namespace) -> None:
         if out_path.is_file() and out_path.stat().st_size > 0:
             continue  # resumable: already cached
         condition = "zoom" if doc_id in zoom_doc_ids else "in_person"
+        clusters, turns = _clusters_for_document(client, doc_id, by_doc, args.include_unanchored)
+        if not clusters:
+            save_observations([], out_path)  # nothing to embed; mark done so we don't retry it
+            continue
         obs = _embed_document(
             runner,
             client,
             docs_by_id[doc_id],
-            by_doc[doc_id],
+            clusters,
             condition=condition,
             proxy=args.proxy,
             min_seconds=args.min_seconds,
             keep_audio=args.keep_audio,
+            turns=turns,
         )
         if obs is None:
             continue  # download failure — leave uncached so the next run retries
@@ -249,6 +298,12 @@ def main() -> None:
         help="SOCKS proxy for yt-dlp audio download (WARP endpoint); rotates egress on retry",
     )
     parser.add_argument("--keep-audio", action="store_true")
+    parser.add_argument(
+        "--include-unanchored",
+        action="store_true",
+        help="embed EVERY diarization cluster across all meetings, not just anchored ones — the "
+        "all-cluster cache the identity proposer (propose_identities.py) consumes",
+    )
     build(parser.parse_args())
 
 
