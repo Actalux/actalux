@@ -10,7 +10,7 @@ Modal. See docs/architecture/linking-prototype-phase1.md.
 
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Hashable
 from itertools import combinations
 
@@ -18,7 +18,9 @@ import numpy as np
 
 from actalux.diarization.linking.cluster import constrained_complete_linkage
 from actalux.diarization.linking.evaluate import (
+    bcubed_prf,
     coverage,
+    macro_recall_by_official,
     pairwise_prf,
     per_condition_pair_f1,
     purity,
@@ -73,6 +75,7 @@ def evaluate_point(
     """
     true_str: list[str | None] = [None if t is None else str(t) for t in true]
     p, r, f1 = pairwise_prf(pred, true_str)
+    bp, br, bf = bcubed_prf(pred, true_str)
     by_meeting = per_condition_pair_f1(pred, true_str, meeting_cond)
     by_acoustic = per_condition_pair_f1(pred, true_str, acoustic_cond)
     return {
@@ -82,6 +85,12 @@ def evaluate_point(
         "pair_precision": p,
         "pair_recall": r,
         "pair_f1": f1,
+        # B-cubed + macro-per-official recall don't overweight prolific officials the way pairwise
+        # counting does — the phase-2 reviewers flagged pairwise F1's quadratic bias.
+        "bcubed_precision": bp,
+        "bcubed_recall": br,
+        "bcubed_f1": bf,
+        "macro_official_recall": macro_recall_by_official(pred, true_str),
         "across_meeting_f1": by_meeting["across"],
         "within_meeting_f1": by_meeting["within"],
         "across_condition_f1": by_acoustic["across"],
@@ -146,3 +155,151 @@ def label_stats(true: list[Hashable | None], acoustic_cond: list[str]) -> dict[s
         "recurring_officials": sum(1 for c in counts.values() if c >= 2),
         "cross_condition_officials": sum(1 for cs in conds.values() if len(cs) >= 2),
     }
+
+
+def _false_enrollments(pred: list[int], true: list[Hashable | None]) -> int:
+    """Labeled clusters in a node whose majority official differs from their own.
+
+    A node enrolls under its dominant official; any minority-official cluster sharing that node
+    would be enrolled as the wrong person — a false enrollment. Counts those over labeled items
+    only; ties in the majority are broken by first appearance (arbitrary but consistent).
+    """
+    by_node: dict[int, list[Hashable]] = defaultdict(list)
+    for i, t in enumerate(true):
+        if t is not None:
+            by_node[pred[i]].append(t)
+    false = 0
+    for members in by_node.values():
+        majority = Counter(members).most_common(1)[0][0]
+        false += sum(1 for m in members if m != majority)
+    return false
+
+
+def poison_blast_radius(
+    scores: np.ndarray,
+    cannot_link: set[frozenset[int]],
+    true: list[Hashable | None],
+    *,
+    threshold: float,
+    max_trials: int = 50,
+) -> dict[str, float]:
+    """Downstream harm of one wrong merge under the actual linkage + operating threshold.
+
+    Complete-linkage is precision-biased: one spurious edge rarely fuses two whole identities
+    (every cross pair must also clear the threshold). This quantifies that robustness — it forces
+    one cross-official, cross-meeting pair to merge (a ``must_link``) at ``threshold`` and counts
+    the extra false enrollments versus the un-poisoned assignment, over a deterministic sample of
+    the first ``max_trials`` such pairs (index order). Reports mean and worst-case blast radius.
+    """
+    labeled = [i for i, t in enumerate(true) if t is not None]
+    base_pred = constrained_complete_linkage(scores, threshold=threshold, cannot_link=cannot_link)
+    base_false = _false_enrollments(base_pred, true)
+    poisons: list[frozenset[int]] = []
+    for a, b in combinations(labeled, 2):
+        if true[a] == true[b] or frozenset((a, b)) in cannot_link:
+            continue  # need a cross-official pair that cannot_link does not already forbid
+        poisons.append(frozenset((a, b)))
+        if len(poisons) >= max_trials:
+            break
+    if not poisons:
+        return {"n_trials": 0.0, "mean_false_enrollments": 0.0, "max_false_enrollments": 0.0}
+    deltas = [
+        _false_enrollments(
+            constrained_complete_linkage(
+                scores, threshold=threshold, cannot_link=cannot_link, must_link={pair}
+            ),
+            true,
+        )
+        - base_false
+        for pair in poisons
+    ]
+    return {
+        "n_trials": float(len(deltas)),
+        "mean_false_enrollments": float(np.mean(deltas)),
+        "max_false_enrollments": float(max(deltas)),
+    }
+
+
+def loo_threshold_ci(
+    scores: np.ndarray,
+    cannot_link: set[frozenset[int]],
+    true: list[Hashable | None],
+    meeting_cond: list[str],
+    acoustic_cond: list[str],
+    *,
+    purity_floor: float,
+    n_thresholds: int = DEFAULT_N_THRESHOLDS,
+) -> dict[str, float | list[float]]:
+    """Leave-one-official-out operating threshold with a spread band.
+
+    The operating point is a point estimate on ~21 officials; retuning it on the same anchors that
+    define ground truth would overfit. This holds out each official in turn (drops their clusters
+    from the labeled benchmark), re-selects the across-meeting-F1-maximizing threshold at
+    ``purity_floor`` on the rest, and summarizes the held-out thresholds (mean + a 2.5/97.5
+    percentile band). A fold that clears no point contributes nothing.
+    """
+    officials = sorted({t for t in true if t is not None}, key=str)
+    thresholds: list[float] = []
+    for held in officials:
+        reduced: list[Hashable | None] = [None if t == held else t for t in true]
+        best, _ = sweep_backend(
+            scores,
+            cannot_link,
+            reduced,
+            meeting_cond,
+            acoustic_cond,
+            purity_floor=purity_floor,
+            n_thresholds=n_thresholds,
+        )
+        if best is not None:
+            thresholds.append(float(best["threshold"]))
+    if not thresholds:
+        return {
+            "n_folds": 0.0,
+            "mean_threshold": 0.0,
+            "ci95_lo": 0.0,
+            "ci95_hi": 0.0,
+            "thresholds": [],
+        }
+    arr = np.asarray(thresholds)
+    return {
+        "n_folds": float(len(thresholds)),
+        "mean_threshold": float(np.mean(arr)),
+        "ci95_lo": float(np.percentile(arr, 2.5)),
+        "ci95_hi": float(np.percentile(arr, 97.5)),
+        "thresholds": thresholds,
+    }
+
+
+def cannot_link_audit(
+    obs: list[VoiceObservation], scores: np.ndarray, *, threshold: float
+) -> list[dict[str, object]]:
+    """Same-meeting cluster pairs scoring above ``threshold`` — suspected diarization fragmentation.
+
+    ``cannot_link_same_meeting`` assumes two clusters in one recording are different speakers. That
+    breaks if diarization over-segmented a single speaker: the two fragments then look alike. A
+    same-meeting pair scoring at or above the operating ``threshold`` is exactly a would-be merge
+    the constraint is blocking, so it is the pair to audit by ear. Returns flagged pairs, highest
+    score first; empty when none are suspicious.
+    """
+    by_doc: dict[int, list[int]] = defaultdict(list)
+    for i, o in enumerate(obs):
+        by_doc[o.document_id].append(i)
+    flagged: list[tuple[float, dict[str, object]]] = []
+    for idxs in by_doc.values():
+        for a, b in combinations(idxs, 2):
+            score = float(scores[a, b])
+            if score >= threshold:
+                flagged.append(
+                    (
+                        score,
+                        {
+                            "document_id": obs[a].document_id,
+                            "cluster_a": obs[a].cluster_label,
+                            "cluster_b": obs[b].cluster_label,
+                            "score": score,
+                        },
+                    )
+                )
+    flagged.sort(key=lambda r: r[0], reverse=True)  # sort on the float score, highest first
+    return [record for _, record in flagged]

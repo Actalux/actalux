@@ -9,7 +9,9 @@ from __future__ import annotations
 
 from actalux.diarization.linking.cluster import constrained_complete_linkage
 from actalux.diarization.linking.evaluate import (
+    bcubed_prf,
     coverage,
+    macro_recall_by_official,
     pairwise_prf,
     per_condition_pair_f1,
     purity,
@@ -42,11 +44,13 @@ __all__ = [
     "VoiceNode",
     "VoiceObservation",
     "asnorm_matrix",
+    "bcubed_prf",
     "constrained_complete_linkage",
     "cosine_matrix",
     "coverage",
     "embedding_matrix",
     "load_observations",
+    "macro_recall_by_official",
     "pairwise_prf",
     "per_condition_pair_f1",
     "purity",

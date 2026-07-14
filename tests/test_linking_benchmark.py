@@ -7,9 +7,12 @@ import numpy as np
 from actalux.diarization.linking.benchmark import (
     best_at_floors,
     candidate_thresholds,
+    cannot_link_audit,
     cannot_link_same_meeting,
     evaluate_point,
     label_stats,
+    loo_threshold_ci,
+    poison_blast_radius,
     sweep_backend,
 )
 from actalux.diarization.linking.observations import VoiceObservation, embedding_matrix
@@ -141,3 +144,71 @@ def test_sweep_backend_reports_miss_when_floor_unreachable() -> None:
     )
     assert best is None  # an impossible floor yields an honest None, not a low-purity point
     assert sweep  # the sweep still ran
+
+
+def _two_officials_across_conditions() -> list[VoiceObservation]:
+    # official 100 near [1,0] across docs 1,2; official 200 near [0,1] across docs 3,4
+    return [
+        _obs(1, "S0", [1.0, 0.0], "zoom"),
+        _obs(2, "S0", [0.99, 0.141], "in_person"),
+        _obs(3, "S0", [0.0, 1.0], "zoom"),
+        _obs(4, "S0", [0.141, 0.99], "in_person"),
+    ]
+
+
+def test_evaluate_point_surfaces_bcubed_and_macro_recall() -> None:
+    # perfect recovery -> B-cubed F1 and macro-per-official recall are both exactly 1.0
+    m = evaluate_point([0, 0, 1, 1], [10, 10, 20, 20], ["1", "2", "3", "4"], ["z", "i", "z", "i"])
+    assert m["bcubed_f1"] == 1.0
+    assert m["macro_official_recall"] == 1.0
+
+
+def test_poison_blast_radius_forced_merge_creates_false_enrollment() -> None:
+    obs = _two_officials_across_conditions()
+    scores = cosine_matrix(embedding_matrix(obs))
+    # clean base assignment merges each official's own pair; a forced cross-official merge poisons
+    result = poison_blast_radius(scores, set(), [100, 100, 200, 200], threshold=0.5)
+    assert result["n_trials"] >= 1.0
+    assert result["max_false_enrollments"] >= 1.0
+
+
+def test_poison_blast_radius_no_cross_official_pairs_is_zero() -> None:
+    # a single official -> no cross-official poison pair exists -> nothing to inject
+    obs = [_obs(1, "S0", [1.0, 0.0]), _obs(2, "S0", [0.99, 0.141])]
+    scores = cosine_matrix(embedding_matrix(obs))
+    result = poison_blast_radius(scores, set(), [100, 100], threshold=0.5)
+    assert result["n_trials"] == 0.0
+    assert result["max_false_enrollments"] == 0.0
+
+
+def test_loo_threshold_ci_reports_folds_and_band() -> None:
+    obs = _two_officials_across_conditions()
+    scores = cosine_matrix(embedding_matrix(obs))
+    meeting = [str(o.document_id) for o in obs]
+    cond = [o.acoustic_condition for o in obs]
+    ci = loo_threshold_ci(
+        scores,
+        cannot_link_same_meeting(obs),
+        [100, 100, 200, 200],
+        meeting,
+        cond,
+        purity_floor=0.95,
+    )
+    assert ci["n_folds"] == 2.0  # each held-out official leaves the other, which resolves a point
+    assert ci["ci95_lo"] <= ci["mean_threshold"] <= ci["ci95_hi"]
+    assert len(ci["thresholds"]) == 2
+
+
+def test_cannot_link_audit_flags_high_similarity_same_meeting_pair() -> None:
+    # doc 1's two clusters look alike (a likely fragmented speaker); doc 2's are orthogonal
+    obs = [
+        _obs(1, "S0", [1.0, 0.0]),
+        _obs(1, "S1", [0.99, 0.141]),
+        _obs(2, "S0", [1.0, 0.0]),
+        _obs(2, "S1", [0.0, 1.0]),
+    ]
+    scores = cosine_matrix(embedding_matrix(obs))
+    flagged = cannot_link_audit(obs, scores, threshold=0.5)
+    assert len(flagged) == 1  # only the suspicious same-meeting pair, cross-meeting pairs ignored
+    assert flagged[0]["document_id"] == 1
+    assert flagged[0]["score"] > 0.9

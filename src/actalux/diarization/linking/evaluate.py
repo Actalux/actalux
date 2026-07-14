@@ -123,3 +123,51 @@ def per_condition_pair_f1(
         "within": _prf_from_counts(*_pair_counts(within, pred, true))[2],
         "across": _prf_from_counts(*_pair_counts(across, pred, true))[2],
     }
+
+
+def bcubed_prf(pred: list[int], true: list[str | None]) -> tuple[float, float, float]:
+    """B-cubed precision/recall/F1 over labeled items (Amigó et al. 2009).
+
+    Per item, precision is the fraction of its predicted node sharing its true class and recall is
+    the fraction of its true class gathered into its predicted node; the metric averages those
+    per-item ratios. Unlike :func:`pairwise_prf`, it does not weight prolific officials
+    quadratically — each cluster contributes once. Every item counts itself, so both denominators
+    are >= 1. Returns ``(0.0, 0.0, 0.0)`` when no items are labeled.
+    """
+    labeled = _labeled_indices(true)
+    if not labeled:
+        return 0.0, 0.0, 0.0
+    pred_sizes = Counter(pred[i] for i in labeled)
+    true_sizes = Counter(true[i] for i in labeled)
+    both = Counter((pred[i], true[i]) for i in labeled)  # items sharing node AND true class
+    precision = sum(both[(pred[i], true[i])] / pred_sizes[pred[i]] for i in labeled)
+    recall = sum(both[(pred[i], true[i])] / true_sizes[true[i]] for i in labeled)
+    n = len(labeled)
+    precision /= n
+    recall /= n
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
+    return precision, recall, f1
+
+
+def macro_recall_by_official(pred: list[int], true: list[str | None]) -> float:
+    """Mean per-official pairwise recall, weighting every official equally (macro).
+
+    Pairwise recall is dominated by prolific officials (their same-official pair count grows
+    quadratically); this averages each official's own recall so a chair with 20 meetings counts the
+    same as an official with two. An official with a single labeled cluster has no same-official
+    pair and is excluded. Returns 0.0 when no official has >= 2 labeled clusters.
+    """
+    labeled = _labeled_indices(true)
+    by_true: dict[str | None, list[int]] = defaultdict(list)
+    for i in labeled:
+        by_true[true[i]].append(i)
+    recalls: list[float] = []
+    for members in by_true.values():
+        n = len(members)
+        if n < 2:
+            continue
+        total_pairs = n * (n - 1) // 2
+        node_counts = Counter(pred[i] for i in members)
+        same_node = sum(k * (k - 1) // 2 for k in node_counts.values())
+        recalls.append(same_node / total_pairs)
+    return sum(recalls) / len(recalls) if recalls else 0.0

@@ -12,11 +12,13 @@ from actalux.diarization.linking import (
     VoiceNode,
     VoiceObservation,
     asnorm_matrix,
+    bcubed_prf,
     constrained_complete_linkage,
     cosine_matrix,
     coverage,
     embedding_matrix,
     load_observations,
+    macro_recall_by_official,
     pairwise_prf,
     per_condition_pair_f1,
     purity,
@@ -263,6 +265,28 @@ def test_per_condition_across_lower_than_within_on_drift():
     assert result["within"] == pytest.approx(1.0)
     assert result["across"] == pytest.approx(0.0)
     assert result["across"] < result["within"]
+
+
+def test_bcubed_prf_known_value():
+    # same hand-built example: B-cubed P = 0.8, R = 8/15, F1 = 0.64 (each item counts itself)
+    precision, recall, f1 = bcubed_prf(_EVAL_PRED, _EVAL_TRUE)
+    assert precision == pytest.approx(0.8)
+    assert recall == pytest.approx(8.0 / 15.0)
+    assert f1 == pytest.approx(0.64)
+
+
+def test_bcubed_prf_empty_when_no_labels():
+    assert bcubed_prf([0, 1], [None, None]) == (0.0, 0.0, 0.0)
+
+
+def test_macro_recall_by_official_weights_officials_equally():
+    # official A (0,1,2) recall 1/3 (only 0,1 share a node); official B (3,4) recall 0 -> mean 1/6
+    assert macro_recall_by_official(_EVAL_PRED, _EVAL_TRUE) == pytest.approx(1.0 / 6.0)
+
+
+def test_macro_recall_excludes_singletons():
+    # official A recurs (two clusters, grouped -> recall 1.0); B is a singleton and is excluded
+    assert macro_recall_by_official([0, 0, 1], ["A", "A", "B"]) == pytest.approx(1.0)
 
 
 # --------------------------------------------------------------------------------------------
