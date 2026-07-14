@@ -122,6 +122,32 @@ global backend. PLDA/CORAL/TAS-norm stay as escalation options, not the first bu
   (constrained clustering, condition-aware scoring, keep-official-anchored) is ours to assemble; the
   scoring/calibration *components* are off-the-shelf.
 
+## Step-1 result (2026-07-13) — external cohort validated, ceiling exceeded
+
+Council (92 meetings) and plan-commission (91) were embedded and used as schools' external
+impostor cohort. Schools linking @purity≥0.95 (across-meeting F1 / across-condition F1):
+
+| Cohort | across-meeting | across-condition |
+|---|---|---|
+| cosine baseline | 0.540 | 0.302 |
+| diverse-self (32) | 0.569 | 0.443 |
+| council-only, all-cluster | 0.604 | 0.465 |
+| **council+PC, all-cluster (419, condition-diverse, disjoint)** | **0.649** | **0.528** |
+| labeled 1-per-official ceiling (reference) | 0.632 | 0.460 |
+
+The external, condition-diverse, target-disjoint cohort **beats cosine by +0.11 across-meeting and
++0.226 across-condition (+75% rel.)** and **exceeds the labeled ceiling** — confirming the plan with
+**no training required**. Sub-finding: the *all-cluster* external cohort beats the *per-identity*
+one (0.649/0.528 vs 0.586/0.435) — for a target-disjoint pool there are no siblings to dedup, so a
+larger diverse pool gives richer impostor statistics (matches Matejka's "diverse pool + adaptive
+top-N"). **Recipe locked:** freeze a large, condition-balanced, cross-body (target-disjoint) cohort;
+score AS-norm top-N against it. Step 2 (light condition-aware calibration) is now optional headroom,
+not a necessity. Measured with the cached npz (no re-embed) via `ext_cohort_measure.py`; recall at
+0.95 is ~0.50 (precision-first, correct for gallery safety — the rest is recovered as purity relaxes
+to 0.90 or via the evidence ledger over more meetings). Caveats still apply (point estimate on 21
+officials → phase 2 needs leave-one-official-out + CI; pairwise F1 overweights prolific officials →
+add B-cubed / poisoning sim).
+
 ## Key references
 
 - Matejka et al., "Analysis of Score Normalization in Multilingual Speaker Recognition," Interspeech 2017 — the AS-norm cohort study (diverse multi-channel pool; per-identity; adaptive top-N).
