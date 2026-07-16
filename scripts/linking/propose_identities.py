@@ -32,11 +32,12 @@ from supabase import Client
 
 from actalux.config import load_config
 from actalux.db import fetch_all_rows, get_client, get_place_by_path
-from actalux.diarization.enrollment import EMBED_MODEL, NAME_ANCHOR_BASES, select_enrollable
+from actalux.diarization.enrollment import EMBED_MODEL, NAME_ANCHOR_BASES
 from actalux.diarization.linking.benchmark import cannot_link_same_meeting
 from actalux.diarization.linking.cache import MODE_ALL, cache_dir, require_mode
 from actalux.diarization.linking.cluster import constrained_complete_linkage
 from actalux.diarization.linking.cohort import load_active_cohort, parse_pgvector
+from actalux.diarization.linking.labels import fetch_person_labels
 from actalux.diarization.linking.observations import (
     VoiceObservation,
     embedding_matrix,
@@ -60,36 +61,6 @@ def service_client() -> Client:
     if not key:
         raise ActaluxError("ACTALUX_SUPABASE_SERVICE_KEY is required (service-only tables)")
     return get_client(cfg.supabase_url, key)
-
-
-def fetch_person_labels(
-    client: Client, place_id: int, obs: list[VoiceObservation]
-) -> dict[tuple[int, str], int]:
-    """Map each anchored ``(document_id, cluster_label)`` to its official's ``person_id``.
-
-    Mirrors ``run_linking_prototype.fetch_labels``: an anchor is an enrollable (name-anchored or
-    confirmed) cluster tied to a publishable person via its subject.
-    """
-    doc_ids = sorted({o.document_id for o in obs})
-    identities = fetch_all_rows(
-        lambda: (
-            client.table("speaker_identities")
-            .select("id,document_id,cluster_label,subject_id,confidence,basis")
-            .in_("document_id", doc_ids)
-        )
-    )
-    subjects_by_id = {
-        s["id"]: s
-        for s in fetch_all_rows(
-            lambda: (
-                client.table("subjects")
-                .select("id,person_id,publishable,canonical_name")
-                .eq("place_id", place_id)
-            )
-        )
-    }
-    enrollable = select_enrollable(identities, subjects_by_id, confirmed_only=False)
-    return {(ec.document_id, ec.cluster_label): ec.person_id for ec in enrollable}
 
 
 def body_entity_ids(client: Client, place_id: int, body: str) -> list[int]:

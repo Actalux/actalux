@@ -1,11 +1,15 @@
 name: linking-prototype
 
-# Phase 1 of the voice-first pivot (docs/architecture/linking-prototype-phase1.md): build the
-# [E] embedding cache for a body (re-embed each ANCHORED cluster's turns on Modal, pool to one
-# 256-d centroid), then measure whether calibrated scoring (AS-norm) links an official's clusters
-# ACROSS meetings better than raw cosine. Read-only against the DB — no gallery writes, no
-# candidate calibration. Runs OFF-SESSION on a runner because the embed pass is long (yt-dlp
-# download + Modal per-turn embed per meeting) and in-session background jobs get reaped.
+# The voice-first linker's embed pass (docs/architecture/linking-prototype-phase1.md): re-embed a
+# body's cluster turns on Modal, pool each to one 256-d centroid, and cache them. Two populations,
+# selected by `include_unanchored` and written to separate cache dirs:
+#   - anchored (default) — officials' anchored clusters only; then MEASURE whether calibrated
+#     scoring (AS-norm) links an official ACROSS meetings better than raw cosine.
+#   - all-cluster — every diarization cluster in every meeting; the cache the identity proposer
+#     needs, since a cluster it might name is by definition one no anchor covers. No measurement.
+# Read-only against the DB — no gallery writes, no candidate calibration. Runs OFF-SESSION on a
+# runner because the embed pass is long (yt-dlp download + Modal per-turn embed per meeting) and
+# in-session background jobs get reaped.
 #
 # Manual-trigger only. Prereq: the diarization Modal app must be deployed
 # (modal deploy src/actalux/diarization/modal_runner.py — provides embed_cluster_turns_remote).
@@ -42,6 +46,11 @@ on:
         description: "Cap the number of meetings embedded (blank = all)"
         required: false
         default: ""
+      include_unanchored:
+        description: "Embed EVERY diarization cluster across all meetings (the all-cluster cache the identity proposer consumes), not just anchored ones. Much longer; skips the anchored measurement."
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -113,20 +122,25 @@ jobs:
       - name: Verify schema is up to date
         run: uv run python scripts/apply_migrations.py --check
 
-      - name: Build the embedding cache (download + Modal embed + pool, per anchored cluster)
+      - name: Build the embedding cache (download + Modal embed + pool, per cluster)
         env:
           STATE: ${{ inputs.state }}
           PLACE: ${{ inputs.place }}
           BODY: ${{ inputs.body }}
           MIN_SECONDS: ${{ inputs.min_seconds }}
           LIMIT: ${{ inputs.limit }}
+          INCLUDE_UNANCHORED: ${{ inputs.include_unanchored }}
         run: |
           ARGS="--state $STATE --place $PLACE --body $BODY --proxy socks5h://127.0.0.1:40000"
           [ -n "$MIN_SECONDS" ] && ARGS="$ARGS --min-seconds $MIN_SECONDS"
           [ -n "$LIMIT" ] && ARGS="$ARGS --limit $LIMIT"
+          [ "$INCLUDE_UNANCHORED" = "true" ] && ARGS="$ARGS --include-unanchored"
           uv run --group diarization python scripts/linking/build_embedding_cache.py $ARGS
 
+      # The measurement benchmarks the ANCHORED population (its ground truth is the anchors), so it
+      # has nothing to read from an all-cluster run — that cache exists to feed the proposer.
       - name: Measure (cosine vs AS-norm, across-meeting F1 at the purity floor)
+        if: ${{ !inputs.include_unanchored }}
         env:
           STATE: ${{ inputs.state }}
           PLACE: ${{ inputs.place }}
@@ -144,7 +158,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: linking-${{ inputs.state }}-${{ inputs.place }}-${{ inputs.body }}
+          # suffixed by population so an all-cluster run can never overwrite (or be mistaken for)
+          # the anchored benchmark cache
+          name: linking-${{ inputs.state }}-${{ inputs.place }}-${{ inputs.body }}-${{ inputs.include_unanchored && 'all' || 'anchored' }}
           path: data/linking_cache/**
           if-no-files-found: ignore
           retention-days: 30

@@ -38,8 +38,8 @@ from pathlib import Path
 from supabase import Client
 
 from actalux.config import load_config
-from actalux.db import fetch_all_rows, get_client, get_place_by_path
-from actalux.diarization.enrollment import EMBED_MODEL, select_enrollable
+from actalux.db import get_client, get_place_by_path
+from actalux.diarization.enrollment import EMBED_MODEL
 from actalux.diarization.linking.benchmark import (
     best_at_floors,
     cannot_link_same_meeting,
@@ -47,11 +47,8 @@ from actalux.diarization.linking.benchmark import (
     sweep_backend,
 )
 from actalux.diarization.linking.cohort import load_active_cohort
-from actalux.diarization.linking.observations import (
-    VoiceObservation,
-    embedding_matrix,
-    load_observation_dir,
-)
+from actalux.diarization.linking.labels import fetch_person_labels
+from actalux.diarization.linking.observations import embedding_matrix, load_observation_dir
 from actalux.diarization.linking.scoring import asnorm_matrix, cosine_matrix, diverse_cohort
 from actalux.errors import ActaluxError
 
@@ -65,32 +62,6 @@ def service_client() -> Client:
     if not key:
         raise ActaluxError("ACTALUX_SUPABASE_SERVICE_KEY is required (service-only tables)")
     return get_client(cfg.supabase_url, key)
-
-
-def fetch_labels(
-    client: Client, place_id: int, obs: list[VoiceObservation]
-) -> dict[tuple[int, str], int]:
-    """Map each cached ``(document_id, cluster_label)`` to its anchor's ``person_id`` (truth)."""
-    doc_ids = sorted({o.document_id for o in obs})
-    identities = fetch_all_rows(
-        lambda: (
-            client.table("speaker_identities")
-            .select("id,document_id,cluster_label,subject_id,confidence,basis")
-            .in_("document_id", doc_ids)
-        )
-    )
-    subjects_by_id = {
-        s["id"]: s
-        for s in fetch_all_rows(
-            lambda: (
-                client.table("subjects")
-                .select("id,person_id,publishable,canonical_name")
-                .eq("place_id", place_id)
-            )
-        )
-    }
-    enrollable = select_enrollable(identities, subjects_by_id, confirmed_only=False)
-    return {(ec.document_id, ec.cluster_label): ec.person_id for ec in enrollable}
 
 
 def _fmt_point(point: dict[str, float] | None) -> str:
@@ -115,7 +86,7 @@ def run(args: argparse.Namespace) -> None:
     place = get_place_by_path(client, args.state, args.place)
     if not place:
         raise ActaluxError(f"no place {args.state}/{args.place}")
-    labels = fetch_labels(client, place["id"], obs)
+    labels = fetch_person_labels(client, place["id"], obs)
 
     true: list[int | None] = [labels.get((o.document_id, o.cluster_label)) for o in obs]
     meeting_cond = [str(o.document_id) for o in obs]
