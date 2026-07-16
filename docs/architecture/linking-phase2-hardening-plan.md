@@ -243,6 +243,41 @@ adoption stays measure-gated; no new dependencies.
    fixture row with basis `rollcall`@`inferred_medium` is skipped with a logged reason.
 5. `--help` smoke on all four `scripts/linking/` CLIs.
 
+## Verification results (2026-07-16 — plan implemented)
+
+Implemented across three commits (Phase A eval, Phase B schema/scripts, Phase C tooling/CI). Suite
+**1703 passing** (+35), ruff clean over the touched tree.
+
+**1. Frontier regression — PASSES, bit-identical.** `run_linking_prototype.py --cohort-source self`
+on the real 169-cluster schools cache (84 meetings, 21 officials) reproduces the decision doc
+exactly: cosine @0.95 `acrMtg=0.540 / acrCond=0.302`, diverse-self AS-norm `0.569 / 0.443`, and
+@0.90 cosine `0.891 / 0.883`. Phase A added columns and fixed the layers *above* the sweep without
+moving it.
+
+**2. The reworked LOO produces what the old one could not** (asnorm/self cohort, floor 0.95, real
+benchmark): 21/21 folds resolve; **mean held-out recall 0.407** against an in-sample recall of 0.416
+— the operating threshold generalizes to an official it never saw, with little overfit. Threshold
+spread `[3.329, 4.437]`, mean 3.661 (the in-sample pick, 3.805, sits inside it).
+
+**3. A finding the per-official metrics surfaced: 8 of 21 folds show a false merge.** Pairwise purity
+0.953 sounds comfortable, but ~5% of 169 clusters being misplaced spreads across **8 distinct
+officials** — i.e. at the 0.95 floor, more than a third of the roster has at least one cluster
+sitting in someone else's node. Arithmetically consistent with the purity (not a defect), and
+exactly the framing the reviewers wanted macro/per-official metrics for. **Carry this into the
+rollout:** the purity floor alone is not a per-official safety guarantee.
+
+**4. Poisoning is contained.** At the mean LOO threshold: 50 stratified trials, mean blast radius
+0.84, **max 1.0** — a forced cross-official merge does not cascade (complete-linkage's precision
+bias holds), and `ambiguity_caught = 1.0` confirms the proposer's guard would refuse every one.
+
+**5. `cannot_link_audit`: 0 suspicious same-meeting pairs** at that threshold — no detectable
+diarization fragmentation undermining the cannot-link assumption on this body.
+
+**6. Manifest guard + writer policy** are covered by unit tests (legacy-cache refusal, mode/
+min_seconds/model mismatch, and `rollcall@inferred_medium` skipped with a logged reason). The full
+`propose_identities --dry-run` remains gated: it needs an all-cluster cache and an active cohort,
+neither of which exists until migrate_047 is applied.
+
 ## Sequenced rollout (after the plan lands; each step operator-gated, unchanged)
 
 1. Push the hardening commits.
