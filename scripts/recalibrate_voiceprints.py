@@ -42,12 +42,14 @@ from actalux.config import load_config
 from actalux.db import fetch_all_rows, get_client, get_diarization_turns, get_place_by_path
 from actalux.diarization.enrollment import (
     EnrollableCluster,
+    acoustic_condition_for,
     cluster_spans,
     pool_cluster,
     select_enrollable,
     span_seconds,
     superseded_doc_ids,
     voiceprint_row,
+    zoom_document_ids,
 )
 from actalux.diarization.families import family_of
 from actalux.diarization.hygiene import (
@@ -848,7 +850,20 @@ def main() -> None:
                 f"downgrade the cleared gallery to candidate. Pass --force to re-stage."
             )
 
-    _apply(client, place_id, entity_id, docs_by_id, by_doc, docs_to_process, superseded, args)
+    # Stamp each gallery sample with its meeting's acoustic condition (the dual per-condition
+    # prototype split), derived once from the same identity rows select_enrollable just read.
+    zoom_doc_ids = zoom_document_ids(identities)
+    _apply(
+        client,
+        place_id,
+        entity_id,
+        docs_by_id,
+        by_doc,
+        docs_to_process,
+        superseded,
+        zoom_doc_ids,
+        args,
+    )
 
 
 def _service_client() -> Client:
@@ -914,6 +929,7 @@ def _apply(
     by_doc: dict[int, list[EnrollableCluster]],
     docs_to_process: list[int],
     superseded: set[int],
+    zoom_doc_ids: set[int],
     args: argparse.Namespace,
 ) -> None:
     """Embed per-turn on Modal, pool, run nested LOMO, report, and persist the candidate."""
@@ -1029,6 +1045,7 @@ def _apply(
         pooled_officials,
         processed_docs,
         superseded,
+        zoom_doc_ids,
         args,
         evidence_cues=evidence_cues,
         cue_starts=cue_starts,
@@ -1111,6 +1128,7 @@ def _finish(
     pooled_officials: list[tuple[EnrollableCluster, Any]],
     processed_docs: set[int],
     superseded: set[int],
+    zoom_doc_ids: set[int],
     args: argparse.Namespace,
     evidence_cues: dict[int, list[dict[str, Any]]] | None = None,
     cue_starts: dict[tuple[int, str], float] | None = None,
@@ -1334,7 +1352,13 @@ def _finish(
         (q.person_id, q.sample.document_id, q.sample.cluster_label) for q in alien_positives
     }
     rows = [
-        voiceprint_row(ec, pooled, EMBED_MODEL, calibration_id=calibration_id)
+        voiceprint_row(
+            ec,
+            pooled,
+            EMBED_MODEL,
+            calibration_id=calibration_id,
+            acoustic_condition=acoustic_condition_for(ec.document_id, zoom_doc_ids),
+        )
         for ec, pooled in pooled_officials
         if ec.person_id in enabled
         and pooled.purity >= purity_floor

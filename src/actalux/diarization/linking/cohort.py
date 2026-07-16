@@ -17,6 +17,7 @@ import numpy as np
 from supabase import Client
 
 from actalux.db import fetch_all_rows
+from actalux.errors import ActaluxError
 
 
 def parse_pgvector(value: object) -> list[float]:
@@ -59,16 +60,27 @@ def _active_cohort_row(client: Client, place_id: int | None) -> dict | None:
     return shared[0] if shared else None
 
 
-def load_active_cohort(client: Client, place_id: int | None) -> np.ndarray:
+def load_active_cohort(client: Client, place_id: int | None, *, expected_model: str) -> np.ndarray:
     """Load the active frozen cohort's vectors as an ``(M, 256)`` float64 matrix.
 
     Returns an empty ``(0, 0)`` matrix when no active cohort exists (or it has no vectors). The
     caller decides how to treat that — production hard-fails; the measurement CLI can fall back to a
     self-sampled cohort.
+
+    Raises :class:`ActaluxError` when the active cohort was embedded with a model other than
+    ``expected_model``. Cohort and target vectors must live in ONE embedding space or AS-norm
+    normalizes each score against a distribution that means nothing — a silent, plausible-looking
+    corruption. Catching it is the whole reason ``linking_cohorts.model`` exists.
     """
     cohort = _active_cohort_row(client, place_id)
     if cohort is None:
         return np.empty((0, 0))
+    if cohort.get("model") != expected_model:
+        raise ActaluxError(
+            f"active cohort {cohort.get('slug')!r} was embedded with {cohort.get('model')!r}, but "
+            f"this run scores {expected_model!r} vectors — refusing to normalize against a "
+            f"different embedding space"
+        )
     rows = fetch_all_rows(
         lambda: (
             client.table("linking_cohort_vectors").select("embedding").eq("cohort_id", cohort["id"])

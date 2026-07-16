@@ -13,6 +13,25 @@ from typing import Any
 
 from actalux.diarization.pooling import Pooled, pool_turn_embeddings
 
+# The embedding model, frozen by the Phase-0 spike (migrate_040). Every stored vector — gallery
+# voiceprints AND the linker's frozen AS-norm cohort — must come from this model or the cosine
+# geometry does not line up. This is the APP-side home: the linking tools that read/write those
+# vectors need the string but must not pull in `modal`, so they import it from here.
+#
+# It deliberately MIRRORS ``modal_runner.EMBED_MODEL`` instead of importing it: the GPU container
+# loads modal_runner to find its remote functions and must never import ``actalux``, so that module
+# cannot depend on this one. test_enrollment pins the two equal so the mirror cannot drift.
+EMBED_MODEL = "pyannote/wespeaker-voxceleb-resnet34-LM"
+
+# Acoustic condition: the axis that splits an official's gallery into dual per-condition prototypes
+# (a Zoom centroid and a room-mic centroid) instead of one blurred average. A meeting is 'zoom' iff
+# it produced a screen_name identity — a Zoom gallery tile was OCR'd for someone in it. That makes
+# this a PRECISE-POSITIVE proxy: 'zoom' is definite; 'in_person' is the uncertain bucket, since a
+# Zoom meeting whose tiles were never read also lands there.
+ZOOM_ANCHOR_BASIS = "screen_name"
+ZOOM_CONDITION = "zoom"
+IN_PERSON_CONDITION = "in_person"
+
 # Name anchors are deterministic (a spoken name -> this voice), so enrolling from an auto
 # inferred_high with one of these bases is safe. 'presenter_intro', 'discourse', and 'vote_anchor'
 # seed at inferred_medium (below the public bar) — all corroborated name evidence whose imprecision
@@ -132,6 +151,21 @@ def superseded_doc_ids(docs: list[dict[str, Any]]) -> set[int]:
     return {d["id"] for d in docs if d.get("replaces_id") is not None}
 
 
+def zoom_document_ids(identities: list[dict[str, Any]]) -> set[int]:
+    """Documents proven to be Zoom-rendered — they carry a ``screen_name`` identity.
+
+    One derivation shared by every consumer of the condition axis (the linker's embed cache and both
+    gallery writers), so a meeting can never be tagged 'zoom' in one store and 'in_person' in
+    another. Precise-positive: a hit is definite, a miss only means "no tile was read".
+    """
+    return {r["document_id"] for r in identities if r.get("basis") == ZOOM_ANCHOR_BASIS}
+
+
+def acoustic_condition_for(document_id: int, zoom_doc_ids: set[int]) -> str:
+    """The stored condition for a meeting: ``'zoom'`` when OCR proved it, else ``'in_person'``."""
+    return ZOOM_CONDITION if document_id in zoom_doc_ids else IN_PERSON_CONDITION
+
+
 def pool_cluster(
     turns: list[tuple[tuple[float, ...], float]],
     *,
@@ -154,9 +188,19 @@ def pool_cluster(
 
 
 def voiceprint_row(
-    ec: EnrollableCluster, pooled: Pooled, model: str, *, calibration_id: int | None = None
+    ec: EnrollableCluster,
+    pooled: Pooled,
+    model: str,
+    *,
+    calibration_id: int | None = None,
+    acoustic_condition: str | None = None,
 ) -> dict[str, Any]:
-    """A ``subject_voiceprints`` insert row for one enrolled cluster (with purity provenance)."""
+    """A ``subject_voiceprints`` insert row for one enrolled cluster (with purity provenance).
+
+    ``acoustic_condition`` (from :func:`acoustic_condition_for`) is what lets an official's Zoom and
+    room-mic samples pool into SEPARATE prototypes rather than one blurred average; ``None`` stores
+    NULL and the reader falls back to a single prototype for that official.
+    """
     return {
         "person_id": ec.person_id,
         "source_subject_id": ec.source_subject_id,
@@ -171,4 +215,5 @@ def voiceprint_row(
         "n_turns": pooled.n_turns,
         "coherent_turns": pooled.coherent_turns,
         "calibration_id": calibration_id,
+        "acoustic_condition": acoustic_condition,
     }

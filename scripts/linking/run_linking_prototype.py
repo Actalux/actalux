@@ -39,7 +39,7 @@ from supabase import Client
 
 from actalux.config import load_config
 from actalux.db import fetch_all_rows, get_client, get_place_by_path
-from actalux.diarization.enrollment import select_enrollable
+from actalux.diarization.enrollment import EMBED_MODEL, select_enrollable
 from actalux.diarization.linking.benchmark import (
     best_at_floors,
     cannot_link_same_meeting,
@@ -142,7 +142,7 @@ def run(args: argparse.Namespace) -> None:
     if args.cohort_source == "frozen":
         # Production scoring: the frozen, external, target-disjoint cohort (migrate_047). Stationary
         # as meetings are added, unlike the self-sampled cohort below.
-        cohort = load_active_cohort(client, place["id"])
+        cohort = load_active_cohort(client, place["id"], expected_model=EMBED_MODEL)
         if cohort.size == 0:
             raise ActaluxError(
                 "no active frozen cohort for this place — build one (build_cohort.py) "

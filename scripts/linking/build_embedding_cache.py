@@ -42,10 +42,20 @@ from supabase import Client
 from actalux.config import load_config
 from actalux.db import fetch_all_rows, get_client, get_diarization_turns, get_place_by_path
 from actalux.diarization.enrollment import (
+    EMBED_MODEL,
+    acoustic_condition_for,
     cluster_spans,
     pool_cluster,
     select_enrollable,
     span_seconds,
+    zoom_document_ids,
+)
+from actalux.diarization.linking.cache import (
+    MODE_ALL,
+    MODE_ANCHORED,
+    CacheManifest,
+    cache_dir,
+    ensure_manifest,
 )
 from actalux.diarization.linking.observations import VoiceObservation, save_observations
 from actalux.errors import ActaluxError
@@ -114,7 +124,7 @@ def _load_anchored(
             .in_("document_id", list(docs_by_id))
         )
     )
-    zoom_doc_ids = {r["document_id"] for r in identities if r.get("basis") == "screen_name"}
+    zoom_doc_ids = zoom_document_ids(identities)
     subjects_by_id = {
         s["id"]: s
         for s in fetch_all_rows(
@@ -230,8 +240,15 @@ def build(args: argparse.Namespace) -> None:
     entity_ids = _body_entity_ids(client, place["id"], args.body)
     docs_by_id, by_doc, zoom_doc_ids = _load_anchored(client, place["id"], entity_ids)
 
-    out_dir = Path(args.out_dir) / f"{args.state}_{args.place}_{args.body}"
+    # Separate directory + manifest per population: a resume must never inherit anchored-only
+    # meetings into an all-cluster cache (they would look complete and simply be missing voices).
+    mode = MODE_ALL if args.include_unanchored else MODE_ANCHORED
+    out_dir = cache_dir(args.out_dir, args.state, args.place, args.body, mode=mode)
     out_dir.mkdir(parents=True, exist_ok=True)
+    ensure_manifest(
+        out_dir,
+        CacheManifest(mode=mode, min_seconds=args.min_seconds, model=EMBED_MODEL),
+    )
     if args.include_unanchored:
         # every meeting with video: an official may speak in one where they were never named
         superseded = {d for d, doc in docs_by_id.items() if doc.get("replaces_id") is not None}
@@ -261,7 +278,7 @@ def build(args: argparse.Namespace) -> None:
         out_path = out_dir / f"doc_{doc_id}.npz"
         if out_path.is_file() and out_path.stat().st_size > 0:
             continue  # resumable: already cached
-        condition = "zoom" if doc_id in zoom_doc_ids else "in_person"
+        condition = acoustic_condition_for(doc_id, zoom_doc_ids)
         clusters, turns = _clusters_for_document(client, doc_id, by_doc, args.include_unanchored)
         if not clusters:
             save_observations([], out_path)  # nothing to embed; mark done so we don't retry it

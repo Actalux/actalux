@@ -129,7 +129,50 @@ def test_voiceprint_row_shape():
         "n_turns": 5,
         "coherent_turns": 4,
         "calibration_id": 7,
+        "acoustic_condition": None,  # unstamped -> NULL -> reader falls back to one prototype
     }
+
+
+def test_voiceprint_row_stamps_acoustic_condition():
+    from actalux.diarization.pooling import Pooled
+
+    ec = ev.EnrollableCluster(
+        person_id=100,
+        source_subject_id=10,
+        source_identity_id=1,
+        document_id=5,
+        cluster_label="SPEAKER_00",
+        source_basis="rollcall",
+        canonical_name="Kami Waldman",
+    )
+    pooled = Pooled(vector=(0.1,), purity=0.9, n_turns=5, coherent_turns=4, seconds=42.0)
+    row = ev.voiceprint_row(ec, pooled, "wespeaker", acoustic_condition="zoom")
+    # without this the dual per-condition prototypes have nothing to split on
+    assert row["acoustic_condition"] == "zoom"
+
+
+def test_zoom_document_ids_only_screen_name_anchored_meetings():
+    identities = [
+        {"document_id": 1, "basis": "screen_name"},  # a Zoom tile was OCR'd -> definitely Zoom
+        {"document_id": 1, "basis": "rollcall"},
+        {"document_id": 2, "basis": "rollcall"},  # no tile read -> the uncertain in_person bucket
+        {"document_id": 3, "basis": None},
+    ]
+    assert ev.zoom_document_ids(identities) == {1}
+
+
+def test_acoustic_condition_for_maps_both_buckets():
+    assert ev.acoustic_condition_for(1, {1}) == "zoom"
+    assert ev.acoustic_condition_for(2, {1}) == "in_person"
+
+
+def test_embed_model_mirrors_modal_runner():
+    # enrollment.EMBED_MODEL is a deliberate mirror (the GPU container cannot import actalux);
+    # pin them equal so the two literals can never drift apart unnoticed
+    from actalux.diarization.enrollment import EMBED_MODEL
+    from actalux.diarization.modal_runner import EMBED_MODEL as RUNNER_EMBED_MODEL
+
+    assert EMBED_MODEL == RUNNER_EMBED_MODEL
 
 
 def test_superseded_doc_ids():

@@ -43,12 +43,14 @@ from actalux.db import fetch_all_rows, get_client, get_place_by_path
 from actalux.diarization.enrollment import (
     NAME_ANCHOR_BASES,
     EnrollableCluster,
+    acoustic_condition_for,
     cluster_spans,
     pool_cluster,
     select_enrollable,
     span_seconds,
     superseded_doc_ids,
     voiceprint_row,
+    zoom_document_ids,
 )
 from actalux.errors import ActaluxError
 
@@ -56,12 +58,14 @@ from actalux.errors import ActaluxError
 __all__ = [
     "NAME_ANCHOR_BASES",
     "EnrollableCluster",
+    "acoustic_condition_for",
     "cluster_spans",
     "pool_cluster",
     "select_enrollable",
     "span_seconds",
     "superseded_doc_ids",
     "voiceprint_row",
+    "zoom_document_ids",
 ]
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -257,7 +261,12 @@ def main() -> None:
         logger.info("re-run with --apply (needs `--group diarization` + a deployed Modal app)")
         return
 
-    _apply(client, by_doc, docs_to_process, docs_by_id, pool_params, calibration_id, args)
+    # Stamp each sample with its meeting's acoustic condition so the gallery can build dual
+    # per-condition prototypes rather than one Zoom/room-mic average.
+    zoom_doc_ids = zoom_document_ids(identities)
+    _apply(
+        client, by_doc, docs_to_process, docs_by_id, pool_params, calibration_id, zoom_doc_ids, args
+    )
     pruned = _prune_superseded(client, superseded)
     logger.info("done: pruned %d superseded sample(s)", pruned)
 
@@ -295,6 +304,7 @@ def _apply(
     docs_by_id: dict[int, dict[str, Any]],
     pool_params: dict[str, Any],
     calibration_id: int,
+    zoom_doc_ids: set[int],
     args: argparse.Namespace,
 ) -> None:
     """Download audio, embed turns on Modal, pool (Gate B), upsert gallery rows per meeting."""
@@ -322,12 +332,21 @@ def _apply(
         finally:
             if not args.keep_audio:
                 audio.unlink(missing_ok=True)
+        condition = acoustic_condition_for(doc_id, zoom_doc_ids)
         rows = []
         for ec in clusters:
             pooled = pool_cluster(turns_by_label.get(ec.cluster_label, []), **pool_params)
             if pooled is None or pooled.seconds < args.min_seconds:
                 continue
-            rows.append(voiceprint_row(ec, pooled, EMBED_MODEL, calibration_id=calibration_id))
+            rows.append(
+                voiceprint_row(
+                    ec,
+                    pooled,
+                    EMBED_MODEL,
+                    calibration_id=calibration_id,
+                    acoustic_condition=condition,
+                )
+            )
         # replace-per-meeting so a now-rejected cluster's stale row is removed.
         client.table("subject_voiceprints").delete().eq("source_document_id", doc_id).execute()
         if rows:

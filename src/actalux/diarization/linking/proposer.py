@@ -20,6 +20,10 @@ from dataclasses import dataclass
 
 import numpy as np
 
+# How many runners-up to record per proposal. Enough for a reviewer to see who else the voice came
+# close to; not so many that the evidence row becomes the whole roster.
+ALTERNATIVES_KEPT = 3
+
 
 def per_condition_prototypes(samples: list[tuple[np.ndarray, str]]) -> dict[str, np.ndarray]:
     """L2-normalized mean voiceprint per acoustic condition (dual per-condition prototypes).
@@ -60,6 +64,9 @@ class Proposal:
     score: float  # best pair score to the node's anchored member(s) of this official
     margin: float  # score minus the best pair score to any OTHER official's anchor
     node_id: int
+    # The runners-up this match beat, best first: (person_id, score) per OTHER official. A human
+    # judging a thin margin needs to see who else the voice nearly matched, not just by how much.
+    alternatives: tuple[tuple[int, float], ...] = ()
 
 
 def build_proposals(
@@ -104,16 +111,32 @@ def build_proposals(
         if official is None:
             continue
         own_anchors = [i for i in members if index_official.get(i) == official]
-        other_anchors = [i for pid, idxs in by_official.items() if pid != official for i in idxs]
         for idx in members:
             entry = identity[idx]
             if idx in index_official or entry is None:
                 continue  # anchored, or a virtual prototype row -> never proposed
             document_id, cluster_label = entry
             score = max(float(scores[idx, a]) for a in own_anchors)
-            if other_anchors:
-                margin = score - max(float(scores[idx, a]) for a in other_anchors)
-            else:
-                margin = score
-            proposals.append(Proposal(document_id, cluster_label, official, score, margin, node_id))
+            # best score to each OTHER official: the runners-up, and the margin over them
+            others = sorted(
+                (
+                    (pid, max(float(scores[idx, a]) for a in idxs))
+                    for pid, idxs in by_official.items()
+                    if pid != official
+                ),
+                key=lambda t: t[1],
+                reverse=True,
+            )
+            margin = score - others[0][1] if others else score
+            proposals.append(
+                Proposal(
+                    document_id,
+                    cluster_label,
+                    official,
+                    score,
+                    margin,
+                    node_id,
+                    alternatives=tuple(others[:ALTERNATIVES_KEPT]),
+                )
+            )
     return proposals

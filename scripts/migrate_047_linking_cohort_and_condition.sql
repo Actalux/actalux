@@ -44,7 +44,11 @@ CREATE TABLE IF NOT EXISTS linking_cohort_vectors (
     id                 SERIAL PRIMARY KEY,
     cohort_id          INT NOT NULL REFERENCES linking_cohorts(id) ON DELETE CASCADE,
     embedding          VECTOR(256) NOT NULL,     -- same 256-d wespeaker space as the gallery
-    acoustic_condition TEXT,                     -- 'zoom' | 'in_person' | NULL (unknown)
+    -- 'zoom' | 'in_person' | NULL (unknown). Constrained so a typo cannot silently create a third
+    -- condition that splits prototypes; widen later by constraint-swap (the
+    -- speaker_identities_basis_check precedent in migrate_040/042/044/046).
+    acoustic_condition TEXT
+        CHECK (acoustic_condition IS NULL OR acoustic_condition IN ('zoom', 'in_person')),
     source_entity_id   INT REFERENCES entities(id) ON DELETE SET NULL,    -- which body (audit)
     source_document_id INT REFERENCES documents(id) ON DELETE SET NULL,   -- which meeting (audit)
     created_at         TIMESTAMPTZ DEFAULT NOW()
@@ -53,11 +57,36 @@ CREATE INDEX IF NOT EXISTS idx_linking_cohort_vectors_cohort
     ON linking_cohort_vectors (cohort_id);
 
 -- 3. Dual per-condition prototypes: tag each gallery sample with its meeting's acoustic condition so
---    an official's Zoom and room-mic samples aggregate into separate centroids. Nullable, backfilled
---    from the source document's condition. A document is one condition, so the existing
---    UNIQUE(person_id, source_document_id, cluster_label) on subject_voiceprints is unaffected.
+--    an official's Zoom and room-mic samples aggregate into separate centroids. A document is one
+--    condition, so the existing UNIQUE(person_id, source_document_id, cluster_label) on
+--    subject_voiceprints is unaffected.
 ALTER TABLE subject_voiceprints
     ADD COLUMN IF NOT EXISTS acoustic_condition TEXT;
+
+-- 3a. Backfill every existing sample from its source meeting, using the same precise-positive proxy
+--     the linker's embed cache uses: a document is 'zoom' iff it produced a screen_name identity (a
+--     Zoom gallery tile was OCR'd for someone in it), else 'in_person' (the uncertain bucket — a
+--     Zoom meeting whose tiles we never read also lands here). Without this the column is NULL for
+--     every row and every official collapses to ONE 'unknown' prototype, which is exactly the
+--     blurred average dual prototypes exist to replace. Idempotent via the IS NULL guard.
+UPDATE subject_voiceprints sv
+SET acoustic_condition = CASE
+        WHEN EXISTS (
+            SELECT 1
+            FROM speaker_identities si
+            WHERE si.document_id = sv.source_document_id
+              AND si.basis = 'screen_name'
+        ) THEN 'zoom'
+        ELSE 'in_person'
+    END
+WHERE sv.acoustic_condition IS NULL;
+
+-- 3b. Same closed vocabulary as the cohort vectors (added after the backfill so it validates it).
+ALTER TABLE subject_voiceprints
+    DROP CONSTRAINT IF EXISTS subject_voiceprints_acoustic_condition_check;
+ALTER TABLE subject_voiceprints
+    ADD CONSTRAINT subject_voiceprints_acoustic_condition_check
+    CHECK (acoustic_condition IS NULL OR acoustic_condition IN ('zoom', 'in_person'));
 
 -- 4. RLS: the cohort tables are internal (background embeddings + headers). Service key only; no
 --    anon/authenticated read. subject_voiceprints is already service-only (migrate_040).

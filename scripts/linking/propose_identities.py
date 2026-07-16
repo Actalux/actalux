@@ -25,15 +25,16 @@ from __future__ import annotations
 import argparse
 import logging
 import os
-from pathlib import Path
+from typing import Any
 
 import numpy as np
 from supabase import Client
 
 from actalux.config import load_config
 from actalux.db import fetch_all_rows, get_client, get_place_by_path
-from actalux.diarization.enrollment import select_enrollable
+from actalux.diarization.enrollment import EMBED_MODEL, NAME_ANCHOR_BASES, select_enrollable
 from actalux.diarization.linking.benchmark import cannot_link_same_meeting
+from actalux.diarization.linking.cache import MODE_ALL, cache_dir, require_mode
 from actalux.diarization.linking.cluster import constrained_complete_linkage
 from actalux.diarization.linking.cohort import load_active_cohort, parse_pgvector
 from actalux.diarization.linking.observations import (
@@ -48,7 +49,6 @@ from actalux.errors import ActaluxError
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-EMBED_MODEL = "pyannote/wespeaker-voxceleb-resnet34-LM"  # frozen; matches the gallery + cohort
 AGGREGATION = "max-anchor"  # score = max pair score to the node's anchored member(s)
 # A biometric proposal must never clobber a human decision or a stronger name anchor.
 PROTECTED_CONFIDENCE = {"inferred_high", "confirmed", "rejected"}
@@ -109,19 +109,24 @@ def load_gallery_prototypes(
     """Per-condition gallery prototypes for the body's officials (virtual anchors), cleared-only.
 
     Trusts a voiceprint only when its ``calibration_id`` resolves to a ``cleared`` calibration
-    (migrate_041). Returns one ``(centroid, person_id)`` per (official, acoustic condition). Empty
-    when the body has no cleared gallery yet (the current schools case).
+    (migrate_041) THAT COVERS THIS BODY — the calibration's ``entity_id`` is one of the body's
+    entities, or NULL (place-wide). Calibration is a per-body gate: clearing the plan commission
+    says nothing about whether the schools gallery is trustworthy, and a place-wide filter would let
+    one body's clearance unlock another's prototypes. Returns one ``(centroid, person_id)`` per
+    (official, acoustic condition); empty when this body has no cleared gallery (the schools case).
     """
+    scope = set(entity_ids)
     cleared = {
         r["id"]
         for r in fetch_all_rows(
             lambda: (
                 client.table("voiceprint_calibration")
-                .select("id,status")
+                .select("id,status,entity_id")
                 .eq("place_id", place_id)
                 .eq("status", "cleared")
             )
         )
+        if r.get("entity_id") is None or r.get("entity_id") in scope
     }
     if not cleared:
         return []
@@ -172,10 +177,35 @@ def _link(
     return build_proposals(pred, index_official, scores, identity)
 
 
+def skip_reason(existing: dict[str, Any] | None) -> str | None:
+    """Why a voiceprint proposal must not touch this ``speaker_identities`` row (None = writable).
+
+    A biometric guess is the WEAKEST evidence we hold, so it may only fill a row that is absent, has
+    no basis, or is itself a previous voiceprint proposal. Two ways a row is off-limits:
+
+    - **Protected tier** — ``confirmed``/``rejected`` are human decisions (also trigger-protected in
+      migrate_035/043) and ``inferred_high`` is anon-visible.
+    - **Any name-anchor basis, at ANY tier** — a ``rollcall``/``self_intro`` row held at
+      ``inferred_medium`` is NOT enrollable at that tier, so it never reaches the proposer's anchor
+      set and is invisible to the link. Skipping on confidence alone would let the upsert rewrite a
+      name-derived attribution's basis to 'voiceprint'. Name evidence outranks voice evidence
+      regardless of tier.
+    """
+    if existing is None:
+        return None
+    if existing.get("confidence") in PROTECTED_CONFIDENCE:
+        return f"protected confidence {existing.get('confidence')!r}"
+    basis = existing.get("basis")
+    if basis in NAME_ANCHOR_BASES:
+        return f"name-anchored basis {basis!r} outranks a voiceprint guess"
+    return None
+
+
 def _write_proposals(
     client: Client,
     entity_ids: list[int],
     proposals: list[Proposal],
+    seconds_by_cluster: dict[tuple[int, str], float],
     *,
     threshold: float,
 ) -> int:
@@ -195,11 +225,11 @@ def _write_proposals(
     }
     doc_ids = sorted({p.document_id for p in proposals})
     existing = {
-        (r["document_id"], r["cluster_label"]): r["confidence"]
+        (r["document_id"], r["cluster_label"]): r
         for r in fetch_all_rows(
             lambda: (
                 client.table("speaker_identities")
-                .select("document_id,cluster_label,confidence")
+                .select("document_id,cluster_label,confidence,basis")
                 .in_("document_id", doc_ids)
             )
         )
@@ -211,8 +241,10 @@ def _write_proposals(
         if subject_id is None:
             logger.warning("skip: person %d has no publishable subject in this body", p.person_id)
             continue
-        if existing.get((p.document_id, p.cluster_label)) in PROTECTED_CONFIDENCE:
-            continue  # never overwrite a human decision or a stronger name anchor
+        reason = skip_reason(existing.get((p.document_id, p.cluster_label)))
+        if reason is not None:
+            logger.info("skip doc %d %s: %s", p.document_id, p.cluster_label, reason)
+            continue
         client.table("speaker_identities").upsert(
             {
                 "document_id": p.document_id,
@@ -233,6 +265,9 @@ def _write_proposals(
                 "model": EMBED_MODEL,
                 "threshold_version": threshold_version,
                 "aggregation": AGGREGATION,
+                "target_seconds": seconds_by_cluster.get((p.document_id, p.cluster_label)),
+                # the runners-up this match beat — what a reviewer needs to judge a thin margin
+                "alternatives": [{"person_id": pid, "score": s} for pid, s in p.alternatives],
             }
         ).execute()
         written += 1
@@ -247,10 +282,16 @@ def run(args: argparse.Namespace) -> None:
     place_id = place["id"]
     entity_ids = body_entity_ids(client, place_id, args.body)
 
-    cache_dir = Path(args.cache_dir) / f"{args.state}_{args.place}_{args.body}"
-    obs = load_observation_dir(cache_dir)
+    # The proposer names clusters no anchor covers, so it needs the ALL-cluster cache; an anchored
+    # cache would yield zero proposals and look like a clean run.
+    cache_path = cache_dir(args.cache_dir, args.state, args.place, args.body, mode=MODE_ALL)
+    require_mode(cache_path, MODE_ALL)
+    obs = load_observation_dir(cache_path)
     if not obs:
-        raise ActaluxError(f"no cached observations under {cache_dir}; run build_embedding_cache")
+        raise ActaluxError(
+            f"no cached observations under {cache_path}; run build_embedding_cache "
+            f"--include-unanchored"
+        )
 
     anchors = fetch_person_labels(client, place_id, obs)
     identity: list[tuple[int, str] | None] = [(o.document_id, o.cluster_label) for o in obs]
@@ -271,7 +312,7 @@ def run(args: argparse.Namespace) -> None:
                 identity.append(None)  # virtual prototype: anchors, never proposed
             logger.info("augmented with %d gallery prototype(s)", len(protos))
 
-    cohort = load_active_cohort(client, place_id)
+    cohort = load_active_cohort(client, place_id, expected_model=EMBED_MODEL)
     if cohort.size == 0:
         raise ActaluxError("no active frozen cohort — build_cohort.py + activate one first")
 
@@ -301,7 +342,10 @@ def run(args: argparse.Namespace) -> None:
     if not args.write:
         logger.info("dry-run: no writes. Re-run with --write to insert below-gate proposals.")
         return
-    written = _write_proposals(client, entity_ids, proposals, threshold=args.threshold)
+    seconds_by_cluster = {(o.document_id, o.cluster_label): o.speech_seconds for o in obs}
+    written = _write_proposals(
+        client, entity_ids, proposals, seconds_by_cluster, threshold=args.threshold
+    )
     logger.info("wrote %d proposal(s) at inferred_medium/voiceprint (for human review)", written)
 
 

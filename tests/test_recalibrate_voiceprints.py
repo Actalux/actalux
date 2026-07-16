@@ -245,6 +245,33 @@ def _clean_dual_model(primary, alt):
     return samples_by_model, pooled_officials
 
 
+def test_finish_stamps_acoustic_condition_per_meeting():
+    # Without a stamped condition every gallery row is NULL and each official collapses to ONE
+    # 'unknown' prototype — the blurred average dual per-condition prototypes exist to replace.
+    primary, alt = "wp", "ecapa"
+    samples_by_model, pooled_officials = _clean_dual_model(primary, alt)
+    zoom_docs = {ec.document_id for ec, _ in pooled_officials[:1]}
+    client = _FakeClient()
+    rc._finish(
+        client,
+        place_id=5,
+        entity_id=None,
+        models=[primary, alt],
+        samples_by_model=samples_by_model,
+        pooled_officials=pooled_officials,
+        processed_docs={1, 2, 3},
+        superseded=set(),
+        zoom_doc_ids=zoom_docs,
+        args=SimpleNamespace(precision_bar=0.9),
+    )
+    written = [row for _table, rows in client.recorder["upserts"] for row in rows]
+    assert written, "clean data should enroll the gallery"
+    assert {r["acoustic_condition"] for r in written} <= {"zoom", "in_person"}
+    for row in written:
+        want = "zoom" if row["source_document_id"] in zoom_docs else "in_person"
+        assert row["acoustic_condition"] == want
+
+
 def test_finish_persists_only_primary_vectors_and_reports_ab():
     primary, alt = "wp", "ecapa"
     samples_by_model, pooled_officials = _clean_dual_model(primary, alt)
@@ -258,6 +285,7 @@ def test_finish_persists_only_primary_vectors_and_reports_ab():
         pooled_officials=pooled_officials,
         processed_docs={1, 2, 3},
         superseded=set(),
+        zoom_doc_ids=set(),
         args=SimpleNamespace(precision_bar=0.9),
     )
 
@@ -293,6 +321,7 @@ def test_finish_single_model_writes_no_ab_block():
         pooled_officials=pooled_officials,
         processed_docs={1, 2, 3},
         superseded=set(),
+        zoom_doc_ids=set(),
         args=SimpleNamespace(precision_bar=0.9),
     )
     (_table, cal_row) = client.recorder["inserts"][0]
@@ -316,6 +345,7 @@ def test_finish_report_carries_audit_delta_and_trusted_recall():
         pooled_officials=pooled_officials,
         processed_docs={1, 2, 3, 4},
         superseded=set(),
+        zoom_doc_ids=set(),
         args=SimpleNamespace(precision_bar=0.9),
     )
     (_t, cal_row) = client.recorder["inserts"][0]
@@ -467,6 +497,7 @@ def test_finish_quarantines_twin_negative_and_reports_clean_fp():
         pooled_officials=pooled_officials,
         processed_docs={1, 2, 3, 4},
         superseded=set(),
+        zoom_doc_ids=set(),
         args=SimpleNamespace(precision_bar=0.9),
     )
     (_t, cal_row) = client.recorder["inserts"][0]
@@ -515,6 +546,7 @@ def test_finish_alien_positive_never_persists():
         pooled_officials=pooled_officials,
         processed_docs={1, 2, 3, 4, 5},
         superseded=set(),
+        zoom_doc_ids=set(),
         args=SimpleNamespace(precision_bar=0.9),
     )
     (_t, cal_row) = client.recorder["inserts"][0]

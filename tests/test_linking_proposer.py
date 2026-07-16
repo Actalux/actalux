@@ -42,6 +42,23 @@ def test_build_proposals_propagates_single_official() -> None:
     assert np.isclose(p.margin, 0.8)  # 0.9 to official 100 minus 0.1 to official 200
 
 
+def test_build_proposals_records_runner_up_alternatives() -> None:
+    # a reviewer judging a thin margin needs to see WHO the voice nearly matched, not just by how
+    # much: official 200 is the runner-up at 0.1, and the margin is measured against it
+    scores = np.array([[1.0, 0.9, 0.1], [0.9, 1.0, 0.1], [0.1, 0.1, 1.0]])
+    proposals = build_proposals(
+        [0, 0, 1], {0: 100, 2: 200}, scores, [(10, "S0"), (11, "S0"), (12, "S0")]
+    )
+    assert proposals[0].alternatives == ((200, 0.1),)
+
+
+def test_build_proposals_alternatives_empty_without_other_officials() -> None:
+    scores = np.array([[1.0, 0.9], [0.9, 1.0]])
+    proposals = build_proposals([0, 0], {0: 100}, scores, [(10, "S0"), (11, "S0")])
+    assert proposals[0].alternatives == ()
+    assert proposals[0].margin == proposals[0].score  # nothing to measure a margin against
+
+
 def test_build_proposals_ambiguous_node_proposes_nothing() -> None:
     scores = np.eye(3)
     pred = [0, 0, 0]  # all one node
