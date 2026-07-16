@@ -5,8 +5,10 @@ from __future__ import annotations
 import numpy as np
 
 from actalux.diarization.linking.calibration import (
+    FEATURE_NAMES,
     _fit_logistic,
     _sigmoid,
+    balanced_sample_weight,
     calibrated_matrix,
     fit_calibrator,
     labeled_pair_targets,
@@ -67,6 +69,49 @@ def test_labeled_pair_targets_skips_unlabeled_pairs() -> None:
     keep, y = labeled_pair_targets([10, 10, None], [(0, 1), (0, 2), (1, 2)])
     assert keep == [0]  # only (0,1) has both ends labeled
     assert y.tolist() == [1.0]
+
+
+def test_labeled_pair_targets_excludes_cannot_link_pairs() -> None:
+    # (0,2) are same-meeting -> a structural negative the linker already forbids; it must not be
+    # fed to the fit as a free easy negative
+    true = [10, 20, 30]
+    pairs = [(0, 1), (0, 2), (1, 2)]
+    keep, y = labeled_pair_targets(true, pairs, exclude={frozenset((0, 2))})
+    assert keep == [0, 2]
+    assert y.tolist() == [0.0, 0.0]
+
+
+def test_pair_features_log_scales_duration() -> None:
+    assert FEATURE_NAMES[3] == "log_min_seconds"
+    obs = [_obs(1, [1.0, 0.0], "zoom"), _obs(2, [0.0, 1.0], "zoom")]
+    emb = embedding_matrix(obs)
+    feats, _ = pair_features(emb, emb, ["zoom", "zoom"], [30.0, 1200.0])
+    # the pair's duration feature is log1p(min(30, 1200)), not the raw 30
+    assert feats[0, 3] == np.log1p(30.0)
+
+
+def test_balanced_sample_weight_equalizes_class_mass() -> None:
+    y = np.array([1.0, 0.0, 0.0, 0.0])
+    w = balanced_sample_weight(y)
+    # the lone positive carries the same mass as the three negatives combined
+    assert np.isclose(w[y == 1.0].sum(), w[y == 0.0].sum())
+    assert np.isclose(w.sum(), y.size)  # total mass preserved
+
+
+def test_balanced_sample_weight_single_class_is_uniform() -> None:
+    assert balanced_sample_weight(np.array([1.0, 1.0])).tolist() == [1.0, 1.0]
+
+
+def test_balanced_weighting_shifts_bias_not_the_score_direction() -> None:
+    # one positive against many negatives: balancing must lift the intercept toward the rare class
+    # without flipping what the score means (higher feature still -> more likely same-official)
+    feats = np.array([[0.9], [0.1], [0.2], [0.15]])
+    y = np.array([1.0, 0.0, 0.0, 0.0])
+    plain = fit_calibrator(feats, y, balanced=False)
+    weighted = fit_calibrator(feats, y, balanced=True)
+    assert weighted.weights[0] > plain.weights[0]  # bias shifts toward the rare positive class
+    assert plain.weights[1] > 0.0
+    assert weighted.weights[1] > 0.0  # sign of the feature weight is unchanged
 
 
 def test_calibrated_matrix_ranks_same_official_above_cross() -> None:

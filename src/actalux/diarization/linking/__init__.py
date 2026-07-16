@@ -7,6 +7,12 @@ constants live here. See docs/architecture/linking-prototype-phase1.md.
 
 from __future__ import annotations
 
+from actalux.diarization.linking.benchmark import (
+    cannot_link_audit,
+    cannot_link_same_meeting,
+    loo_operating_point,
+    poison_blast_radius,
+)
 from actalux.diarization.linking.cluster import constrained_complete_linkage
 from actalux.diarization.linking.evaluate import (
     bcubed_prf,
@@ -45,14 +51,18 @@ __all__ = [
     "VoiceObservation",
     "asnorm_matrix",
     "bcubed_prf",
+    "cannot_link_audit",
+    "cannot_link_same_meeting",
     "constrained_complete_linkage",
     "cosine_matrix",
     "coverage",
     "embedding_matrix",
     "load_observations",
+    "loo_operating_point",
     "macro_recall_by_official",
     "pairwise_prf",
     "per_condition_pair_f1",
+    "poison_blast_radius",
     "purity",
     "save_observations",
 ]

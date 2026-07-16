@@ -163,6 +163,11 @@ def _false_enrollments(pred: list[int], true: list[Hashable | None]) -> int:
     A node enrolls under its dominant official; any minority-official cluster sharing that node
     would be enrolled as the wrong person — a false enrollment. Counts those over labeled items
     only; ties in the majority are broken by first appearance (arbitrary but consistent).
+
+    This is an explicit UPPER BOUND, not an expectation: the real proposer refuses to name any node
+    holding two anchored officials (``proposer.resolve_node_official``), so a contaminated node of
+    anchored clusters yields no proposal at all. The bound is what would happen if that guard were
+    removed — which is exactly the quantity a poisoning study should report.
     """
     by_node: dict[int, list[Hashable]] = defaultdict(list)
     for i, t in enumerate(true):
@@ -173,6 +178,45 @@ def _false_enrollments(pred: list[int], true: list[Hashable | None]) -> int:
         majority = Counter(members).most_common(1)[0][0]
         false += sum(1 for m in members if m != majority)
     return false
+
+
+def _stratified_poison_pairs(
+    labeled: list[int],
+    true: list[Hashable | None],
+    cannot_link: set[frozenset[int]],
+    max_trials: int,
+) -> list[frozenset[int]]:
+    """A deterministic, official-pair-stratified sample of cross-official poison candidates.
+
+    Plain index-order sampling degenerates: ``combinations`` yields ``(0,1), (0,2), (0,3)…``, so the
+    first ``max_trials`` candidates nearly all poison cluster 0 — the study then measures one
+    official. Grouping by the unordered official pair and round-robining one candidate per group
+    spreads the trials across the roster while staying fully deterministic (groups in sorted key
+    order; candidates within a group in index order).
+    """
+    by_official_pair: dict[tuple[str, str], list[frozenset[int]]] = defaultdict(list)
+    for a, b in combinations(labeled, 2):
+        if true[a] == true[b] or frozenset((a, b)) in cannot_link:
+            continue  # need a cross-official pair that cannot_link does not already forbid
+        key = (str(true[a]), str(true[b]))
+        by_official_pair[tuple(sorted(key))].append(frozenset((a, b)))
+    groups = [by_official_pair[k] for k in sorted(by_official_pair)]
+    out: list[frozenset[int]] = []
+    depth = 0
+    while len(out) < max_trials and any(depth < len(g) for g in groups):
+        for group in groups:
+            if depth < len(group):
+                out.append(group[depth])
+                if len(out) >= max_trials:
+                    break
+        depth += 1
+    return out
+
+
+def _node_holds_two_officials(pred: list[int], true: list[Hashable | None], node: int) -> bool:
+    """Does this node hold >= 2 distinct labeled officials — the shape the proposer won't name?"""
+    officials = {true[i] for i, p in enumerate(pred) if p == node and true[i] is not None}
+    return len(officials) >= 2
 
 
 def poison_blast_radius(
@@ -188,39 +232,73 @@ def poison_blast_radius(
     Complete-linkage is precision-biased: one spurious edge rarely fuses two whole identities
     (every cross pair must also clear the threshold). This quantifies that robustness — it forces
     one cross-official, cross-meeting pair to merge (a ``must_link``) at ``threshold`` and counts
-    the extra false enrollments versus the un-poisoned assignment, over a deterministic sample of
-    the first ``max_trials`` such pairs (index order). Reports mean and worst-case blast radius.
+    the extra false enrollments versus the un-poisoned assignment, over a stratified deterministic
+    sample of up to ``max_trials`` such pairs (see :func:`_stratified_poison_pairs`).
+
+    Reports the mean/worst-case blast radius (the :func:`_false_enrollments` upper bound) plus
+    ``ambiguity_caught`` — the fraction of poisoned runs whose merged node holds two officials and
+    would therefore be REFUSED by the proposer's ambiguity guard. Every sampled poison joins two
+    anchored officials, so a healthy run reports 1.0 by construction: the value is an invariant
+    check that the forced merge actually landed (and that the guard stands between the bound and
+    reality), not a discovered quantity.
     """
     labeled = [i for i, t in enumerate(true) if t is not None]
     base_pred = constrained_complete_linkage(scores, threshold=threshold, cannot_link=cannot_link)
     base_false = _false_enrollments(base_pred, true)
-    poisons: list[frozenset[int]] = []
-    for a, b in combinations(labeled, 2):
-        if true[a] == true[b] or frozenset((a, b)) in cannot_link:
-            continue  # need a cross-official pair that cannot_link does not already forbid
-        poisons.append(frozenset((a, b)))
-        if len(poisons) >= max_trials:
-            break
+    poisons = _stratified_poison_pairs(labeled, true, cannot_link, max_trials)
     if not poisons:
-        return {"n_trials": 0.0, "mean_false_enrollments": 0.0, "max_false_enrollments": 0.0}
-    deltas = [
-        _false_enrollments(
-            constrained_complete_linkage(
-                scores, threshold=threshold, cannot_link=cannot_link, must_link={pair}
-            ),
-            true,
+        return {
+            "n_trials": 0.0,
+            "mean_false_enrollments": 0.0,
+            "max_false_enrollments": 0.0,
+            "ambiguity_caught": 0.0,
+        }
+    deltas: list[int] = []
+    caught = 0
+    for pair in poisons:
+        pred = constrained_complete_linkage(
+            scores, threshold=threshold, cannot_link=cannot_link, must_link={pair}
         )
-        - base_false
-        for pair in poisons
-    ]
+        deltas.append(_false_enrollments(pred, true) - base_false)
+        if _node_holds_two_officials(pred, true, pred[next(iter(pair))]):
+            caught += 1
     return {
         "n_trials": float(len(deltas)),
         "mean_false_enrollments": float(np.mean(deltas)),
         "max_false_enrollments": float(max(deltas)),
+        "ambiguity_caught": caught / len(deltas),
     }
 
 
-def loo_threshold_ci(
+def _official_pair_recall(
+    pred: list[int], true: list[Hashable | None], official: Hashable
+) -> float | None:
+    """One official's pair recall: their same-official pairs sharing a node. None if singleton."""
+    members = [i for i, t in enumerate(true) if t == official]
+    if len(members) < 2:
+        return None  # a single cluster forms no same-official pair -> recall is undefined
+    total = len(members) * (len(members) - 1) // 2
+    counts = Counter(pred[i] for i in members)
+    same = sum(k * (k - 1) // 2 for k in counts.values())
+    return same / total
+
+
+def _official_false_merge(pred: list[int], true: list[Hashable | None], official: Hashable) -> bool:
+    """Is any of this official's clusters sitting in a node whose majority official differs?"""
+    by_node: dict[int, list[Hashable]] = defaultdict(list)
+    for i, t in enumerate(true):
+        if t is not None:
+            by_node[pred[i]].append(t)
+    for i, t in enumerate(true):
+        if t != official:
+            continue
+        majority = Counter(by_node[pred[i]]).most_common(1)[0][0]
+        if majority != official:
+            return True
+    return False
+
+
+def loo_operating_point(
     scores: np.ndarray,
     cannot_link: set[frozenset[int]],
     true: list[Hashable | None],
@@ -229,45 +307,64 @@ def loo_threshold_ci(
     *,
     purity_floor: float,
     n_thresholds: int = DEFAULT_N_THRESHOLDS,
-) -> dict[str, float | list[float]]:
-    """Leave-one-official-out operating threshold with a spread band.
+) -> dict[str, object]:
+    """Leave-one-official-out operating point — how the threshold generalizes to an UNSEEN official.
 
-    The operating point is a point estimate on ~21 officials; retuning it on the same anchors that
-    define ground truth would overfit. This holds out each official in turn (drops their clusters
-    from the labeled benchmark), re-selects the across-meeting-F1-maximizing threshold at
-    ``purity_floor`` on the rest, and summarizes the held-out thresholds (mean + a 2.5/97.5
-    percentile band). A fold that clears no point contributes nothing.
+    Selecting the operating threshold on the same anchors that define ground truth overfits, and a
+    threshold's *stability* says nothing about its *performance*. So: hold each official out, choose
+    the threshold on the remaining roster (max across-meeting F1 subject to ``purity_floor``), then
+    score the held-out official at that threshold under the FULL labels — their pair recall, and
+    whether they were falsely merged into another official's node. That is the honest estimate of
+    what the rollout threshold buys on someone it never saw.
+
+    Clustering depends only on ``(scores, threshold)`` — never on labels — so every fold reuses one
+    precomputed linkage per threshold instead of re-clustering the identical grid per official.
+
+    Returns the per-fold records plus a summary. ``threshold_spread_lo/hi`` is the observed min/max
+    across folds — a SPREAD BAND, not a confidence interval: with ~21 folds there is no distribution
+    to interval-estimate, and calling it a CI would overstate it. A fold clearing no point at the
+    floor contributes nothing; a singleton official reports ``heldout_recall`` of ``None``.
     """
     officials = sorted({t for t in true if t is not None}, key=str)
-    thresholds: list[float] = []
+    thresholds = candidate_thresholds(scores, n_thresholds=n_thresholds)
+    preds = {
+        thr: constrained_complete_linkage(scores, threshold=thr, cannot_link=cannot_link)
+        for thr in thresholds
+    }
+    folds: list[dict[str, object]] = []
     for held in officials:
-        reduced: list[Hashable | None] = [None if t == held else t for t in true]
-        best, _ = sweep_backend(
-            scores,
-            cannot_link,
-            reduced,
-            meeting_cond,
-            acoustic_cond,
-            purity_floor=purity_floor,
-            n_thresholds=n_thresholds,
+        # drop the held-out official from the labels the threshold is chosen on
+        reduced: list[str | None] = [None if (t is None or t == held) else str(t) for t in true]
+        best_thr: float | None = None
+        best_f1 = -1.0
+        for thr in thresholds:
+            pred = preds[thr]
+            if purity(pred, reduced) < purity_floor:
+                continue
+            f1 = per_condition_pair_f1(pred, reduced, meeting_cond)["across"]
+            if f1 > best_f1:  # ties keep the first (lowest) threshold, matching sweep_backend
+                best_thr, best_f1 = thr, f1
+        if best_thr is None:
+            continue  # this fold clears no point at the floor — an honest miss
+        pred = preds[best_thr]
+        folds.append(
+            {
+                "official": held,
+                "threshold": best_thr,
+                "heldout_recall": _official_pair_recall(pred, true, held),
+                "false_merge": _official_false_merge(pred, true, held),
+            }
         )
-        if best is not None:
-            thresholds.append(float(best["threshold"]))
-    if not thresholds:
-        return {
-            "n_folds": 0.0,
-            "mean_threshold": 0.0,
-            "ci95_lo": 0.0,
-            "ci95_hi": 0.0,
-            "thresholds": [],
-        }
-    arr = np.asarray(thresholds)
+    recalls = [f["heldout_recall"] for f in folds if f["heldout_recall"] is not None]
+    thr_vals = [float(f["threshold"]) for f in folds]  # type: ignore[arg-type]
     return {
-        "n_folds": float(len(thresholds)),
-        "mean_threshold": float(np.mean(arr)),
-        "ci95_lo": float(np.percentile(arr, 2.5)),
-        "ci95_hi": float(np.percentile(arr, 97.5)),
-        "thresholds": thresholds,
+        "folds": folds,
+        "n_folds": float(len(folds)),
+        "mean_heldout_recall": float(np.mean(recalls)) if recalls else 0.0,
+        "n_false_merge_folds": float(sum(1 for f in folds if f["false_merge"])),
+        "mean_threshold": float(np.mean(thr_vals)) if thr_vals else 0.0,
+        "threshold_spread_lo": float(np.min(thr_vals)) if thr_vals else 0.0,
+        "threshold_spread_hi": float(np.max(thr_vals)) if thr_vals else 0.0,
     }
 
 

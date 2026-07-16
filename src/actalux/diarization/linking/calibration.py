@@ -25,8 +25,10 @@ import numpy as np
 from actalux.diarization.linking.scoring import asnorm_matrix, cosine_matrix
 
 # Pair features. cross_condition lets the model learn a separate offset for Zoom<->in-person pairs;
-# min_seconds down-weights pairs where one cluster has little speech (a noisy centroid).
-FEATURE_NAMES = ("cosine", "asnorm", "cross_condition", "min_seconds")
+# log_min_seconds down-weights pairs where one cluster has little speech (a noisy centroid) — logged
+# because raw speech seconds have a heavy right tail (tens to thousands), and a linear term would
+# let one marathon cluster dominate the standardization.
+FEATURE_NAMES = ("cosine", "asnorm", "cross_condition", "log_min_seconds")
 
 # Ridge strength (on standardized features; the bias is never regularized) and IRLS iteration count.
 # Light regularization keeps the calibrator from separating perfectly on a handful of anchor pairs.
@@ -44,21 +46,47 @@ def _sigmoid(z: np.ndarray) -> np.ndarray:
     return out
 
 
-def _fit_logistic(design: np.ndarray, y: np.ndarray, *, l2: float, iters: int) -> np.ndarray:
+def balanced_sample_weight(y: np.ndarray) -> np.ndarray:
+    """Class-balanced weights so the rare same-official pairs are not drowned by the negatives.
+
+    Different-official pairs grow ~quadratically with the roster while an official's same-official
+    pairs grow only with their own meeting count, so the fit is dominated by negatives unless the
+    classes are re-weighted. Uses the standard ``n / (2 * n_class)`` convention (total mass stays
+    ``n``). A single-class target is returned unweighted — there is nothing to balance.
+    """
+    y = np.asarray(y, dtype=np.float64)
+    n = y.size
+    n_pos = float((y == 1.0).sum())
+    n_neg = float(n - n_pos)
+    if n_pos == 0.0 or n_neg == 0.0:
+        return np.ones(n)
+    return np.where(y == 1.0, n / (2.0 * n_pos), n / (2.0 * n_neg))
+
+
+def _fit_logistic(
+    design: np.ndarray,
+    y: np.ndarray,
+    *,
+    l2: float,
+    iters: int,
+    sample_weight: np.ndarray | None = None,
+) -> np.ndarray:
     """Ridge-regularized logistic regression by IRLS (Newton-Raphson).
 
     ``design`` includes the leading bias column of ones. The ridge term stabilizes the Hessian on
-    separable or collinear data and is not applied to the bias.
+    separable or collinear data and is not applied to the bias. ``sample_weight`` (default: uniform)
+    scales each observation's contribution to both the gradient and the Hessian.
     """
-    d = design.shape[1]
+    n, d = design.shape
+    s = np.ones(n) if sample_weight is None else np.asarray(sample_weight, dtype=np.float64)
     w = np.zeros(d)
     reg = l2 * np.eye(d)
     reg[0, 0] = 0.0  # never regularize the bias term
     for _ in range(iters):
         p = _sigmoid(design @ w)
-        weights = p * (1.0 - p)
-        grad = design.T @ (y - p) - reg @ w
-        hess = design.T @ (design * weights[:, None]) + reg
+        irls_w = s * p * (1.0 - p)
+        grad = design.T @ (s * (y - p)) - reg @ w
+        hess = design.T @ (design * irls_w[:, None]) + reg
         w = w + np.linalg.solve(hess, grad)
     return w
 
@@ -92,23 +120,34 @@ def pair_features(
     pairs: list[tuple[int, int]] = []
     for i, j in combinations(range(embeddings.shape[0]), 2):
         cross = 0.0 if conditions[i] == conditions[j] else 1.0
-        rows.append([cos[i, j], asn[i, j], cross, min(seconds[i], seconds[j])])
+        rows.append([cos[i, j], asn[i, j], cross, float(np.log1p(min(seconds[i], seconds[j])))])
         pairs.append((i, j))
     return np.asarray(rows, dtype=np.float64), pairs
 
 
 def labeled_pair_targets(
-    true: list[object | None], pairs: list[tuple[int, int]]
+    true: list[object | None],
+    pairs: list[tuple[int, int]],
+    *,
+    exclude: set[frozenset[int]] | None = None,
 ) -> tuple[list[int], np.ndarray]:
-    """Same-official (1) / different-official (0) targets over labeled pairs only.
+    """Same-official (1) / different-official (0) targets over labeled, fittable pairs.
 
     Returns the indices into ``pairs`` that are labeled on both ends plus the target vector, so the
     caller fits on ``feats[keep]``. Pairs touching an unlabeled cluster are dropped, never guessed.
+
+    ``exclude`` (pass ``benchmark.cannot_link_same_meeting``) drops structurally-negative pairs from
+    the FIT: two clusters in one recording are different speakers by construction, and the linker
+    already forbids merging them — so they are free easy negatives that flatter the calibrator and
+    drag its bias without ever being scored at inference. Prediction still fills the full matrix;
+    linkage ignores those entries regardless.
     """
     keep: list[int] = []
     y: list[float] = []
     for k, (i, j) in enumerate(pairs):
         if true[i] is None or true[j] is None:
+            continue
+        if exclude is not None and frozenset((i, j)) in exclude:
             continue
         keep.append(k)
         y.append(1.0 if true[i] == true[j] else 0.0)
@@ -116,9 +155,18 @@ def labeled_pair_targets(
 
 
 def fit_calibrator(
-    feats: np.ndarray, y: np.ndarray, *, l2: float = DEFAULT_L2, iters: int = DEFAULT_IRLS_ITERS
+    feats: np.ndarray,
+    y: np.ndarray,
+    *,
+    l2: float = DEFAULT_L2,
+    iters: int = DEFAULT_IRLS_ITERS,
+    balanced: bool = True,
 ) -> Calibrator:
-    """Fit the calibrator on labeled pair features (standardized) and same/different targets."""
+    """Fit the calibrator on labeled pair features (standardized) and same/different targets.
+
+    ``balanced`` (default) class-weights the fit so the quadratically-more-numerous negatives do not
+    swamp the same-official pairs; pass ``False`` for a raw unweighted fit.
+    """
     feats = np.asarray(feats, dtype=np.float64)
     y = np.asarray(y, dtype=np.float64)
     mean = feats.mean(axis=0)
@@ -126,7 +174,13 @@ def fit_calibrator(
     std[std == 0] = 1.0  # a constant feature standardizes to 0; guard the divide
     z = (feats - mean) / std
     design = np.column_stack([np.ones(z.shape[0]), z])
-    w = _fit_logistic(design, y, l2=l2, iters=iters)
+    w = _fit_logistic(
+        design,
+        y,
+        l2=l2,
+        iters=iters,
+        sample_weight=balanced_sample_weight(y) if balanced else None,
+    )
     return Calibrator(weights=w, mean=mean, std=std)
 
 

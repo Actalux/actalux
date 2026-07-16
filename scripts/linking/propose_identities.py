@@ -35,7 +35,7 @@ from actalux.db import fetch_all_rows, get_client, get_place_by_path
 from actalux.diarization.enrollment import select_enrollable
 from actalux.diarization.linking.benchmark import cannot_link_same_meeting
 from actalux.diarization.linking.cluster import constrained_complete_linkage
-from actalux.diarization.linking.cohort import _parse_embedding, load_active_cohort
+from actalux.diarization.linking.cohort import load_active_cohort, parse_pgvector
 from actalux.diarization.linking.observations import (
     VoiceObservation,
     embedding_matrix,
@@ -147,7 +147,7 @@ def load_gallery_prototypes(
     for r in rows:
         if r.get("calibration_id") not in cleared:
             continue
-        vec = np.asarray(_parse_embedding(r["embedding"]), dtype=np.float64)
+        vec = np.asarray(parse_pgvector(r["embedding"]), dtype=np.float64)
         cond = r.get("acoustic_condition") or "unknown"
         by_person.setdefault(r["person_id"], []).append((vec, cond))
     protos: list[tuple[np.ndarray, int]] = []

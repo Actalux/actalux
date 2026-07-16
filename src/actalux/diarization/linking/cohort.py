@@ -19,11 +19,12 @@ from supabase import Client
 from actalux.db import fetch_all_rows
 
 
-def _parse_embedding(value: object) -> list[float]:
+def parse_pgvector(value: object) -> list[float]:
     """Coerce a pgvector ``VECTOR`` column into a list of floats.
 
     PostgREST returns a ``VECTOR`` as a bracketed string (``"[1,2,3]"``) or, when already decoded,
-    a sequence. Accept both so the loader is robust to client/serialization differences.
+    a sequence. Accept both so the loader is robust to client/serialization differences. Public
+    because every reader of a stored embedding (cohort vectors, gallery voiceprints) needs it.
     """
     if isinstance(value, str):
         return [float(x) for x in json.loads(value)]
@@ -75,4 +76,4 @@ def load_active_cohort(client: Client, place_id: int | None) -> np.ndarray:
     )
     if not rows:
         return np.empty((0, 0))
-    return np.asarray([_parse_embedding(r["embedding"]) for r in rows], dtype=np.float64)
+    return np.asarray([parse_pgvector(r["embedding"]) for r in rows], dtype=np.float64)

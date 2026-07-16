@@ -5,13 +5,14 @@ from __future__ import annotations
 import numpy as np
 
 from actalux.diarization.linking.benchmark import (
+    _stratified_poison_pairs,
     best_at_floors,
     candidate_thresholds,
     cannot_link_audit,
     cannot_link_same_meeting,
     evaluate_point,
     label_stats,
-    loo_threshold_ci,
+    loo_operating_point,
     poison_blast_radius,
     sweep_backend,
 )
@@ -181,22 +182,94 @@ def test_poison_blast_radius_no_cross_official_pairs_is_zero() -> None:
     assert result["max_false_enrollments"] == 0.0
 
 
-def test_loo_threshold_ci_reports_folds_and_band() -> None:
+def test_poison_blast_radius_catches_ambiguity_on_anchored_fixture() -> None:
     obs = _two_officials_across_conditions()
+    scores = cosine_matrix(embedding_matrix(obs))
+    result = poison_blast_radius(scores, set(), [100, 100, 200, 200], threshold=0.5)
+    # every sampled poison fuses two ANCHORED officials, so the proposer's ambiguity guard would
+    # refuse all of them -> the false-enrollment count is an upper bound the guard never realizes
+    assert result["ambiguity_caught"] == 1.0
+
+
+def test_stratified_poison_pairs_spread_across_official_pairs() -> None:
+    # 3 officials -> 3 unordered official-pairs (A-B, A-C, B-C), 4 candidate cluster pairs each
+    true = [100, 100, 200, 200, 300, 300]
+    pairs = _stratified_poison_pairs(list(range(6)), true, set(), max_trials=3)
+    assert len(pairs) == 3
+    official_pairs = {tuple(sorted(str(true[i]) for i in p)) for p in pairs}
+    assert len(official_pairs) == 3  # one per official-pair...
+    assert not all(0 in p for p in pairs)  # ...not three poisonings of cluster 0 (index-order bug)
+
+
+def _three_officials() -> list[VoiceObservation]:
+    # A near [1,0,0] (docs 1,2); B near [0,1,0] (docs 3,4); C near [0,0,1] (docs 5,6).
+    # Within-official cosine ~0.99, cross-official <=0.28 -> a threshold exists that separates all
+    # three, so holding one out still leaves purity able to punish a degenerate low threshold.
+    return [
+        _obs(1, "S0", [1.0, 0.0, 0.0], "zoom"),
+        _obs(2, "S0", [0.99, 0.141, 0.0], "in_person"),
+        _obs(3, "S0", [0.0, 1.0, 0.0], "zoom"),
+        _obs(4, "S0", [0.141, 0.99, 0.0], "in_person"),
+        _obs(5, "S0", [0.0, 0.0, 1.0], "zoom"),
+        _obs(6, "S0", [0.0, 0.141, 0.99], "in_person"),
+    ]
+
+
+_THREE_TRUE = [100, 100, 200, 200, 300, 300]
+
+
+def test_loo_operating_point_reports_heldout_recall_per_fold() -> None:
+    obs = _three_officials()
     scores = cosine_matrix(embedding_matrix(obs))
     meeting = [str(o.document_id) for o in obs]
     cond = [o.acoustic_condition for o in obs]
-    ci = loo_threshold_ci(
-        scores,
-        cannot_link_same_meeting(obs),
-        [100, 100, 200, 200],
-        meeting,
-        cond,
-        purity_floor=0.95,
+    result = loo_operating_point(
+        scores, cannot_link_same_meeting(obs), _THREE_TRUE, meeting, cond, purity_floor=0.95
     )
-    assert ci["n_folds"] == 2.0  # each held-out official leaves the other, which resolves a point
-    assert ci["ci95_lo"] <= ci["mean_threshold"] <= ci["ci95_hi"]
-    assert len(ci["thresholds"]) == 2
+    assert result["n_folds"] == 3.0  # one fold per official, each resolving a point
+    # each held-out official's own pair still merges at the threshold chosen without them
+    assert result["mean_heldout_recall"] == 1.0
+    assert result["n_false_merge_folds"] == 0.0
+    assert result["threshold_spread_lo"] <= result["threshold_spread_hi"]
+    assert all(f["heldout_recall"] == 1.0 for f in result["folds"])
+
+
+def test_loo_operating_point_thresholds_match_sweep_backend_selection() -> None:
+    # the precomputed-linkage-per-threshold path must select exactly what a full re-cluster would
+    obs = _three_officials()
+    scores = cosine_matrix(embedding_matrix(obs))
+    meeting = [str(o.document_id) for o in obs]
+    cond = [o.acoustic_condition for o in obs]
+    cl = cannot_link_same_meeting(obs)
+    result = loo_operating_point(scores, cl, _THREE_TRUE, meeting, cond, purity_floor=0.95)
+    for fold in result["folds"]:
+        reduced = [None if t == fold["official"] else t for t in _THREE_TRUE]
+        best, _ = sweep_backend(scores, cl, reduced, meeting, cond, purity_floor=0.95)
+        assert best is not None
+        assert fold["threshold"] == best["threshold"]
+
+
+def test_loo_operating_point_flags_false_merge_of_heldout_official() -> None:
+    # A's second cluster sits on top of B's voice, so any threshold that merges B's own pair also
+    # swallows A2 -> the held-out A fold must report the false merge and a broken recall
+    obs = [
+        _obs(1, "S0", [1.0, 0.0, 0.0], "zoom"),
+        _obs(2, "S0", [0.02, 1.0, 0.0], "zoom"),  # ~B's direction
+        _obs(3, "S0", [0.0, 1.0, 0.0], "zoom"),
+        _obs(4, "S0", [0.01, 1.0, 0.0], "in_person"),
+        _obs(5, "S0", [0.0, 0.0, 1.0], "zoom"),
+        _obs(6, "S0", [0.0, 0.141, 0.99], "in_person"),
+    ]
+    scores = cosine_matrix(embedding_matrix(obs))
+    meeting = [str(o.document_id) for o in obs]
+    cond = [o.acoustic_condition for o in obs]
+    result = loo_operating_point(
+        scores, cannot_link_same_meeting(obs), _THREE_TRUE, meeting, cond, purity_floor=0.95
+    )
+    a_fold = next(f for f in result["folds"] if f["official"] == 100)
+    assert a_fold["false_merge"] is True
+    assert a_fold["heldout_recall"] == 0.0  # A1 and A2 never share a node
+    assert result["n_false_merge_folds"] >= 1.0
 
 
 def test_cannot_link_audit_flags_high_similarity_same_meeting_pair() -> None:
