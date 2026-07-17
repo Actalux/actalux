@@ -400,3 +400,80 @@ def cannot_link_audit(
                 )
     flagged.sort(key=lambda r: r[0], reverse=True)  # sort on the float score, highest first
     return [record for _, record in flagged]
+
+
+def proposer_outcome(pred: list[int], true: list[Hashable | None], index: int) -> str:
+    """What the proposer would do for ONE labeled cluster played as the un-named one.
+
+    The cluster's node-mates (other labeled members of its cluster) vote: exactly one official and
+    it matches -> ``'correct'``; exactly one and it differs -> ``'wrong'`` (the proposer would
+    propose the wrong name); two+ officials -> ``'ambiguous'`` (the ambiguity guard refuses);
+    none -> ``'alone'`` (nothing to inherit).
+    """
+    node = pred[index]
+    officials = {
+        true[j] for j, n in enumerate(pred) if n == node and j != index and true[j] is not None
+    }
+    if not officials:
+        return "alone"
+    if len(officials) > 1:
+        return "ambiguous"
+    return "correct" if officials == {true[index]} else "wrong"
+
+
+def proposer_outcomes(pred: list[int], true: list[Hashable | None]) -> dict[str, int]:
+    """Per-cluster proposer simulation over one clustering: would each cluster be named right?
+
+    Aggregates :func:`proposer_outcome` over every labeled cluster. This is the operational view of
+    a threshold — pairwise F1 rewards recovering whole cliques, but a proposal only needs ONE
+    correct anchored sibling, so the two metrics can rank thresholds differently.
+
+    Unlabeled clusters are skipped (their outcome is unknowable), so on an all-cluster cache the
+    counts cover only the anchored subset.
+    """
+    outcomes = {"correct": 0, "wrong": 0, "ambiguous": 0, "alone": 0}
+    for i in range(len(pred)):
+        if true[i] is None:
+            continue
+        outcomes[proposer_outcome(pred, true, i)] += 1
+    return outcomes
+
+
+def proposer_tradeoff(
+    scores: np.ndarray,
+    cannot_link: set[frozenset[int]],
+    true: list[Hashable | None],
+    *,
+    n_thresholds: int = DEFAULT_N_THRESHOLDS,
+) -> list[dict[str, float]]:
+    """The correct-vs-wrong-IDs curve across the threshold grid (the operating-point evidence).
+
+    One row per candidate threshold: ``threshold``, ``purity``, and the :func:`proposer_outcomes`
+    counts. This is the table an operating-point decision is made from — loosening the threshold
+    trades wrong names for correct ones until the ambiguity guard converts further merges into
+    abstentions and the curve plateaus.
+    """
+    rows: list[dict[str, float]] = []
+    for threshold in candidate_thresholds(scores, n_thresholds=n_thresholds):
+        pred = constrained_complete_linkage(scores, threshold=threshold, cannot_link=cannot_link)
+        row: dict[str, float] = {"threshold": float(threshold), "purity": purity(pred, true)}
+        row.update({k: float(v) for k, v in proposer_outcomes(pred, true).items()})
+        rows.append(row)
+    return rows
+
+
+def best_proposer_point(
+    rows: list[dict[str, float]], *, purity_floor: float
+) -> dict[str, float] | None:
+    """The tradeoff row maximizing correct proposals at a purity floor.
+
+    ``None`` when no threshold clears the floor. Ties keep the first (lowest) threshold, matching
+    :func:`sweep_backend`'s convention.
+    """
+    best: dict[str, float] | None = None
+    for row in rows:
+        if row["purity"] < purity_floor:
+            continue
+        if best is None or row["correct"] > best["correct"]:
+            best = row
+    return best

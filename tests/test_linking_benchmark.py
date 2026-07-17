@@ -7,6 +7,7 @@ import numpy as np
 from actalux.diarization.linking.benchmark import (
     _stratified_poison_pairs,
     best_at_floors,
+    best_proposer_point,
     candidate_thresholds,
     cannot_link_audit,
     cannot_link_same_meeting,
@@ -14,6 +15,9 @@ from actalux.diarization.linking.benchmark import (
     label_stats,
     loo_operating_point,
     poison_blast_radius,
+    proposer_outcome,
+    proposer_outcomes,
+    proposer_tradeoff,
     sweep_backend,
 )
 from actalux.diarization.linking.observations import VoiceObservation, embedding_matrix
@@ -285,3 +289,47 @@ def test_cannot_link_audit_flags_high_similarity_same_meeting_pair() -> None:
     assert len(flagged) == 1  # only the suspicious same-meeting pair, cross-meeting pairs ignored
     assert flagged[0]["document_id"] == 1
     assert flagged[0]["score"] > 0.9
+
+
+def test_proposer_outcome_four_ways() -> None:
+    # nodes: {0,1} same official, {2,3} two officials, {4} singleton, {5,6} wrong-name inheritance
+    pred = [0, 0, 1, 1, 2, 3, 3]
+    true = ["a", "a", "b", "c", "d", "e", "f"]
+    assert proposer_outcome(pred, true, 0) == "correct"
+    assert proposer_outcome(pred, true, 2) == "wrong"  # its only node-mate is official c
+    assert proposer_outcome(pred, true, 4) == "alone"
+    assert proposer_outcome(pred, true, 5) == "wrong"
+
+
+def test_proposer_outcome_ambiguous_node() -> None:
+    pred = [0, 0, 0]
+    true = ["a", "b", "c"]  # any held-out cluster sees TWO other officials
+    assert proposer_outcome(pred, true, 0) == "ambiguous"
+
+
+def test_proposer_outcomes_skips_unlabeled() -> None:
+    pred = [0, 0, 1]
+    true = ["a", None, "b"]
+    outcomes = proposer_outcomes(pred, true)
+    assert sum(outcomes.values()) == 2  # the unlabeled cluster is not judged
+    assert outcomes["alone"] == 2  # each labeled cluster has no labeled node-mate
+
+
+def test_proposer_tradeoff_and_best_point() -> None:
+    obs = _three_officials()
+    scores = cosine_matrix(embedding_matrix(obs))
+    cannot_link = cannot_link_same_meeting(obs)
+    rows = proposer_tradeoff(scores, cannot_link, _THREE_TRUE)
+    assert rows, "tradeoff must produce at least one threshold row"
+    for row in rows:
+        assert {"threshold", "purity", "correct", "wrong", "ambiguous", "alone"} <= row.keys()
+    best = best_proposer_point(rows, purity_floor=0.95)
+    assert best is not None
+    # the separable three-official geometry admits a threshold naming every cluster correctly
+    assert best["correct"] == 6.0
+    assert best["wrong"] == 0.0
+
+
+def test_best_proposer_point_none_when_floor_unreachable() -> None:
+    rows = [{"threshold": 0.1, "purity": 0.5, "correct": 9.0, "wrong": 3.0}]
+    assert best_proposer_point(rows, purity_floor=0.95) is None

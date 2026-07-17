@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
+from actalux.diarization.linking.benchmark import cannot_link_same_meeting
 from actalux.diarization.linking.calibration import (
     FEATURE_NAMES,
+    Calibrator,
     _fit_logistic,
     _sigmoid,
     balanced_sample_weight,
     calibrated_matrix,
     fit_calibrator,
     labeled_pair_targets,
+    loo_refit_outcomes,
     pair_features,
 )
 from actalux.diarization.linking.observations import VoiceObservation, embedding_matrix
@@ -127,3 +131,45 @@ def test_calibrated_matrix_ranks_same_official_above_cross() -> None:
     same = np.mean([mat[0, 1], mat[2, 3]])
     cross = np.mean([mat[0, 2], mat[0, 3], mat[1, 2], mat[1, 3]])
     assert same > cross
+
+
+def test_calibrator_dict_round_trip_preserves_predictions() -> None:
+    obs = _two_officials()
+    emb = embedding_matrix(obs)
+    feats, pairs = pair_features(emb, emb, [o.acoustic_condition for o in obs], [30.0] * 4)
+    keep, y = labeled_pair_targets([100, 100, 200, 200], pairs)
+    cal = fit_calibrator(feats[keep], y)
+    clone = Calibrator.from_dict(cal.to_dict())
+    assert np.allclose(clone.predict_logit(feats), cal.predict_logit(feats))
+
+
+def test_calibrator_from_dict_refuses_stale_feature_layout() -> None:
+    stale = {
+        "weights": [0.0, 1.0],
+        "mean": [0.0],
+        "std": [1.0],
+        "feature_names": ["cosine"],  # a layout this code no longer computes
+    }
+    with pytest.raises(ValueError, match="refit"):
+        Calibrator.from_dict(stale)
+
+
+def test_loo_refit_outcomes_on_separable_officials() -> None:
+    obs = _two_officials()
+    emb = embedding_matrix(obs)
+    true: list[object | None] = [100, 100, 200, 200]
+    cannot_link = cannot_link_same_meeting(obs)  # all docs distinct -> empty
+    feats, pairs = pair_features(emb, emb, [o.acoustic_condition for o in obs], [30.0] * 4)
+    # threshold at 0 logits: the separable geometry keeps same-official pairs positive held-out
+    outcomes = loo_refit_outcomes(feats, pairs, true, cannot_link, threshold=0.0)
+    assert outcomes["correct"] == 4
+    assert outcomes["wrong"] == 0
+
+
+def test_loo_refit_skips_unlabeled_clusters() -> None:
+    obs = _two_officials()
+    emb = embedding_matrix(obs)
+    true: list[object | None] = [100, 100, 200, None]
+    feats, pairs = pair_features(emb, emb, [o.acoustic_condition for o in obs], [30.0] * 4)
+    outcomes = loo_refit_outcomes(feats, pairs, true, cannot_link_same_meeting(obs), threshold=0.0)
+    assert sum(outcomes.values()) == 3  # the unlabeled cluster is never judged

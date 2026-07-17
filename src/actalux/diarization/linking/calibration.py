@@ -22,6 +22,8 @@ from itertools import combinations
 
 import numpy as np
 
+from actalux.diarization.linking.benchmark import proposer_outcome
+from actalux.diarization.linking.cluster import constrained_complete_linkage
 from actalux.diarization.linking.scoring import asnorm_matrix, cosine_matrix
 
 # Pair features. cross_condition lets the model learn a separate offset for Zoom<->in-person pairs;
@@ -106,6 +108,36 @@ class Calibrator:
         design = np.column_stack([np.ones(z.shape[0]), z])
         return design @ self.weights
 
+    def to_dict(self) -> dict[str, object]:
+        """JSON-able form for freezing in ``linking_operating_points.calibrator`` (migrate_048).
+
+        A calibrator refit at propose time on whatever anchors exist would drift as anchors accrue —
+        the same transductive instability the frozen cohort exists to prevent — so the fitted
+        weights are frozen alongside the threshold they were measured with.
+        """
+        return {
+            "weights": [float(w) for w in self.weights],
+            "mean": [float(m) for m in self.mean],
+            "std": [float(s) for s in self.std],
+            "feature_names": list(self.feature_names),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, object]) -> Calibrator:
+        """Rebuild a frozen calibrator; refuses a feature layout this code no longer computes."""
+        names = tuple(data["feature_names"])  # type: ignore[arg-type]
+        if names != FEATURE_NAMES:
+            raise ValueError(
+                f"stored calibrator features {names!r} != current {FEATURE_NAMES!r} — "
+                f"refit and re-freeze the operating point"
+            )
+        return cls(
+            weights=np.asarray(data["weights"], dtype=np.float64),
+            mean=np.asarray(data["mean"], dtype=np.float64),
+            std=np.asarray(data["std"], dtype=np.float64),
+            feature_names=names,
+        )
+
 
 def pair_features(
     embeddings: np.ndarray,
@@ -184,6 +216,14 @@ def fit_calibrator(
     return Calibrator(weights=w, mean=mean, std=std)
 
 
+def _matrix_from_pairs(n: int, pairs: list[tuple[int, int]], logits: np.ndarray) -> np.ndarray:
+    """Fold per-pair logits back into a symmetric ``(N, N)`` score matrix."""
+    mat = np.zeros((n, n))
+    for (i, j), s in zip(pairs, logits, strict=True):
+        mat[i, j] = mat[j, i] = float(s)
+    return mat
+
+
 def calibrated_matrix(
     embeddings: np.ndarray,
     cohort: np.ndarray,
@@ -193,9 +233,38 @@ def calibrated_matrix(
 ) -> np.ndarray:
     """Symmetric ``(N, N)`` calibrated score matrix — a drop-in backend for the benchmark sweep."""
     feats, pairs = pair_features(embeddings, cohort, conditions, seconds)
-    logits = calibrator.predict_logit(feats)
-    n = embeddings.shape[0]
-    mat = np.zeros((n, n))
-    for (i, j), s in zip(pairs, logits, strict=True):
-        mat[i, j] = mat[j, i] = float(s)
-    return mat
+    return _matrix_from_pairs(embeddings.shape[0], pairs, calibrator.predict_logit(feats))
+
+
+def loo_refit_outcomes(
+    feats: np.ndarray,
+    pairs: list[tuple[int, int]],
+    true: list[object | None],
+    cannot_link: set[frozenset[int]],
+    *,
+    threshold: float,
+    l2: float = DEFAULT_L2,
+    iters: int = DEFAULT_IRLS_ITERS,
+) -> dict[str, int]:
+    """Held-out proposer outcomes for the calibrator at a FIXED threshold.
+
+    The in-sample tradeoff curve flatters a fitted scorer — the calibrator saw the judged pairs. So
+    for each labeled cluster this refits WITHOUT any pair touching it, re-links everything at the
+    fixed operating threshold, and judges only that cluster
+    (:func:`~actalux.diarization.linking.benchmark.proposer_outcome`). The gap between this and the
+    in-sample curve is the fit leakage; adoption decisions read THIS number (the phase-2 adoption
+    gate: adopt only if it beats AS-norm held-out).
+    """
+    n = len(true)
+    keep, y = labeled_pair_targets(true, pairs, exclude=cannot_link)
+    y_of = dict(zip(keep, y, strict=True))
+    outcomes = {"correct": 0, "wrong": 0, "ambiguous": 0, "alone": 0}
+    for i in range(n):
+        if true[i] is None:
+            continue
+        mask = [k for k in keep if i not in pairs[k]]
+        calib = fit_calibrator(feats[mask], np.asarray([y_of[k] for k in mask]), l2=l2, iters=iters)
+        scores = _matrix_from_pairs(n, pairs, calib.predict_logit(feats))
+        pred = constrained_complete_linkage(scores, threshold=threshold, cannot_link=cannot_link)
+        outcomes[proposer_outcome(pred, true, i)] += 1
+    return outcomes
