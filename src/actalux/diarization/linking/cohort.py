@@ -32,7 +32,7 @@ def parse_pgvector(value: object) -> list[float]:
     return [float(x) for x in value]  # type: ignore[union-attr]
 
 
-def _active_cohort_row(client: Client, place_id: int | None) -> dict | None:
+def active_cohort_row(client: Client, place_id: int | None) -> dict | None:
     """The active cohort for ``place_id``, preferring a place-scoped one over a shared one.
 
     A place-scoped active cohort wins; otherwise a shared cohort (``place_id IS NULL``) is used, so
@@ -60,7 +60,34 @@ def _active_cohort_row(client: Client, place_id: int | None) -> dict | None:
     return shared[0] if shared else None
 
 
-def load_active_cohort(client: Client, place_id: int | None, *, expected_model: str) -> np.ndarray:
+def load_active_operating_point(client: Client, place_id: int, body_slug: str) -> dict | None:
+    """The active linking operating point for one body (migrate_048), or ``None``.
+
+    The operating point is the frozen decision "score with METHOD, link at THRESHOLD, hold purity
+    at FLOOR against COHORT" — stored per (place, body) so a second town never inherits the first
+    town's threshold by copy-paste, and read by the proposer instead of a hand-passed CLI number.
+    Keyed by ``body_slug`` (not entity id) because a body can span several entities (plan
+    commission + ARB) and every linking CLI already identifies its target this way.
+    """
+    rows = fetch_all_rows(
+        lambda: (
+            client.table("linking_operating_points")
+            .select("*")
+            .eq("is_active", True)
+            .eq("place_id", place_id)
+            .eq("body_slug", body_slug)
+        )
+    )
+    return rows[0] if rows else None
+
+
+def load_active_cohort(
+    client: Client,
+    place_id: int | None,
+    *,
+    expected_model: str,
+    expected_cohort_id: int | None = None,
+) -> np.ndarray:
     """Load the active frozen cohort's vectors as an ``(M, 256)`` float64 matrix.
 
     Returns an empty ``(0, 0)`` matrix when no active cohort exists (or it has no vectors). The
@@ -68,13 +95,21 @@ def load_active_cohort(client: Client, place_id: int | None, *, expected_model: 
     self-sampled cohort.
 
     Raises :class:`ActaluxError` when the active cohort was embedded with a model other than
-    ``expected_model``. Cohort and target vectors must live in ONE embedding space or AS-norm
-    normalizes each score against a distribution that means nothing — a silent, plausible-looking
-    corruption. Catching it is the whole reason ``linking_cohorts.model`` exists.
+    ``expected_model``, or (with ``expected_cohort_id``) when the active cohort is not the one an
+    operating point's threshold was measured against. Cohort and target vectors must live in ONE
+    embedding space or AS-norm normalizes each score against a distribution that means nothing — a
+    silent, plausible-looking corruption. Catching it is the whole reason ``linking_cohorts.model``
+    exists.
     """
-    cohort = _active_cohort_row(client, place_id)
+    cohort = active_cohort_row(client, place_id)
     if cohort is None:
         return np.empty((0, 0))
+    if expected_cohort_id is not None and cohort.get("id") != expected_cohort_id:
+        raise ActaluxError(
+            f"active cohort id={cohort.get('id')} ({cohort.get('slug')!r}) is not the cohort "
+            f"id={expected_cohort_id} this operating point was measured against — the threshold "
+            f"is meaningless on a different score distribution; re-measure or re-freeze"
+        )
     if cohort.get("model") != expected_model:
         raise ActaluxError(
             f"active cohort {cohort.get('slug')!r} was embedded with {cohort.get('model')!r}, but "

@@ -140,3 +140,49 @@ def build_proposals(
                 )
             )
     return proposals
+
+
+# A voice-node spanning fewer meetings than this is routine (one-off public comment, a visiting
+# presenter); at or above it, a nameless recurring voice is worth a human look — often a new
+# official or staff member the roster does not know yet.
+MIN_RECURRING_MEETINGS = 3
+
+
+def unanchored_recurring_nodes(
+    pred: list[int],
+    index_official: dict[int, int],
+    identity: list[tuple[int, str] | None],
+    speech_seconds: list[float],
+    *,
+    min_meetings: int = MIN_RECURRING_MEETINGS,
+) -> list[dict[str, object]]:
+    """Anchor-less voice-nodes recurring across meetings — flag-only "who is this?" candidates.
+
+    The proposer can only name people the roster already knows; a NEW official (or recurring staff)
+    first appears as a linked node with no anchor at all. Surfacing those nodes turns the linker
+    into a roster-maintenance prompt without ever naming anyone: no entity, no voiceprint, no
+    identity row is created here — per the tracked-vs-named content policy, a human decides whether
+    the voice belongs to an official worth rostering. Sorted by meeting span, widest first.
+    """
+    nodes: dict[int, list[int]] = {}
+    for idx, node in enumerate(pred):
+        nodes.setdefault(node, []).append(idx)
+    flagged: list[dict[str, object]] = []
+    for node_id, members in nodes.items():
+        if any(i in index_official for i in members):
+            continue
+        real = [i for i in members if identity[i] is not None]
+        meetings = {identity[i][0] for i in real}  # type: ignore[index]
+        if len(meetings) < min_meetings:
+            continue
+        flagged.append(
+            {
+                "node_id": node_id,
+                "n_clusters": len(real),
+                "n_meetings": len(meetings),
+                "document_ids": sorted(meetings),
+                "total_seconds": round(sum(speech_seconds[i] for i in real), 1),
+            }
+        )
+    flagged.sort(key=lambda r: (-int(r["n_meetings"]), -float(r["total_seconds"])))  # type: ignore[arg-type]
+    return flagged

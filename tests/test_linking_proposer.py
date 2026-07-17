@@ -8,6 +8,7 @@ from actalux.diarization.linking.proposer import (
     build_proposals,
     per_condition_prototypes,
     resolve_node_official,
+    unanchored_recurring_nodes,
 )
 
 
@@ -76,3 +77,34 @@ def test_build_proposals_virtual_prototype_anchors_but_is_not_proposed() -> None
     proposals = build_proposals(pred, index_official, scores, identity)
     assert len(proposals) == 1
     assert (proposals[0].document_id, proposals[0].person_id) == (11, 100)
+
+
+def test_unanchored_recurring_nodes_flags_multi_meeting_nameless_voice() -> None:
+    # node 0: 3 meetings, no anchor -> flagged; node 1: anchored -> never flagged;
+    # node 2: nameless but only 2 meetings -> below the recurrence bar
+    pred = [0, 0, 0, 1, 1, 2, 2]
+    identity = [(1, "S0"), (2, "S0"), (3, "S0"), (4, "S0"), (5, "S0"), (6, "S0"), (7, "S0")]
+    seconds = [10.0, 20.0, 30.0, 5.0, 5.0, 5.0, 5.0]
+    flagged = unanchored_recurring_nodes(pred, {3: 42}, identity, seconds, min_meetings=3)
+    assert [n["node_id"] for n in flagged] == [0]
+    assert flagged[0]["n_meetings"] == 3
+    assert flagged[0]["total_seconds"] == 60.0
+
+
+def test_unanchored_recurring_nodes_ignores_virtual_prototypes() -> None:
+    # a gallery prototype (identity None) neither counts as a meeting nor names the node here —
+    # but it IS an anchor, so its node is excluded
+    pred = [0, 0, 0, 0]
+    identity = [(1, "S0"), (2, "S0"), (3, "S0"), None]
+    flagged = unanchored_recurring_nodes(
+        pred, {3: 42}, identity, [10.0, 10.0, 10.0, 600.0], min_meetings=3
+    )
+    assert flagged == []
+
+
+def test_unanchored_recurring_nodes_sorted_widest_first() -> None:
+    pred = [0, 0, 0, 1, 1, 1, 1]
+    identity = [(1, "S0"), (2, "S0"), (3, "S0"), (4, "S0"), (5, "S0"), (6, "S0"), (7, "S0")]
+    seconds = [1.0] * 7
+    flagged = unanchored_recurring_nodes(pred, {}, identity, seconds, min_meetings=3)
+    assert [n["n_meetings"] for n in flagged] == [4, 3]

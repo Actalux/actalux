@@ -14,10 +14,14 @@ self-enrolls, and never overwrites a human decision (confirmed/rejected) or a na
 
 DRY-RUN by default: prints the proposals it WOULD write. ``--write`` performs the (gated) inserts.
 
+The scoring method + threshold come from the body's stored operating point (migrate_048, set via
+``set_operating_point.py``) so a measured decision — not a hand-passed number — drives every run;
+``--threshold`` remains as an explicit asnorm override for experiments.
+
 Run (dry-run):
     doppler run --project mac --config dev -- \\
       uv run python scripts/linking/propose_identities.py \\
-      --state mo --place clayton --body schools --threshold <operating point from the LOO eval>
+      --state mo --place clayton --body schools
 """
 
 from __future__ import annotations
@@ -35,15 +39,24 @@ from actalux.db import fetch_all_rows, get_client, get_place_by_path
 from actalux.diarization.enrollment import EMBED_MODEL, NAME_ANCHOR_BASES
 from actalux.diarization.linking.benchmark import cannot_link_same_meeting
 from actalux.diarization.linking.cache import MODE_ALL, cache_dir, require_mode
+from actalux.diarization.linking.calibration import Calibrator, calibrated_matrix
 from actalux.diarization.linking.cluster import constrained_complete_linkage
-from actalux.diarization.linking.cohort import load_active_cohort, parse_pgvector
+from actalux.diarization.linking.cohort import (
+    load_active_cohort,
+    load_active_operating_point,
+    parse_pgvector,
+)
 from actalux.diarization.linking.labels import fetch_person_labels
 from actalux.diarization.linking.observations import (
-    VoiceObservation,
     embedding_matrix,
     load_observation_dir,
 )
-from actalux.diarization.linking.proposer import Proposal, build_proposals, per_condition_prototypes
+from actalux.diarization.linking.proposer import (
+    Proposal,
+    build_proposals,
+    per_condition_prototypes,
+    unanchored_recurring_nodes,
+)
 from actalux.diarization.linking.scoring import asnorm_matrix
 from actalux.errors import ActaluxError
 
@@ -53,6 +66,11 @@ logger = logging.getLogger(__name__)
 AGGREGATION = "max-anchor"  # score = max pair score to the node's anchored member(s)
 # A biometric proposal must never clobber a human decision or a stronger name anchor.
 PROTECTED_CONFIDENCE = {"inferred_high", "confirmed", "rejected"}
+# Stand-in speech seconds for a virtual gallery-prototype row in calibrated scoring. Prototypes are
+# multi-sample centroids, so their duration feature should never be the pair's minimum — large but
+# finite (an infinity would blow up the standardized feature), and min(600, x) = x for real
+# clusters, which is the intended semantics.
+PROTOTYPE_SECONDS = 600.0
 
 
 def service_client() -> Client:
@@ -76,15 +94,16 @@ def body_entity_ids(client: Client, place_id: int, body: str) -> list[int]:
 
 def load_gallery_prototypes(
     client: Client, place_id: int, entity_ids: list[int]
-) -> list[tuple[np.ndarray, int]]:
+) -> list[tuple[np.ndarray, int, str]]:
     """Per-condition gallery prototypes for the body's officials (virtual anchors), cleared-only.
 
     Trusts a voiceprint only when its ``calibration_id`` resolves to a ``cleared`` calibration
     (migrate_041) THAT COVERS THIS BODY — the calibration's ``entity_id`` is one of the body's
     entities, or NULL (place-wide). Calibration is a per-body gate: clearing the plan commission
     says nothing about whether the schools gallery is trustworthy, and a place-wide filter would let
-    one body's clearance unlock another's prototypes. Returns one ``(centroid, person_id)`` per
-    (official, acoustic condition); empty when this body has no cleared gallery (the schools case).
+    one body's clearance unlock another's prototypes. Returns one ``(centroid, person_id,
+    condition)`` per (official, acoustic condition); empty when this body has no cleared gallery
+    (the schools case).
     """
     scope = set(entity_ids)
     cleared = {
@@ -126,26 +145,45 @@ def load_gallery_prototypes(
         vec = np.asarray(parse_pgvector(r["embedding"]), dtype=np.float64)
         cond = r.get("acoustic_condition") or "unknown"
         by_person.setdefault(r["person_id"], []).append((vec, cond))
-    protos: list[tuple[np.ndarray, int]] = []
+    protos: list[tuple[np.ndarray, int, str]] = []
     for pid, samples in by_person.items():
-        for centroid in per_condition_prototypes(samples).values():
-            protos.append((centroid, pid))
+        for cond, centroid in per_condition_prototypes(samples).items():
+            protos.append((centroid, pid, cond))
     return protos
 
 
-def _link(
-    obs: list[VoiceObservation],
-    index_official: dict[int, int],
-    identity: list[tuple[int, str] | None],
-    embeddings: np.ndarray,
-    cohort: np.ndarray,
-    threshold: float,
-) -> list[Proposal]:
-    """Score AS-norm vs the frozen cohort, link at ``threshold``, and build the proposals."""
-    scores = asnorm_matrix(embeddings, cohort)
-    cannot_link = cannot_link_same_meeting(obs)  # only real clusters (indices < len(obs))
-    pred = constrained_complete_linkage(scores, threshold=threshold, cannot_link=cannot_link)
-    return build_proposals(pred, index_official, scores, identity)
+def resolve_operating_point(
+    cli_threshold: float | None, op: dict[str, Any] | None
+) -> dict[str, Any]:
+    """Which scoring method + threshold this run uses, and where that decision came from.
+
+    An explicit ``--threshold`` is an experiment override: it always scores plain AS-norm (a stored
+    calibrator was fitted against a specific threshold — mixing it with an ad-hoc one would look
+    like the measured configuration while being neither). Otherwise the body's stored operating
+    point (migrate_048) supplies method/threshold/calibrator, and its ``cohort_id`` is enforced
+    against the active cohort downstream. No stored point and no override is a hard error — the
+    threshold is a measured decision, never a default.
+    """
+    if cli_threshold is not None:
+        return {
+            "threshold": float(cli_threshold),
+            "method": "asnorm",
+            "calibrator": None,
+            "cohort_id": None,
+            "version": f"cli-override/thr={cli_threshold:.4f}",
+        }
+    if op is None:
+        raise ActaluxError(
+            "no active operating point for this body (set_operating_point.py) and no --threshold "
+            "override given"
+        )
+    return {
+        "threshold": float(op["threshold"]),
+        "method": op["method"],
+        "calibrator": op.get("calibrator"),
+        "cohort_id": op["cohort_id"],
+        "version": f"op={op['id']}/method={op['method']}/thr={float(op['threshold']):.4f}",
+    }
 
 
 def skip_reason(existing: dict[str, Any] | None) -> str | None:
@@ -178,7 +216,7 @@ def _write_proposals(
     proposals: list[Proposal],
     seconds_by_cluster: dict[tuple[int, str], float],
     *,
-    threshold: float,
+    threshold_version: str,
 ) -> int:
     """Insert below-gate proposals + evidence, skipping protected rows and unresolved subjects."""
     person_ids = {p.person_id for p in proposals}
@@ -205,7 +243,6 @@ def _write_proposals(
             )
         )
     }
-    threshold_version = f"linking-frozen-cohort/thr={threshold:.4f}"
     written = 0
     for p in proposals:
         subject_id = subject_of.get(p.person_id)
@@ -272,30 +309,52 @@ def run(args: argparse.Namespace) -> None:
         if (o.document_id, o.cluster_label) in anchors
     }
     embeddings = embedding_matrix(obs)
+    conditions = [o.acoustic_condition for o in obs]
+    seconds = [o.speech_seconds for o in obs]
 
     if args.use_gallery:
         protos = load_gallery_prototypes(client, place_id, entity_ids)
         if protos:
             base_n = embeddings.shape[0]
-            embeddings = np.vstack([embeddings, np.asarray([v for v, _ in protos])])
-            for k, (_, pid) in enumerate(protos):
+            embeddings = np.vstack([embeddings, np.asarray([v for v, _, _ in protos])])
+            for k, (_, pid, cond) in enumerate(protos):
                 index_official[base_n + k] = pid
                 identity.append(None)  # virtual prototype: anchors, never proposed
+                conditions.append(cond)
+                seconds.append(PROTOTYPE_SECONDS)
             logger.info("augmented with %d gallery prototype(s)", len(protos))
 
-    cohort = load_active_cohort(client, place_id, expected_model=EMBED_MODEL)
+    resolved = resolve_operating_point(
+        args.threshold, load_active_operating_point(client, place_id, args.body)
+    )
+    logger.info("operating point: %s", resolved["version"])
+    cohort = load_active_cohort(
+        client,
+        place_id,
+        expected_model=EMBED_MODEL,
+        expected_cohort_id=resolved["cohort_id"],
+    )
     if cohort.size == 0:
         raise ActaluxError("no active frozen cohort — build_cohort.py + activate one first")
 
+    if resolved["method"] == "calibrated":
+        calibrator = Calibrator.from_dict(resolved["calibrator"])
+        scores = calibrated_matrix(embeddings, cohort, conditions, seconds, calibrator)
+    else:
+        scores = asnorm_matrix(embeddings, cohort)
+    cannot_link = cannot_link_same_meeting(obs)  # only real clusters (indices < len(obs))
+    pred = constrained_complete_linkage(
+        scores, threshold=resolved["threshold"], cannot_link=cannot_link
+    )
     proposals = [
         p
-        for p in _link(obs, index_official, identity, embeddings, cohort, args.threshold)
+        for p in build_proposals(pred, index_official, scores, identity)
         if p.margin >= args.min_margin
     ]
     logger.info(
-        "%d proposal(s) at threshold=%.4f, min_margin=%.3f (%d anchored, %d clusters)",
+        "%d proposal(s) at %s, min_margin=%.3f (%d anchored, %d clusters)",
         len(proposals),
-        args.threshold,
+        resolved["version"],
         args.min_margin,
         len(index_official),
         len(obs),
@@ -310,12 +369,25 @@ def run(args: argparse.Namespace) -> None:
             p.margin,
         )
 
+    # Flag-only roster prompt: a nameless voice recurring across meetings is often a new official
+    # the roster does not know yet. Reported, never named — no entity, no identity row.
+    for node in unanchored_recurring_nodes(pred, index_official, identity, seconds):
+        logger.info(
+            "unanchored recurring voice: node %s spans %d meetings / %d clusters / %.0fs "
+            "(docs %s) — who is this?",
+            node["node_id"],
+            node["n_meetings"],
+            node["n_clusters"],
+            node["total_seconds"],
+            node["document_ids"],
+        )
+
     if not args.write:
         logger.info("dry-run: no writes. Re-run with --write to insert below-gate proposals.")
         return
     seconds_by_cluster = {(o.document_id, o.cluster_label): o.speech_seconds for o in obs}
     written = _write_proposals(
-        client, entity_ids, proposals, seconds_by_cluster, threshold=args.threshold
+        client, entity_ids, proposals, seconds_by_cluster, threshold_version=resolved["version"]
     )
     logger.info("wrote %d proposal(s) at inferred_medium/voiceprint (for human review)", written)
 
@@ -329,8 +401,8 @@ def main() -> None:
     parser.add_argument(
         "--threshold",
         type=float,
-        required=True,
-        help="linkage operating threshold (from the leave-one-official-out eval; not invented)",
+        help="EXPERIMENT OVERRIDE: link plain AS-norm at this threshold, bypassing the stored "
+        "operating point (default: read the body's active operating point, migrate_048)",
     )
     parser.add_argument(
         "--min-margin",
