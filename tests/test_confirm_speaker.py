@@ -520,3 +520,91 @@ def test_run_batch_session_quit_stops_before_writing(monkeypatch):
     assert client.writes == []
     assert tallies == {}
     assert enablement == []
+
+
+# --- CSV review round-trip (spreadsheet-driven decisions) --------------------------
+
+
+def test_normalize_decision_accepts_variants():
+    assert cs.normalize_decision("y") == "y"
+    assert cs.normalize_decision(" YES ") == "y"
+    assert cs.normalize_decision("N") == "n"
+    assert cs.normalize_decision("reject") == "n"
+
+
+def test_normalize_decision_blank_and_skip_mean_skip():
+    assert cs.normalize_decision("") is None
+    assert cs.normalize_decision(None) is None
+    assert cs.normalize_decision("s") is None
+    assert cs.normalize_decision("skip") is None
+
+
+def test_normalize_decision_rejects_typos_loudly():
+    import pytest
+
+    with pytest.raises(ValueError, match="yse"):
+        cs.normalize_decision("yse")
+
+
+def test_plan_decisions_matches_by_doc_and_cluster():
+    a = _cand(identity_id=1, document_id=5, cluster_label="SPEAKER_00")
+    b = _cand(identity_id=2, document_id=6, cluster_label="SPEAKER_03")
+    rows = [
+        {"document_id": "5", "cluster_label": "SPEAKER_00", "decision": "y"},
+        {"document_id": "6", "cluster_label": "SPEAKER_03", "decision": "n"},
+    ]
+    plan = cs.plan_decisions([a, b], rows)
+    assert [c.identity_id for c in plan.confirm] == [1]
+    assert [c.identity_id for c in plan.reject] == [2]
+    assert plan.skipped == 0
+    assert plan.unmatched == []
+    assert plan.invalid == []
+
+
+def test_plan_decisions_blank_rows_skip_and_stale_rows_report():
+    a = _cand(identity_id=1, document_id=5, cluster_label="SPEAKER_00")
+    rows = [
+        {"document_id": "5", "cluster_label": "SPEAKER_00", "decision": ""},
+        {"document_id": "99", "cluster_label": "SPEAKER_01", "decision": "y"},  # left the queue
+    ]
+    plan = cs.plan_decisions([a], rows)
+    assert plan.confirm == [] and plan.reject == []
+    assert plan.skipped == 1
+    assert plan.unmatched == [(99, "SPEAKER_01")]
+
+
+def test_plan_decisions_collects_invalid_without_applying():
+    a = _cand(identity_id=1, document_id=5, cluster_label="SPEAKER_00")
+    rows = [{"document_id": "5", "cluster_label": "SPEAKER_00", "decision": "maybe"}]
+    plan = cs.plan_decisions([a], rows)
+    assert plan.invalid == [(5, "SPEAKER_00", "maybe")]
+    assert plan.confirm == [] and plan.reject == []
+
+
+def test_export_csv_round_trips_through_plan(tmp_path):
+    a = _cand(
+        identity_id=1,
+        document_id=5,
+        cluster_label="SPEAKER_00",
+        basis="voiceprint",
+        excerpts=((120, "we approve the agenda"),),
+    )
+    evidence = {
+        (5, "SPEAKER_00"): {
+            "score": 4.5,
+            "margin": 0.9,
+            "alternatives": [{"person_id": 2, "score": 3.6}],
+        }
+    }
+    out = tmp_path / "review.csv"
+    cs._export_csv(out, [a], evidence, {2: "Runner Up"})
+    import csv as _csv
+
+    rows = list(_csv.DictReader(out.open()))
+    assert rows[0]["official"] == "Kami Waldman"
+    assert rows[0]["margin"] == "0.90"
+    assert rows[0]["runner_up"] == "Runner Up (3.60)"
+    assert rows[0]["decision"] == ""
+    rows[0]["decision"] = "y"
+    plan = cs.plan_decisions([a], rows)
+    assert [c.identity_id for c in plan.confirm] == [1]

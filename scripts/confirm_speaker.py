@@ -25,16 +25,22 @@ row, never stores an embedding, and never records a citizen identity.
 Usage:
     doppler run --project mac --config dev -- uv run python scripts/confirm_speaker.py \\
         --state mo --place clayton [--body council] [--limit 40]
+
+Spreadsheet round-trip (for large queues): ``--export-csv FILE`` writes the queue with a blank
+``decision`` column; the operator fills y/n in any spreadsheet app; ``--decisions FILE --apply``
+records them through the exact same confirm/reject payloads. Typos fail the whole apply.
 """
 
 from __future__ import annotations
 
 import argparse
+import csv
 import logging
 import os
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from itertools import groupby
+from pathlib import Path
 from typing import Any
 
 from supabase import Client
@@ -125,6 +131,85 @@ def reject_payload(candidate: Candidate) -> dict[str, str]:
     or displayed (Option B).
     """
     return {"confidence": "rejected"}
+
+
+# Spreadsheet review round-trip: --export-csv writes the queue with these columns; the operator
+# fills `decision` (y/n; blank or s = skip) in any spreadsheet app; --decisions reads it back and
+# applies through the same confirm/reject payloads as the interactive session. The key columns
+# (document_id, cluster_label) drive matching; everything else is context for the human.
+CSV_COLUMNS = (
+    "decision",
+    "official",
+    "meeting_date",
+    "meeting_title",
+    "seconds",
+    "listen_url",
+    "excerpt",
+    "score",
+    "margin",
+    "runner_up",
+    "basis",
+    "document_id",
+    "cluster_label",
+    "identity_id",
+)
+_SKIP_VALUES = {"", "s", "skip"}
+_YES_VALUES = {"y", "yes", "confirm", "confirmed"}
+_NO_VALUES = {"n", "no", "reject", "rejected"}
+
+
+def normalize_decision(raw: str | None) -> str | None:
+    """``'y'``/``'n'`` for a decision, ``None`` for an intentional skip.
+
+    Raises ``ValueError`` on anything else — a typo ("yse") must fail the whole apply
+    loudly rather than silently skip a row the operator believes they decided.
+    """
+    value = (raw or "").strip().lower()
+    if value in _YES_VALUES:
+        return "y"
+    if value in _NO_VALUES:
+        return "n"
+    if value in _SKIP_VALUES:
+        return None
+    raise ValueError(f"unrecognized decision {raw!r} (use y, n, or leave blank)")
+
+
+@dataclass
+class DecisionPlan:
+    """What a decisions CSV resolves to against the live candidate queue."""
+
+    confirm: list[Candidate] = field(default_factory=list)
+    reject: list[Candidate] = field(default_factory=list)
+    skipped: int = 0
+    unmatched: list[tuple[int, str]] = field(default_factory=list)  # keys not in the queue
+    invalid: list[tuple[int, str, str]] = field(default_factory=list)  # (doc, cluster, raw)
+
+
+def plan_decisions(candidates: list[Candidate], rows: list[dict[str, str]]) -> DecisionPlan:
+    """Match CSV rows to live candidates by ``(document_id, cluster_label)``.
+
+    Unmatched keys are reported, not errors — a row can drop out of the queue between
+    export and apply (someone confirmed it interactively, or the drafts were regenerated).
+    Invalid decision values are collected and MUST block the apply (fail closed on typos).
+    """
+    by_key = {(c.document_id, c.cluster_label): c for c in candidates}
+    plan = DecisionPlan()
+    for row in rows:
+        key = (int(row["document_id"]), row["cluster_label"].strip())
+        try:
+            decision = normalize_decision(row.get("decision"))
+        except ValueError:
+            plan.invalid.append((key[0], key[1], row.get("decision", "")))
+            continue
+        if decision is None:
+            plan.skipped += 1
+            continue
+        candidate = by_key.get(key)
+        if candidate is None:
+            plan.unmatched.append(key)
+            continue
+        (plan.confirm if decision == "y" else plan.reject).append(candidate)
+    return plan
 
 
 def youtube_cue_url(video_id: str, start_seconds: int) -> str:
@@ -703,6 +788,21 @@ def main() -> None:
         action="store_true",
         help="one screen per official (decidable from transcript text) instead of clip-by-clip",
     )
+    parser.add_argument(
+        "--export-csv",
+        metavar="FILE",
+        help="write the review queue as a spreadsheet (fill `decision` with y/n, then --decisions)",
+    )
+    parser.add_argument(
+        "--decisions",
+        metavar="FILE",
+        help="apply a filled review CSV (dry-run unless --apply)",
+    )
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="with --decisions: execute the confirms/rejects (default is a dry-run report)",
+    )
     args = parser.parse_args()
 
     client = _service_client()
@@ -715,6 +815,28 @@ def main() -> None:
     subjects_by_id = _subjects(client, place_id)
     candidates, confirmed_meetings = _load_candidates(client, docs_by_id, subjects_by_id)
     scope = f"{args.state}/{args.place}" + (f"/{args.body}" if args.body else "")
+
+    if args.export_csv:
+        evidence = _evidence_by_key(client, sorted({c.document_id for c in candidates}))
+        name_by_person = {
+            s["person_id"]: s["canonical_name"]
+            for s in subjects_by_id.values()
+            if s.get("person_id") is not None
+        }
+        _export_csv(Path(args.export_csv), candidates, evidence, name_by_person)
+        logger.info(
+            "%s: exported %d candidate(s) to %s — fill the `decision` column (y/n; blank = "
+            "skip), then re-run with --decisions %s --apply",
+            scope,
+            len(candidates),
+            args.export_csv,
+            args.export_csv,
+        )
+        return
+
+    if args.decisions:
+        _run_decisions_mode(client, Path(args.decisions), candidates, apply=args.apply)
+        return
 
     if args.batch:
         _run_batch_mode(client, candidates, confirmed_meetings, args.limit, scope)
@@ -734,6 +856,104 @@ def main() -> None:
         return
 
     tallies = _run_session(client, queue, confirmed_meetings)
+    _print_summary(tallies)
+
+
+def _evidence_by_key(client: Client, doc_ids: list[int]) -> dict[tuple[int, str], dict[str, Any]]:
+    """Voiceprint evidence keyed by ``(document_id, cluster_label)`` (empty for name bases)."""
+    if not doc_ids:
+        return {}
+    rows = fetch_all_rows(
+        lambda: (
+            client.table("voiceprint_match_evidence")
+            .select("document_id,cluster_label,score,margin,alternatives")
+            .in_("document_id", doc_ids)
+        )
+    )
+    return {(r["document_id"], r["cluster_label"]): r for r in rows}
+
+
+def _export_csv(
+    path: Path,
+    candidates: list[Candidate],
+    evidence: dict[tuple[int, str], dict[str, Any]],
+    name_by_person: dict[int, str],
+) -> None:
+    """Write the review queue as a spreadsheet, weakest voice matches first within each official."""
+
+    def sort_key(c: Candidate) -> tuple[str, float, float]:
+        ev = evidence.get((c.document_id, c.cluster_label))
+        margin = float(ev["margin"]) if ev else float("inf")  # name-evidence rows sort last
+        return (c.official_name, margin, -c.seconds)
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=list(CSV_COLUMNS))
+        writer.writeheader()
+        for c in sorted(candidates, key=sort_key):
+            ev = evidence.get((c.document_id, c.cluster_label))
+            alts = (ev or {}).get("alternatives") or []
+            runner = (
+                f"{name_by_person.get(alts[0]['person_id'], alts[0]['person_id'])}"
+                f" ({alts[0]['score']:.2f})"
+                if alts
+                else ""
+            )
+            cue, text = c.excerpts[0] if c.excerpts else (0, "")
+            writer.writerow(
+                {
+                    "decision": "",
+                    "official": c.official_name,
+                    "meeting_date": c.meeting_date,
+                    "meeting_title": c.meeting_title,
+                    "seconds": round(c.seconds),
+                    "listen_url": youtube_cue_url(c.video_id, cue),
+                    "excerpt": " ".join(text.split())[:240],
+                    "score": f"{ev['score']:.2f}" if ev else "",
+                    "margin": f"{ev['margin']:.2f}" if ev else "",
+                    "runner_up": runner,
+                    "basis": c.basis or "",
+                    "document_id": c.document_id,
+                    "cluster_label": c.cluster_label,
+                    "identity_id": c.identity_id,
+                }
+            )
+
+
+def _run_decisions_mode(
+    client: Client, path: Path, candidates: list[Candidate], *, apply: bool
+) -> None:
+    """Apply a filled review CSV through the same payloads as the interactive session."""
+    with path.open(newline="") as fh:
+        rows = list(csv.DictReader(fh))
+    plan = plan_decisions(candidates, rows)
+    logger.info(
+        "%s: %d confirm, %d reject, %d blank/skip, %d unmatched, %d invalid",
+        path.name,
+        len(plan.confirm),
+        len(plan.reject),
+        plan.skipped,
+        len(plan.unmatched),
+        len(plan.invalid),
+    )
+    for doc_id, cluster in plan.unmatched:
+        logger.warning(
+            "not in the live queue (already decided or regenerated): doc %d %s", doc_id, cluster
+        )
+    if plan.invalid:
+        for doc_id, cluster, raw in plan.invalid:
+            logger.error("invalid decision %r at doc %d %s", raw, doc_id, cluster)
+        raise ActaluxError("invalid decision values — fix the CSV; nothing was applied")
+    if not apply:
+        logger.info("dry-run: no writes (re-run with --apply to record these decisions)")
+        return
+    tallies: dict[str, SessionTally] = defaultdict(SessionTally)
+    for candidate in plan.confirm:
+        _apply_decision(client, candidate, "y")
+        tallies[candidate.official_name].confirmed += 1
+    for candidate in plan.reject:
+        _apply_decision(client, candidate, "n")
+        tallies[candidate.official_name].denied += 1
     _print_summary(tallies)
 
 
