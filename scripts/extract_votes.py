@@ -39,9 +39,10 @@ from actalux.db import (  # noqa: E402
     get_client,
     get_document,
     get_document_chunks,
-    get_document_vote_ids,
+    get_document_vote_refs,
     get_entity_by_path,
     insert_votes,
+    update_vote,
 )
 from actalux.ingest import votes_parser, votes_parser_civicplus  # noqa: E402
 from actalux.ingest.hashing import compute_vote_ref  # noqa: E402
@@ -155,6 +156,35 @@ def _build_votes(doc: dict, chunks: list[dict]) -> tuple[list[Vote], int]:
     return votes, skipped
 
 
+def plan_vote_reconcile(
+    prior: list[tuple[int, str | None]], votes: list[Vote]
+) -> tuple[list[Vote], list[tuple[int, Vote]], list[int]]:
+    """Diff a fresh parse against the document's existing rows, keyed on ``vote_ref``.
+
+    Returns ``(to_insert, to_update, stale_ids)``. A ref already in the DB is
+    rewritten in place (stable id — graph edges keyed on it stop churning); a new
+    ref is inserted; prior rows whose ref is gone — including NULL-ref legacy rows
+    (pre-migration-028) — are stale. Insert-before-delete used to provide this
+    idempotency, but the UNIQUE (document_id, vote_ref) index (migration 028)
+    rejects re-inserting an unchanged parse, and the index is partial (WHERE
+    vote_ref IS NOT NULL) so a PostgREST upsert cannot target it — hence the
+    client-side reconcile. Executing insert -> update -> delete keeps a failed run
+    non-lossy: prior rows are only removed at the end.
+    """
+    by_ref = {ref: vote_id for vote_id, ref in prior if ref}
+    to_insert: list[Vote] = []
+    to_update: list[tuple[int, Vote]] = []
+    fresh_refs: set[str] = set()
+    for v in votes:
+        fresh_refs.add(v.vote_ref)
+        if v.vote_ref in by_ref:
+            to_update.append((by_ref[v.vote_ref], v))
+        else:
+            to_insert.append(v)
+    stale_ids = [vote_id for vote_id, ref in prior if not ref or ref not in fresh_refs]
+    return to_insert, to_update, stale_ids
+
+
 def _tally_str(v: Vote) -> str:
     if v.vote_count_yes is None:
         return "no roll call"
@@ -193,14 +223,16 @@ def process_document(client, doc_id: int, *, apply: bool) -> tuple[int, int]:
         )
 
     if apply:
-        # Re-derive idempotently: insert the freshly parsed votes (if any), then
-        # delete the document's prior rows. Deleting unconditionally — even when
-        # this parse yields nothing — clears stale votes so a re-run reproduces the
-        # current set exactly (insert-before-delete keeps a failed run non-lossy).
-        prior = get_document_vote_ids(client, doc_id)
-        if votes:
-            insert_votes(client, votes)
-        delete_votes(client, prior)
+        # Re-derive idempotently by reconciling on vote_ref (see plan_vote_reconcile
+        # for why this replaced insert-before-delete). An empty parse still prunes:
+        # every prior row becomes stale, so a re-run reproduces the current set.
+        prior = get_document_vote_refs(client, doc_id)
+        to_insert, to_update, stale_ids = plan_vote_reconcile(prior, votes)
+        if to_insert:
+            insert_votes(client, to_insert)
+        for vote_id, vote in to_update:
+            update_vote(client, vote_id, vote)
+        delete_votes(client, stale_ids)
     return len(votes), skipped
 
 

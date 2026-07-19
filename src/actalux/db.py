@@ -1406,11 +1406,20 @@ def insert_votes(client: Client, votes: list[Vote]) -> list[int]:
     return ids
 
 
-def get_document_vote_ids(client: Client, document_id: int) -> list[int]:
-    """Existing vote ids for one document. Used to re-derive votes idempotently
-    (insert the freshly parsed votes, then delete these prior rows)."""
-    result = client.table("votes").select("id").eq("document_id", document_id).execute()
-    return [r["id"] for r in (result.data or [])]
+def get_document_vote_refs(client: Client, document_id: int) -> list[tuple[int, str | None]]:
+    """Existing ``(id, vote_ref)`` pairs for one document's votes.
+
+    Used to re-derive votes idempotently by reconciling on ``vote_ref`` (insert new
+    refs, update rows whose ref persists, delete the rest). ``vote_ref`` can be NULL
+    on rows written before migration 028; callers treat those as stale.
+    """
+    result = client.table("votes").select("id,vote_ref").eq("document_id", document_id).execute()
+    return [(r["id"], r.get("vote_ref")) for r in (result.data or [])]
+
+
+def update_vote(client: Client, vote_id: int, vote: Vote) -> None:
+    """Rewrite an existing vote row in place (same id, fresh parse)."""
+    client.table("votes").update(_vote_row(vote)).eq("id", vote_id).execute()
 
 
 def delete_votes(client: Client, vote_ids: list[int]) -> None:

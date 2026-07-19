@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -104,3 +105,61 @@ def test_build_votes_skips_uncited_vote(monkeypatch):
     votes, skipped = ev._build_votes(_doc(7), [])
 
     assert votes == [] and skipped == 1
+
+
+# --- plan_vote_reconcile (pure) ---
+
+
+def _vote(ref: str) -> ev.Vote:
+    return ev.Vote(
+        document_id=13,
+        meeting_date=date(2024, 12, 11),
+        motion="Approve the agenda as posted.",
+        result="passed",
+        citation_id="6a4066b7",
+        vote_ref=ref,
+    )
+
+
+def test_reconcile_unchanged_parse_updates_in_place():
+    # The 3-week CI failure mode: identical re-parse must not re-insert (UNIQUE
+    # (document_id, vote_ref)); it rewrites the existing rows, keeping their ids.
+    prior = [(101, "ref-a"), (102, "ref-b")]
+    votes = [_vote("ref-a"), _vote("ref-b")]
+
+    to_insert, to_update, stale = ev.plan_vote_reconcile(prior, votes)
+
+    assert to_insert == []
+    assert [(i, v.vote_ref) for i, v in to_update] == [(101, "ref-a"), (102, "ref-b")]
+    assert stale == []
+
+
+def test_reconcile_mixed_insert_update_delete():
+    prior = [(101, "ref-a"), (102, "ref-gone")]
+    votes = [_vote("ref-a"), _vote("ref-new")]
+
+    to_insert, to_update, stale = ev.plan_vote_reconcile(prior, votes)
+
+    assert [v.vote_ref for v in to_insert] == ["ref-new"]
+    assert [(i, v.vote_ref) for i, v in to_update] == [(101, "ref-a")]
+    assert stale == [102]
+
+
+def test_reconcile_empty_parse_prunes_everything():
+    prior = [(101, "ref-a"), (102, None)]
+
+    to_insert, to_update, stale = ev.plan_vote_reconcile(prior, [])
+
+    assert to_insert == [] and to_update == []
+    assert stale == [101, 102]
+
+
+def test_reconcile_null_ref_legacy_rows_always_stale():
+    # Pre-migration-028 rows carry NULL vote_ref; a fresh ref'd parse replaces them.
+    prior = [(55, None)]
+    votes = [_vote("ref-a")]
+
+    to_insert, to_update, stale = ev.plan_vote_reconcile(prior, votes)
+
+    assert [v.vote_ref for v in to_insert] == ["ref-a"]
+    assert stale == [55]
