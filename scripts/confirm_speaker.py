@@ -27,8 +27,11 @@ Usage:
         --state mo --place clayton [--body council] [--limit 40]
 
 Spreadsheet round-trip (for large queues): ``--export-csv FILE`` writes the queue with a blank
-``decision`` column; the operator fills y/n in any spreadsheet app; ``--decisions FILE --apply``
-records them through the exact same confirm/reject payloads. Typos fail the whole apply.
+``decision`` column in the review sheet's reading order (low-margin listen-first block, then
+officials by queue size); the operator fills y / n / the correct official's name in any
+spreadsheet app; ``--decisions FILE --apply`` records them through the exact same payloads.
+A name must resolve unambiguously to a rostered official of the document's body. Typos fail
+the whole apply.
 """
 
 from __future__ import annotations
@@ -134,11 +137,12 @@ def reject_payload(candidate: Candidate) -> dict[str, str]:
 
 
 # Spreadsheet review round-trip: --export-csv writes the queue with these columns; the operator
-# fills `decision` (y/n; blank or s = skip) in any spreadsheet app; --decisions reads it back and
-# applies through the same confirm/reject payloads as the interactive session. The key columns
-# (document_id, cluster_label) drive matching; everything else is context for the human.
+# fills `decision` (y / n / the correct official's name; blank or s = skip) in any spreadsheet
+# app; --decisions reads it back and applies through the same payloads as the interactive
+# session. The key columns (document_id, cluster_label) drive matching; the rest is context.
 CSV_COLUMNS = (
     "decision",
+    "flag",
     "official",
     "meeting_date",
     "meeting_title",
@@ -156,22 +160,38 @@ CSV_COLUMNS = (
 _SKIP_VALUES = {"", "s", "skip"}
 _YES_VALUES = {"y", "yes", "confirm", "confirmed"}
 _NO_VALUES = {"n", "no", "reject", "rejected"}
+# The review sheet's "listen first" cutoff: a winner this close to the runner-up needs an ear.
+LOW_MARGIN_FLAG = 2.0
 
 
-def normalize_decision(raw: str | None) -> str | None:
-    """``'y'``/``'n'`` for a decision, ``None`` for an intentional skip.
+def parse_decision(raw: str | None) -> tuple[str, str | None]:
+    """``(kind, payload)``: confirm / reject / skip, or a NAME attribution.
 
-    Raises ``ValueError`` on anything else — a typo ("yse") must fail the whole apply
-    loudly rather than silently skip a row the operator believes they decided.
+    Any value that is not a recognized yes/no/skip token is treated as the correct
+    official's name ("this voice is actually Chris Win"). Typos are still fail-closed:
+    an unresolvable "name" (e.g. "yse") dies in roster resolution, blocking the apply,
+    rather than being silently skipped.
     """
-    value = (raw or "").strip().lower()
-    if value in _YES_VALUES:
-        return "y"
-    if value in _NO_VALUES:
-        return "n"
-    if value in _SKIP_VALUES:
-        return None
-    raise ValueError(f"unrecognized decision {raw!r} (use y, n, or leave blank)")
+    value = (raw or "").strip()
+    low = value.lower()
+    if low in _YES_VALUES:
+        return ("confirm", None)
+    if low in _NO_VALUES:
+        return ("reject", None)
+    if low in _SKIP_VALUES:
+        return ("skip", None)
+    return ("name", value)
+
+
+def rename_payload(subject_id: int) -> dict[str, Any]:
+    """The update for a human name-attribution: the operator listened and named the voice.
+
+    The row moves to the named official at ``confirmed``, and the basis becomes ``manual``
+    regardless of what produced the original hypothesis — keeping a ``discourse``/``voiceprint``
+    basis would be false provenance for an attribution that is now entirely the human's, and
+    ``manual`` keeps the row enrollment-eligible.
+    """
+    return {"subject_id": subject_id, "confidence": "confirmed", "basis": "manual"}
 
 
 @dataclass
@@ -180,36 +200,95 @@ class DecisionPlan:
 
     confirm: list[Candidate] = field(default_factory=list)
     reject: list[Candidate] = field(default_factory=list)
+    # (candidate, resolved subject_id, resolved display name)
+    rename: list[tuple[Candidate, int, str]] = field(default_factory=list)
     skipped: int = 0
     unmatched: list[tuple[int, str]] = field(default_factory=list)  # keys not in the queue
-    invalid: list[tuple[int, str, str]] = field(default_factory=list)  # (doc, cluster, raw)
+    invalid: list[tuple[int, str, str, str]] = field(default_factory=list)  # + reason
 
 
-def plan_decisions(candidates: list[Candidate], rows: list[dict[str, str]]) -> DecisionPlan:
+def plan_decisions(
+    candidates: list[Candidate],
+    rows: list[dict[str, str]],
+    name_index: dict[int, dict[str, tuple[int, str] | None]],
+) -> DecisionPlan:
     """Match CSV rows to live candidates by ``(document_id, cluster_label)``.
 
     Unmatched keys are reported, not errors — a row can drop out of the queue between
     export and apply (someone confirmed it interactively, or the drafts were regenerated).
-    Invalid decision values are collected and MUST block the apply (fail closed on typos).
+    Invalid values MUST block the apply (fail closed on typos).
+
+    A name decision resolves through ``name_index`` (per-document roster of publishable
+    officials, from :func:`build_name_index`): unknown names and names that are ambiguous
+    within the body (two Chrises — the collision that crossed Win/Tennill) are invalid,
+    never guessed. Naming the already-proposed official is just a confirm.
     """
     by_key = {(c.document_id, c.cluster_label): c for c in candidates}
     plan = DecisionPlan()
     for row in rows:
         key = (int(row["document_id"]), row["cluster_label"].strip())
-        try:
-            decision = normalize_decision(row.get("decision"))
-        except ValueError:
-            plan.invalid.append((key[0], key[1], row.get("decision", "")))
-            continue
-        if decision is None:
+        kind, payload = parse_decision(row.get("decision"))
+        if kind == "skip":
             plan.skipped += 1
             continue
         candidate = by_key.get(key)
         if candidate is None:
             plan.unmatched.append(key)
             continue
-        (plan.confirm if decision == "y" else plan.reject).append(candidate)
+        if kind == "confirm":
+            plan.confirm.append(candidate)
+        elif kind == "reject":
+            plan.reject.append(candidate)
+        else:
+            resolved = name_index.get(candidate.document_id, {}).get(
+                " ".join(payload.lower().split())
+            )
+            if resolved is None:
+                reason = (
+                    "ambiguous in this body — use the full name"
+                    if payload
+                    and " ".join(payload.lower().split())
+                    in name_index.get(candidate.document_id, {})
+                    else "no publishable rostered official by this name in the document's body"
+                )
+                plan.invalid.append((key[0], key[1], payload or "", reason))
+            elif resolved[0] == candidate.subject_id:
+                plan.confirm.append(candidate)  # naming the proposed official = a confirm
+            else:
+                plan.rename.append((candidate, resolved[0], resolved[1]))
     return plan
+
+
+def build_name_index(
+    docs_by_id: dict[int, dict[str, Any]],
+    subjects_by_id: dict[int, dict[str, Any]],
+    members_by_entity: dict[int, dict[int, str | None]],
+) -> dict[int, dict[str, tuple[int, str] | None]]:
+    """Per-document name -> (subject_id, canonical name) for the body's publishable officials.
+
+    Keys are normalized (lowercase, collapsed whitespace) full canonical names, plus each
+    single-token surname WHEN it is unique in the body; a surname shared by two members maps
+    to ``None`` so :func:`plan_decisions` reports ambiguity instead of picking one — the
+    first-name-collision lesson, applied to this input path too.
+    """
+    index: dict[int, dict[str, tuple[int, str] | None]] = {}
+    by_entity: dict[int, dict[str, tuple[int, str] | None]] = {}
+    for entity_id, members in members_by_entity.items():
+        names: dict[str, tuple[int, str] | None] = {}
+        for subject_id in members:
+            subject = subjects_by_id.get(subject_id)
+            if not subject or not subject.get("publishable") or subject.get("person_id") is None:
+                continue
+            canonical = subject["canonical_name"]
+            full = " ".join(canonical.lower().split())
+            names[full] = (subject_id, canonical)
+            surname = full.split()[-1]
+            if surname != full:
+                names[surname] = None if surname in names else (subject_id, canonical)
+        by_entity[entity_id] = names
+    for doc_id, doc in docs_by_id.items():
+        index[doc_id] = by_entity.get(doc.get("entity_id"), {})
+    return index
 
 
 def youtube_cue_url(video_id: str, start_seconds: int) -> str:
@@ -796,7 +875,8 @@ def main() -> None:
     parser.add_argument(
         "--decisions",
         metavar="FILE",
-        help="apply a filled review CSV (dry-run unless --apply)",
+        help="apply a filled review CSV: decision = y / n / correct official's name "
+        "(dry-run unless --apply)",
     )
     parser.add_argument(
         "--apply",
@@ -835,7 +915,11 @@ def main() -> None:
         return
 
     if args.decisions:
-        _run_decisions_mode(client, Path(args.decisions), candidates, apply=args.apply)
+        entity_ids = sorted({d["entity_id"] for d in docs_by_id.values() if d.get("entity_id")})
+        name_index = build_name_index(
+            docs_by_id, subjects_by_id, _members_by_entity(client, entity_ids)
+        )
+        _run_decisions_mode(client, Path(args.decisions), candidates, name_index, apply=args.apply)
         return
 
     if args.batch:
@@ -873,24 +957,44 @@ def _evidence_by_key(client: Client, doc_ids: list[int]) -> dict[tuple[int, str]
     return {(r["document_id"], r["cluster_label"]): r for r in rows}
 
 
+def _export_order(
+    candidates: list[Candidate], evidence: dict[tuple[int, str], dict[str, Any]]
+) -> list[Candidate]:
+    """The review sheet's reading order: listen-first block, then officials by queue size.
+
+    Low-margin voice matches (margin < LOW_MARGIN_FLAG) lead, weakest first — that block is
+    where the expected errors concentrate. The rest group by official (largest queue first,
+    mirroring the HTML sheet's sections), weakest margin first within each; name-evidence
+    rows (no margin) follow the voice rows.
+    """
+
+    def margin(c: Candidate) -> float:
+        ev = evidence.get((c.document_id, c.cluster_label))
+        return float(ev["margin"]) if ev else float("inf")
+
+    low = sorted((c for c in candidates if margin(c) < LOW_MARGIN_FLAG), key=margin)
+    queue_size: dict[str, int] = defaultdict(int)
+    for c in candidates:
+        queue_size[c.official_name] += 1
+    rest = sorted(
+        (c for c in candidates if margin(c) >= LOW_MARGIN_FLAG),
+        key=lambda c: (-queue_size[c.official_name], c.official_name, margin(c), -c.seconds),
+    )
+    return low + rest
+
+
 def _export_csv(
     path: Path,
     candidates: list[Candidate],
     evidence: dict[tuple[int, str], dict[str, Any]],
     name_by_person: dict[int, str],
 ) -> None:
-    """Write the review queue as a spreadsheet, weakest voice matches first within each official."""
-
-    def sort_key(c: Candidate) -> tuple[str, float, float]:
-        ev = evidence.get((c.document_id, c.cluster_label))
-        margin = float(ev["margin"]) if ev else float("inf")  # name-evidence rows sort last
-        return (c.official_name, margin, -c.seconds)
-
+    """Write the review queue as a spreadsheet in the review sheet's reading order."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=list(CSV_COLUMNS))
         writer.writeheader()
-        for c in sorted(candidates, key=sort_key):
+        for c in _export_order(candidates, evidence):
             ev = evidence.get((c.document_id, c.cluster_label))
             alts = (ev or {}).get("alternatives") or []
             runner = (
@@ -903,6 +1007,11 @@ def _export_csv(
             writer.writerow(
                 {
                     "decision": "",
+                    "flag": (
+                        "LOW MARGIN"
+                        if ev is not None and float(ev["margin"]) < LOW_MARGIN_FLAG
+                        else ""
+                    ),
                     "official": c.official_name,
                     "meeting_date": c.meeting_date,
                     "meeting_title": c.meeting_title,
@@ -921,33 +1030,52 @@ def _export_csv(
 
 
 def _run_decisions_mode(
-    client: Client, path: Path, candidates: list[Candidate], *, apply: bool
+    client: Client,
+    path: Path,
+    candidates: list[Candidate],
+    name_index: dict[int, dict[str, tuple[int, str] | None]],
+    *,
+    apply: bool,
 ) -> None:
     """Apply a filled review CSV through the same payloads as the interactive session."""
     with path.open(newline="") as fh:
         rows = list(csv.DictReader(fh))
-    plan = plan_decisions(candidates, rows)
+    plan = plan_decisions(candidates, rows, name_index)
     logger.info(
-        "%s: %d confirm, %d reject, %d blank/skip, %d unmatched, %d invalid",
+        "%s: %d confirm, %d reject, %d rename, %d blank/skip, %d unmatched, %d invalid",
         path.name,
         len(plan.confirm),
         len(plan.reject),
+        len(plan.rename),
         plan.skipped,
         len(plan.unmatched),
         len(plan.invalid),
     )
+    for candidate, _, new_name in plan.rename:
+        logger.info(
+            "rename: doc %d %s  %s -> %s",
+            candidate.document_id,
+            candidate.cluster_label,
+            candidate.official_name,
+            new_name,
+        )
     for doc_id, cluster in plan.unmatched:
         logger.warning(
             "not in the live queue (already decided or regenerated): doc %d %s", doc_id, cluster
         )
     if plan.invalid:
-        for doc_id, cluster, raw in plan.invalid:
-            logger.error("invalid decision %r at doc %d %s", raw, doc_id, cluster)
+        for doc_id, cluster, raw, reason in plan.invalid:
+            logger.error("invalid decision %r at doc %d %s: %s", raw, doc_id, cluster, reason)
         raise ActaluxError("invalid decision values — fix the CSV; nothing was applied")
     if not apply:
         logger.info("dry-run: no writes (re-run with --apply to record these decisions)")
         return
     tallies: dict[str, SessionTally] = defaultdict(SessionTally)
+    for candidate, subject_id, new_name in plan.rename:
+        client.table("speaker_identities").update(rename_payload(subject_id)).eq(
+            "id", candidate.identity_id
+        ).execute()
+        tallies[new_name].confirmed += 1
     for candidate in plan.confirm:
         _apply_decision(client, candidate, "y")
         tallies[candidate.official_name].confirmed += 1

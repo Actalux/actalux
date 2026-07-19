@@ -525,25 +525,24 @@ def test_run_batch_session_quit_stops_before_writing(monkeypatch):
 # --- CSV review round-trip (spreadsheet-driven decisions) --------------------------
 
 
-def test_normalize_decision_accepts_variants():
-    assert cs.normalize_decision("y") == "y"
-    assert cs.normalize_decision(" YES ") == "y"
-    assert cs.normalize_decision("N") == "n"
-    assert cs.normalize_decision("reject") == "n"
+def test_parse_decision_accepts_variants():
+    assert cs.parse_decision("y") == ("confirm", None)
+    assert cs.parse_decision(" YES ") == ("confirm", None)
+    assert cs.parse_decision("N") == ("reject", None)
+    assert cs.parse_decision("reject") == ("reject", None)
 
 
-def test_normalize_decision_blank_and_skip_mean_skip():
-    assert cs.normalize_decision("") is None
-    assert cs.normalize_decision(None) is None
-    assert cs.normalize_decision("s") is None
-    assert cs.normalize_decision("skip") is None
+def test_parse_decision_blank_and_skip_mean_skip():
+    assert cs.parse_decision("") == ("skip", None)
+    assert cs.parse_decision(None) == ("skip", None)
+    assert cs.parse_decision("s") == ("skip", None)
+    assert cs.parse_decision("skip") == ("skip", None)
 
 
-def test_normalize_decision_rejects_typos_loudly():
-    import pytest
-
-    with pytest.raises(ValueError, match="yse"):
-        cs.normalize_decision("yse")
+def test_parse_decision_anything_else_is_a_name_attribution():
+    assert cs.parse_decision(" Chris Win ") == ("name", "Chris Win")
+    # a typo is a "name" that will fail roster resolution -> fail-closed downstream
+    assert cs.parse_decision("yse") == ("name", "yse")
 
 
 def test_plan_decisions_matches_by_doc_and_cluster():
@@ -553,7 +552,7 @@ def test_plan_decisions_matches_by_doc_and_cluster():
         {"document_id": "5", "cluster_label": "SPEAKER_00", "decision": "y"},
         {"document_id": "6", "cluster_label": "SPEAKER_03", "decision": "n"},
     ]
-    plan = cs.plan_decisions([a, b], rows)
+    plan = cs.plan_decisions([a, b], rows, {})
     assert [c.identity_id for c in plan.confirm] == [1]
     assert [c.identity_id for c in plan.reject] == [2]
     assert plan.skipped == 0
@@ -567,18 +566,64 @@ def test_plan_decisions_blank_rows_skip_and_stale_rows_report():
         {"document_id": "5", "cluster_label": "SPEAKER_00", "decision": ""},
         {"document_id": "99", "cluster_label": "SPEAKER_01", "decision": "y"},  # left the queue
     ]
-    plan = cs.plan_decisions([a], rows)
+    plan = cs.plan_decisions([a], rows, {})
     assert plan.confirm == [] and plan.reject == []
     assert plan.skipped == 1
     assert plan.unmatched == [(99, "SPEAKER_01")]
 
 
-def test_plan_decisions_collects_invalid_without_applying():
+def test_plan_decisions_unresolvable_name_is_invalid():
     a = _cand(identity_id=1, document_id=5, cluster_label="SPEAKER_00")
     rows = [{"document_id": "5", "cluster_label": "SPEAKER_00", "decision": "maybe"}]
-    plan = cs.plan_decisions([a], rows)
-    assert plan.invalid == [(5, "SPEAKER_00", "maybe")]
-    assert plan.confirm == [] and plan.reject == []
+    plan = cs.plan_decisions([a], rows, {5: {}})
+    assert [(i[0], i[1], i[2]) for i in plan.invalid] == [(5, "SPEAKER_00", "maybe")]
+    assert plan.confirm == [] and plan.reject == [] and plan.rename == []
+
+
+def test_plan_decisions_name_renames_to_resolved_official():
+    a = _cand(identity_id=1, document_id=5, cluster_label="SPEAKER_00", subject_id=10)
+    index = {5: {"chris win": (24, "Chris Win"), "win": (24, "Chris Win")}}
+    rows = [{"document_id": "5", "cluster_label": "SPEAKER_00", "decision": "Chris  Win"}]
+    plan = cs.plan_decisions([a], rows, index)
+    assert [(c.identity_id, sid, name) for c, sid, name in plan.rename] == [(1, 24, "Chris Win")]
+    rows = [{"document_id": "5", "cluster_label": "SPEAKER_00", "decision": "win"}]
+    assert cs.plan_decisions([a], rows, index).rename[0][1] == 24  # unique surname works
+
+
+def test_plan_decisions_naming_the_proposed_official_is_a_confirm():
+    a = _cand(identity_id=1, document_id=5, cluster_label="SPEAKER_00", subject_id=24)
+    index = {5: {"chris win": (24, "Chris Win")}}
+    rows = [{"document_id": "5", "cluster_label": "SPEAKER_00", "decision": "Chris Win"}]
+    plan = cs.plan_decisions([a], rows, index)
+    assert [c.identity_id for c in plan.confirm] == [1]
+    assert plan.rename == []
+
+
+def test_plan_decisions_ambiguous_surname_is_invalid():
+    a = _cand(identity_id=1, document_id=5, cluster_label="SPEAKER_00")
+    index = {
+        5: {"chris win": (24, "Chris Win"), "chris tennill": (30, "Chris Tennill"), "chris": None}
+    }
+    rows = [{"document_id": "5", "cluster_label": "SPEAKER_00", "decision": "Chris"}]
+    plan = cs.plan_decisions([a], rows, index)
+    assert len(plan.invalid) == 1
+    assert "ambiguous" in plan.invalid[0][3]
+    assert plan.rename == []
+
+
+def test_build_name_index_full_names_and_unique_surnames_only():
+    docs = {5: {"entity_id": 1}}
+    subjects = {
+        24: {"id": 24, "person_id": 1, "publishable": True, "canonical_name": "Chris Win"},
+        30: {"id": 30, "person_id": 2, "publishable": True, "canonical_name": "Chris Tennill"},
+        31: {"id": 31, "person_id": 3, "publishable": True, "canonical_name": "Stacy Siwak"},
+        40: {"id": 40, "person_id": 4, "publishable": False, "canonical_name": "Hidden Person"},
+    }
+    members = {1: {24: None, 30: None, 31: None, 40: None}}
+    index = cs.build_name_index(docs, subjects, members)
+    assert index[5]["chris win"] == (24, "Chris Win")
+    assert index[5]["siwak"] == (31, "Stacy Siwak")  # unique surname resolves
+    assert "hidden person" not in index[5]  # unpublishable never nameable
 
 
 def test_export_csv_round_trips_through_plan(tmp_path):
@@ -606,5 +651,5 @@ def test_export_csv_round_trips_through_plan(tmp_path):
     assert rows[0]["runner_up"] == "Runner Up (3.60)"
     assert rows[0]["decision"] == ""
     rows[0]["decision"] = "y"
-    plan = cs.plan_decisions([a], rows)
+    plan = cs.plan_decisions([a], rows, {})
     assert [c.identity_id for c in plan.confirm] == [1]
