@@ -380,6 +380,12 @@
       "provenance": "asr"
     },
     {
+      "mangled": "ladu",
+      "canonical": "Ladue",
+      "category": "place",
+      "provenance": "asr"
+    },
+    {
       "mangled": "leo heuman",
       "canonical": "Leo Human",
       "category": "person",
