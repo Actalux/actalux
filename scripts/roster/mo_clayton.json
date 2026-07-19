@@ -485,6 +485,38 @@
         "term_start": "2020-02-19", "term_start_basis": "observed",
         "term_end": "2024-04-10", "term_end_basis": "cited",
         "source": "FORMER board member, departed at the 2024-04-10 reorganization. doc 2075 (4/10/24 BOE meeting transcript): 'I would also publicly like to thank Jason Wilson for his many years of service on the Board of Education' and 'thank Jason Wilson publicly for giving six years to the district', spoken as Pam and Leo are seated; Jason Growe is elected treasurer at the SAME meeting, so Growe (oath 2022-04-20, doc 182) and Wilson OVERLAPPED 2022-04 to 2024-04. term_start stays the observed first-seen (doc 2088, 2020-02-19); the 'six years' remark implies ~2018 but no seating record is in the corpus. Prior term_end 2021-04-21 was only last-seen, a mis-premise behind the systematic Jason->Growe discourse mislabels (corrected 2026-07-10)."
+      },
+      {
+        "canonical_name": "Amy Rubin",
+        "aliases": ["Amy Rubin"],
+        "role": "Director",
+        "term_start": "2020-07-18", "term_start_basis": "observed",
+        "term_end": "2024-04-10", "term_end_basis": "observed",
+        "source": "FORMER board member. doc 200 (earliest sighting 2020-07-18, Vice-President; on the board before the corpus begins). doc 216 (oath 2021-04-14 for term 2021-2024). doc 190 (President 2022-10-26). doc 20 (President 2024-03-27). doc 7 (last named 2024-04-10, the April 2024 reorganization where Lyss-Lerman and Human are seated). President 2022-2024, VP 2020-2021."
+      },
+      {
+        "canonical_name": "Joe Miller",
+        "aliases": ["Joe Miller"],
+        "role": "Director",
+        "term_start": "2020-07-18", "term_start_basis": "observed",
+        "term_end": "2022-04-13", "term_end_basis": "observed",
+        "source": "FORMER board member. doc 200 (earliest sighting 2020-07-18, President; on the board before the corpus begins). doc 210 (President 2020-11-18). doc 181 (last named 2022-04-13, Director). Jason Growe sworn 2022-04-20 (doc 182) at the following meeting. President 2020-2021."
+      },
+      {
+        "canonical_name": "Gary Pierson",
+        "aliases": ["Gary Pierson"],
+        "role": "Director",
+        "term_start": "2020-07-18", "term_start_basis": "observed",
+        "term_end": "2024-08-14", "term_end_basis": "cited",
+        "source": "FORMER board member. doc 200 (earliest sighting 2020-07-18, Board Secretary; on the board before the corpus begins). doc 198 (oath 2023-04-12, three-year term 2023-2026). doc 19 (announced 2024-06-05 he would not finish his term). doc 9 (resignation effective 2024-08-14). doc 25 (Ben Beinfeld sworn 2024-11-20 for the remainder of the vacated term). Board Secretary 2020-2023."
+      },
+      {
+        "canonical_name": "David Gulick",
+        "aliases": ["David Gulick"],
+        "role": "Director",
+        "term_start": "2020-07-18", "term_start_basis": "observed",
+        "term_end": "2021-05-19", "term_end_basis": "cited",
+        "source": "FORMER board member. doc 200 (earliest sighting 2020-07-18, Director; on the board before the corpus begins). doc 218 (resignation accepted and vacancy declared 2021-05-19)."
       }
     ],
     "plan-commission": [
