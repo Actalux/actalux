@@ -21,6 +21,7 @@ from actalux.identity.discourse import (
     DiscourseClaim,
     _aggregate,
     _completion_kwargs,
+    _name_token_index,
     _parse_claims,
     _person_accepted,
     _render_turns,
@@ -45,6 +46,13 @@ ROSTER = [
     _member(3, "carol-diaz", "Carol Diaz"),
 ]
 ROSTER_SLUGS = frozenset(m.slug for m in ROSTER)
+MEMBER_TOKENS, SHARED_TOKENS = _name_token_index(ROSTER)
+
+
+def _validate(c, turns, vc, slugs=ROSTER_SLUGS, tokens=None, shared=None):
+    tokens = MEMBER_TOKENS if tokens is None else tokens
+    shared = SHARED_TOKENS if shared is None else shared
+    return _validate_claim(c, turns, vc, slugs, tokens, shared)
 
 
 # --- claim validation: the three hard gates that make LLM output inert ----------------
@@ -72,42 +80,42 @@ class TestValidateClaim:
         return base
 
     def test_valid_claim_passes(self) -> None:
-        out = _validate_claim(self._claim(), self.turns, self.valid_clusters, ROSTER_SLUGS)
+        out = _validate(self._claim(), self.turns, self.valid_clusters)
         assert out is not None and out.person_slug == "bob-stevens" and out.turn_idx == 1
 
     def test_non_roster_slug_dropped(self) -> None:
         # The model can never mint a name: a slug outside the closed roster enum is dropped.
         c = self._claim(person_slug="mystery-person")
-        assert _validate_claim(c, self.turns, self.valid_clusters, ROSTER_SLUGS) is None
+        assert _validate(c, self.turns, self.valid_clusters) is None
 
     def test_quote_not_substring_dropped(self) -> None:
         # A paraphrased / hallucinated quote not verbatim in the cited turn is dropped.
         c = self._claim(quote="I hereby appoint myself treasurer")
-        assert _validate_claim(c, self.turns, self.valid_clusters, ROSTER_SLUGS) is None
+        assert _validate(c, self.turns, self.valid_clusters) is None
 
     def test_quote_substring_case_and_space_insensitive(self) -> None:
         c = self._claim(quote="as   CITY manager i recommend")
-        assert _validate_claim(c, self.turns, self.valid_clusters, ROSTER_SLUGS) is not None
+        assert _validate(c, self.turns, self.valid_clusters) is not None
 
     def test_unknown_cluster_dropped(self) -> None:
         c = self._claim(cluster_label="SPEAKER_99")
-        assert _validate_claim(c, self.turns, self.valid_clusters, ROSTER_SLUGS) is None
+        assert _validate(c, self.turns, self.valid_clusters) is None
 
     def test_turn_idx_out_of_range_dropped(self) -> None:
         c = self._claim(turn_idx=7)
-        assert _validate_claim(c, self.turns, self.valid_clusters, ROSTER_SLUGS) is None
+        assert _validate(c, self.turns, self.valid_clusters) is None
 
     def test_bad_signal_dropped(self) -> None:
         c = self._claim(signal="Z")
-        assert _validate_claim(c, self.turns, self.valid_clusters, ROSTER_SLUGS) is None
+        assert _validate(c, self.turns, self.valid_clusters) is None
 
     def test_short_quote_dropped(self) -> None:
         c = self._claim(quote="I", turn_idx=0)
-        assert _validate_claim(c, self.turns, self.valid_clusters, ROSTER_SLUGS) is None
+        assert _validate(c, self.turns, self.valid_clusters) is None
 
     def test_non_int_turn_idx_dropped(self) -> None:
         c = self._claim(turn_idx="one")
-        assert _validate_claim(c, self.turns, self.valid_clusters, ROSTER_SLUGS) is None
+        assert _validate(c, self.turns, self.valid_clusters) is None
 
 
 # --- per-signal directional grounding (the cue must point at the attributed cluster) --------
@@ -146,22 +154,22 @@ class TestDirectional:
 
     def test_chair_next_cluster_within_window_ok(self) -> None:
         # cue at turn 0, SPEAKER_01 speaks at turn 1 (within the adjacency window).
-        assert _validate_claim(self._mk(), self.turns, self.vc, ROSTER_SLUGS) is not None
+        assert _validate(self._mk(), self.turns, self.vc) is not None
 
     def test_chair_far_cluster_dropped(self) -> None:
         # THE injection shape: real cue quote, but the attributed cluster speaks far away
         # (SPEAKER_05 only at turn 4, cue at turn 0 -> outside the window) -> dropped.
         c = self._mk(cluster_label="SPEAKER_05")
-        assert _validate_claim(c, self.turns, self.vc, ROSTER_SLUGS) is None
+        assert _validate(c, self.turns, self.vc) is None
 
     def test_question_next_cluster_ok(self) -> None:
         c = self._mk(signal=SIGNAL_QUESTION)
-        assert _validate_claim(c, self.turns, self.vc, ROSTER_SLUGS) is not None
+        assert _validate(c, self.turns, self.vc) is not None
 
     def test_gratitude_previous_cluster_ok(self) -> None:
         # cue "Thank you, city manager" at turn 4 -> the PREVIOUS speaker SPEAKER_01 (turns 1-3).
         c = self._mk(signal=SIGNAL_GRATITUDE, quote="Thank you, city manager", turn_idx=4)
-        assert _validate_claim(c, self.turns, self.vc, ROSTER_SLUGS) is not None
+        assert _validate(c, self.turns, self.vc) is not None
 
     def test_gratitude_non_previous_cluster_dropped(self) -> None:
         # SPEAKER_00 (turn 0) is not within the window BEFORE the turn-4 cue -> dropped.
@@ -172,20 +180,20 @@ class TestDirectional:
             quote="Thank you, city manager",
             turn_idx=4,
         )
-        assert _validate_claim(c, self.turns, self.vc, ROSTER_SLUGS) is None
+        assert _validate(c, self.turns, self.vc) is None
 
     def test_self_signal_requires_own_turn(self) -> None:
         ok = self._mk(signal=SIGNAL_ROLE, quote="As city manager I recommend", turn_idx=1)
-        assert _validate_claim(ok, self.turns, self.vc, ROSTER_SLUGS) is not None
+        assert _validate(ok, self.turns, self.vc) is not None
         # same claim but citing SPEAKER_00's turn -> not the speaker's own turn -> dropped.
         bad = self._mk(signal=SIGNAL_SELF, quote="I recognize the city manager", turn_idx=0)
-        assert _validate_claim(bad, self.turns, self.vc, ROSTER_SLUGS) is None
+        assert _validate(bad, self.turns, self.vc) is None
 
     def test_reference_signal_is_unconstrained(self) -> None:
         # F is corroborative-only: it carries no direction, so position is not checked (it can
         # never satisfy the acceptance bar alone, so leaving it unconstrained is safe).
         c = self._mk(cluster_label="SPEAKER_05", signal=SIGNAL_REFERENCE)
-        assert _validate_claim(c, self.turns, self.vc, ROSTER_SLUGS) is not None
+        assert _validate(c, self.turns, self.vc) is not None
 
 
 # --- aggregation: corroboration + contested-silence -----------------------------------
@@ -480,3 +488,78 @@ class TestLabelDiscourseEndToEnd:
             out = label_discourse(huge, ROSTER, "k", model="openai/gpt-5-mini")
             mock_openai.return_value.chat.completions.create.assert_not_called()
         assert out == []
+
+
+# --- name-ambiguity gate: shared first names on the roster support no one -------------
+
+
+AMBIG_ROSTER = [
+    _member(10, "chris-win", "Chris Win"),
+    _member(11, "chris-tennill", "Chris Tennill"),
+    _member(12, "stacy-siwak", "Stacy Siwak"),
+]
+AMBIG_SLUGS = frozenset(m.slug for m in AMBIG_ROSTER)
+AMBIG_TOKENS, AMBIG_SHARED = _name_token_index(AMBIG_ROSTER)
+
+
+class TestNameAmbiguityGate:
+    turns = [
+        _turn("SPEAKER_00", "Thank you, Chris, for that update on communications."),
+        _turn("SPEAKER_01", "Happy to. Ms. Win, anything to add on the calendar?"),
+        _turn("SPEAKER_02", "Nothing further from me."),
+    ]
+    vc = frozenset({"SPEAKER_00", "SPEAKER_01", "SPEAKER_02"})
+
+    def _mk(self, **over) -> dict:
+        base = {
+            "cluster_label": "SPEAKER_01",
+            "person_slug": "chris-tennill",
+            "signal": SIGNAL_CHAIR,
+            "polarity": "other",
+            "quote": "Thank you, Chris, for that update",
+            "turn_idx": 0,
+            "confidence": "high",
+            "rationale": "gratitude handoff",
+        }
+        base.update(over)
+        return base
+
+    def test_shared_first_name_alone_supports_no_one(self) -> None:
+        # The two-Jasons / two-Chrises bug: "Thank you, Chris" is verbatim-valid for either
+        # rostered Chris, so it must validate for NEITHER.
+        for slug in ("chris-tennill", "chris-win"):
+            c = self._mk(person_slug=slug)
+            assert (
+                _validate(c, self.turns, self.vc, AMBIG_SLUGS, AMBIG_TOKENS, AMBIG_SHARED) is None
+            )
+
+    def test_unique_surname_still_passes(self) -> None:
+        c = self._mk(
+            person_slug="chris-win",
+            signal=SIGNAL_QUESTION,
+            cluster_label="SPEAKER_02",
+            quote="Ms. Win, anything to add",
+            turn_idx=1,
+        )
+        out = _validate(c, self.turns, self.vc, AMBIG_SLUGS, AMBIG_TOKENS, AMBIG_SHARED)
+        assert out is not None and out.person_slug == "chris-win"
+
+    def test_quote_without_name_tokens_left_to_other_gates(self) -> None:
+        # A role-claim quote naming no one lexically is not this gate's business.
+        c = self._mk(
+            person_slug="stacy-siwak",
+            signal=SIGNAL_SELF,
+            cluster_label="SPEAKER_02",
+            quote="Nothing further from me",
+            turn_idx=2,
+        )
+        out = _validate(c, self.turns, self.vc, AMBIG_SLUGS, AMBIG_TOKENS, AMBIG_SHARED)
+        assert out is not None
+
+    def test_uniqueness_is_roster_relative(self) -> None:
+        # With only ONE Chris rostered, the bare first name becomes unique again.
+        solo = [_member(10, "chris-win", "Chris Win"), _member(12, "stacy-siwak", "Stacy Siwak")]
+        tokens, shared = _name_token_index(solo)
+        c = self._mk(person_slug="chris-win")
+        out = _validate(c, self.turns, self.vc, frozenset(m.slug for m in solo), tokens, shared)
+        assert out is not None

@@ -330,19 +330,71 @@ def _directional_ok(
     return False
 
 
+def _name_token_index(
+    members: list[RosterMember],
+) -> tuple[dict[str, frozenset[str]], frozenset[str]]:
+    """Per-member name tokens and the subset shared by two or more active members.
+
+    Tokens come from the canonical name plus aliases, lowercased and split on
+    non-letters ("Pamela Lyss-Lerman" -> {pamela, lyss, lerman}). The shared set is
+    what makes a bare first-name cue detectable: with two rostered Chrises, "chris"
+    is shared, while "win" and "tennill" stay unique to their member.
+    """
+    per_member: dict[str, frozenset[str]] = {}
+    for m in members:
+        raw = [m.canonical_name, *m.aliases]
+        tokens = {t for s in raw for t in re.split(r"[^a-z]+", s.lower()) if t}
+        per_member[m.slug] = frozenset(tokens)
+    counts: dict[str, int] = {}
+    for tokens in per_member.values():
+        for t in tokens:
+            counts[t] = counts.get(t, 0) + 1
+    shared = frozenset(t for t, n in counts.items() if n >= 2)
+    return per_member, shared
+
+
+def _named_unambiguously(
+    slug: str,
+    quote: str,
+    member_tokens: dict[str, frozenset[str]],
+    shared_tokens: frozenset[str],
+) -> bool:
+    """Whether the quote's naming of the claimed member survives roster collisions.
+
+    If the quote contains any of the member's name tokens, at least one of them must be
+    UNIQUE to that member among the active roster: "thank you, Chris" with two rostered
+    Chrises supports neither, while "Ms. Win" or "Chris Tennill" still passes. A quote
+    containing none of the member's tokens (role-claims, chair cues phrased without the
+    name) is left to the other gates — this gate only rejects, never accepts. Collisions
+    are computed against the ACTIVE roster, so a name unique in one era can correctly
+    become ambiguous in another (and vice versa) as membership changes.
+    """
+    quote_tokens = frozenset(t for t in re.split(r"[^a-z]+", quote.lower()) if t)
+    present = member_tokens.get(slug, frozenset()) & quote_tokens
+    if not present:
+        return True
+    return bool(present - shared_tokens)
+
+
 def _validate_claim(
     item: dict[str, Any],
     turns: list[ResolverTurn],
     valid_clusters: frozenset[str],
     roster_slugs: frozenset[str],
+    member_tokens: dict[str, frozenset[str]],
+    shared_tokens: frozenset[str],
 ) -> DiscourseClaim | None:
     """Turn one raw claim dict into a :class:`DiscourseClaim`, or ``None`` if it fails a gate.
 
     The hard gates that make the LLM output inert: the slug must be in the roster enum, the
     signal must be a known code, the cited turn must be real, the quote must be a verbatim
-    substring of that turn (whitespace/case tolerant), AND the attributed cluster must sit
-    where the signal's direction requires (:func:`_directional_ok`). A claim failing any gate
-    is dropped (never mint a name, never accept an ungrounded or mis-directed quote).
+    substring of that turn (whitespace/case tolerant), the attributed cluster must sit
+    where the signal's direction requires (:func:`_directional_ok`), AND a quote that names
+    the member must do so by a token unique to them on the active roster
+    (:func:`_named_unambiguously` — a bare shared first name like "Chris" or "Jason" with
+    two such members rostered supports no one; that ambiguity crossed 12+ Win/Tennill and
+    Growe/Wilson anchors before this gate existed). A claim failing any gate is dropped
+    (never mint a name, never accept an ungrounded, mis-directed, or ambiguous quote).
     """
     slug = item.get("person_slug")
     cluster = item.get("cluster_label")
@@ -362,6 +414,8 @@ def _validate_claim(
         return None  # quote not found verbatim in the cited turn -> ungrounded, drop
     if not _directional_ok(signal, cluster, turn_idx, turns):
         return None  # the cue does not point at the attributed cluster -> mis-directed, drop
+    if not _named_unambiguously(slug, quote, member_tokens, shared_tokens):
+        return None  # named only by a token shared with another member -> ambiguous, drop
     return DiscourseClaim(
         cluster_label=cluster,
         person_slug=slug,
@@ -466,6 +520,7 @@ def label_discourse(
     valid_clusters = frozenset(t.cluster_label for t in turns)
     members_by_slug = {m.slug: m for m in members}
     roster_slugs = frozenset(members_by_slug)
+    member_tokens, shared_tokens = _name_token_index(members)
     roster_block = _roster_block(members)
 
     all_claims: list[DiscourseClaim] = []
@@ -479,7 +534,12 @@ def label_discourse(
         window_claims = [
             claim
             for item in _parse_claims(raw)
-            if (claim := _validate_claim(item, turns, valid_clusters, roster_slugs)) is not None
+            if (
+                claim := _validate_claim(
+                    item, turns, valid_clusters, roster_slugs, member_tokens, shared_tokens
+                )
+            )
+            is not None
         ]
         all_claims.extend(window_claims)
         _update_memo(memo, window_claims)
