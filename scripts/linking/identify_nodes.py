@@ -16,14 +16,28 @@ independent, jurisdiction-agnostic signals and reports them side by side:
    voice — the same cross-reference that identified a rejected cluster as Pierson by
    three anchors, mechanized.
 
-Report-only: no identity rows, no entities, no voiceprints are written. Attribution
-remains a human decision recorded via attribute_speaker.py. This is the replicable form
-of the island-rescue + minutes-trick analyses first run on mo/clayton/schools.
+A second mode, ``--audit-anchors``, turns the minutes signal on the anchors themselves:
+every cluster the linker would treat as ground truth (``select_enrollable``, the exact
+filter the embedding-cache builder uses) is cross-checked against the minutes' motion
+attributions, and each match is judged roster-relatively — "agree" only when the minutes
+attribution carries a token unique to the claimed official among the body's roster,
+"contradict" when it uniquely names someone else. This matters for bodies whose anchors
+are mostly unreviewed text inferences (council: 79% discourse-basis) — a wrong anchor
+poisons both the measured frontier and every name the proposer propagates from it. Audit
+mode needs no embedding cache, so it runs before the all-cluster embed exists.
+
+Report-only in both modes: no identity rows, no entities, no voiceprints are written.
+Attribution remains a human decision recorded via attribute_speaker.py. This is the
+replicable form of the island-rescue + minutes-trick analyses first run on
+mo/clayton/schools.
 
 Usage:
     doppler run --project mac --config dev -- uv run python scripts/linking/identify_nodes.py \
         --state mo --place clayton --body schools \
         --nodes nodes.json --out identified.json
+    doppler run --project mac --config dev -- uv run python scripts/linking/identify_nodes.py \
+        --state mo --place clayton --body council \
+        --audit-anchors --out anchor_audit.json
 """
 
 from __future__ import annotations
@@ -34,6 +48,7 @@ import logging
 import os
 import re
 import sys
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -46,6 +61,7 @@ from supabase import Client  # noqa: E402
 
 from actalux.config import load_config  # noqa: E402
 from actalux.db import fetch_all_rows, get_client, get_entity_by_path  # noqa: E402
+from actalux.diarization.enrollment import select_enrollable  # noqa: E402
 from actalux.diarization.linking.cache import MODE_ALL, cache_dir, require_mode  # noqa: E402
 from actalux.diarization.linking.observations import load_observation_dir  # noqa: E402
 from actalux.errors import ActaluxError  # noqa: E402
@@ -114,6 +130,32 @@ def match_motion(spoken: str, votes: list[dict[str, Any]]) -> tuple[dict[str, An
         if score >= _MOTION_MATCH_THRESHOLD and (best is None or score > best[1]):
             best = (vote, score)
     return best
+
+
+def name_tokens(name: str) -> set[str]:
+    """Lowercased letter-runs of a name — the unit of roster-relative comparison."""
+    return {t for t in re.split(r"[^a-zA-Z]+", (name or "").lower()) if t}
+
+
+def audit_verdict(claimed: str, moved_by: str, roster_names: list[str]) -> str:
+    """Judge a minutes attribution against the claimed official, relative to the roster.
+
+    Mirrors the discourse labeler's ambiguity gate: a token supports a member only if no
+    other roster member shares it. "agree" iff ``moved_by`` carries a token unique to the
+    claimed member; "contradict" iff it carries a token unique to a DIFFERENT member (and
+    none unique to the claimed one); "unclear" otherwise — shared tokens only (two Susans)
+    or no overlap at all identify nobody.
+    """
+    per = {n: name_tokens(n) for n in roster_names}
+    counts = Counter(t for ts in per.values() for t in ts)
+    moved = name_tokens(moved_by)
+    claimed_tokens = per.get(claimed, name_tokens(claimed))
+    if moved & {t for t in claimed_tokens if counts[t] <= 1}:
+        return "agree"
+    for name, tokens in per.items():
+        if name != claimed and moved & {t for t in tokens if counts[t] == 1}:
+            return "contradict"
+    return "unclear"
 
 
 def _service_client() -> Client:
@@ -210,13 +252,20 @@ def _turn_texts(client: Client, document_id: int, cluster_label: str) -> list[st
 
 def _node_minutes_evidence(
     client: Client,
-    entity_id: int,
     node: dict[str, Any],
     meeting_dates: dict[int, str],
+    votes_by_date: dict[str, list[dict[str, Any]]] | None = None,
 ) -> list[dict[str, Any]]:
-    """Spoken-motion -> minutes-attribution matches for every member of one node."""
+    """Spoken-motion -> minutes-attribution matches for every member of one node.
+
+    ``meeting_dates`` (doc id -> date) doubles as the body's document universe for the
+    votes lookup. Pass a shared ``votes_by_date`` dict to reuse fetches across calls (the
+    anchor audit hits the same meeting many times); each call otherwise caches locally.
+    """
     evidence: list[dict[str, Any]] = []
-    votes_by_date: dict[str, list[dict[str, Any]]] = {}
+    if votes_by_date is None:
+        votes_by_date = {}
+    body_doc_ids = list(meeting_dates)
     for member in node["members"]:
         doc_id = member["document_id"]
         date = meeting_dates.get(doc_id)
@@ -227,17 +276,7 @@ def _node_minutes_evidence(
                 client.table("votes")
                 .select("document_id,motion,details")
                 .eq("meeting_date", date)
-                .in_(
-                    "document_id",
-                    [
-                        d["id"]
-                        for d in fetch_all_rows(
-                            lambda: (
-                                client.table("documents").select("id").eq("entity_id", entity_id)
-                            )
-                        )
-                    ],
-                )
+                .in_("document_id", body_doc_ids)
                 .execute()
                 .data
             )
@@ -261,21 +300,121 @@ def _node_minutes_evidence(
     return evidence
 
 
+def _audit_anchors(client: Client, entity_id: int, out_path: str | None) -> None:
+    """Cross-check every linking anchor of one body against the minutes' motion attributions."""
+    docs = fetch_all_rows(
+        lambda: client.table("documents").select("id,meeting_date").eq("entity_id", entity_id)
+    )
+    meeting_dates = {d["id"]: d["meeting_date"] for d in docs}
+    doc_ids = list(meeting_dates)
+    identities: list[dict[str, Any]] = []
+    for i in range(0, len(doc_ids), 200):
+        identities += (
+            client.table("speaker_identities")
+            .select("id,document_id,cluster_label,subject_id,confidence,basis")
+            .in_("document_id", doc_ids[i : i + 200])
+            .execute()
+            .data
+        )
+    subject_ids = sorted({r["subject_id"] for r in identities if r.get("subject_id") is not None})
+    subjects_by_id = {
+        s["id"]: s
+        for s in client.table("subjects")
+        .select("id,person_id,publishable,canonical_name")
+        .in_("id", subject_ids)
+        .execute()
+        .data
+    }
+    anchors = select_enrollable(identities, subjects_by_id, confirmed_only=False)
+    member_ids = fetch_all_rows(
+        lambda: client.table("memberships").select("subject_id").eq("entity_id", entity_id)
+    )
+    roster_names = [
+        s["canonical_name"]
+        for s in client.table("subjects")
+        .select("canonical_name")
+        .in_("id", sorted({m["subject_id"] for m in member_ids}))
+        .execute()
+        .data
+    ]
+    logger.info("%d anchor(s) to audit, %d roster names", len(anchors), len(roster_names))
+
+    votes_by_date: dict[str, list[dict[str, Any]]] = {}
+    report, tallies = [], Counter()
+    for a in anchors:
+        node = {"members": [{"document_id": a.document_id, "cluster_label": a.cluster_label}]}
+        evidence = _node_minutes_evidence(client, node, meeting_dates, votes_by_date)
+        if not evidence:
+            tallies["no_signal"] += 1
+            continue
+        verdicts = [audit_verdict(a.canonical_name, e["moved_by"], roster_names) for e in evidence]
+        # one contradiction taints the anchor; agreement needs no dissent
+        overall = (
+            "contradict"
+            if "contradict" in verdicts
+            else ("agree" if "agree" in verdicts else "unclear")
+        )
+        tallies[overall] += 1
+        report.append(
+            {
+                "document_id": a.document_id,
+                "cluster_label": a.cluster_label,
+                "claimed": a.canonical_name,
+                "confidence": a.confidence,
+                "basis": a.source_basis,
+                "verdict": overall,
+                "evidence": [dict(e, verdict=v) for e, v in zip(evidence, verdicts)],
+            }
+        )
+        if overall == "contradict":
+            logger.warning(
+                "CONTRADICTED anchor: doc %d %s claimed %s (%s/%s) but minutes say %s",
+                a.document_id,
+                a.cluster_label,
+                a.canonical_name,
+                a.confidence,
+                a.source_basis,
+                sorted({e["moved_by"] for e in evidence}),
+            )
+    logger.info(
+        "audit: %d anchors — agree %d / contradict %d / unclear %d / no minutes signal %d",
+        len(anchors),
+        tallies["agree"],
+        tallies["contradict"],
+        tallies["unclear"],
+        tallies["no_signal"],
+    )
+    if out_path:
+        Path(out_path).write_text(json.dumps(report, indent=1))
+        logger.info("audit report written to %s", out_path)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--state", required=True)
     parser.add_argument("--place", required=True)
     parser.add_argument("--body", required=True)
-    parser.add_argument("--nodes", required=True, help="node JSON from --dump-nodes")
+    parser.add_argument("--nodes", help="node JSON from --dump-nodes")
+    parser.add_argument(
+        "--audit-anchors",
+        action="store_true",
+        help="audit the body's linking anchors against minutes attributions (no cache needed)",
+    )
     parser.add_argument("--cache-dir", default="data/linking_cache")
     parser.add_argument("--out", help="write the full report JSON here")
     args = parser.parse_args()
+    if bool(args.nodes) == args.audit_anchors:
+        parser.error("exactly one of --nodes / --audit-anchors is required")
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     client = _service_client()
     entity = get_entity_by_path(client, args.state, args.place, args.body)
     if entity is None:
         raise ActaluxError(f"no entity for {args.state}/{args.place}/{args.body}")
+
+    if args.audit_anchors:
+        _audit_anchors(client, entity["id"], args.out)
+        return
 
     cache_path = cache_dir(args.cache_dir, args.state, args.place, args.body, mode=MODE_ALL)
     require_mode(cache_path, MODE_ALL)
@@ -301,7 +440,7 @@ def main() -> None:
     report = []
     for node in nodes:
         gallery = _node_gallery_score(node, centroids, emb_by_key)
-        minutes = _node_minutes_evidence(client, entity["id"], node, meeting_dates)
+        minutes = _node_minutes_evidence(client, node, meeting_dates)
         movers = sorted({e["moved_by"] for e in minutes if e.get("moved_by")})
         report.append(
             {

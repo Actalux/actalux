@@ -64,6 +64,23 @@ class TestMatchMotion:
         assert idn.match_motion("Move to approve the agenda as posted", self.VOTES) is None
 
 
+class TestAuditVerdict:
+    ROSTER = ["Susan Buse", "Susan Harris", "Gary Pierson", "Mark Winings"]
+
+    def test_unique_surname_agrees(self) -> None:
+        assert idn.audit_verdict("Gary Pierson", "Motion by Gary Pierson", self.ROSTER) == "agree"
+
+    def test_shared_first_name_alone_is_unclear(self) -> None:
+        # Two Susans: a bare "Susan" supports neither of them.
+        assert idn.audit_verdict("Susan Buse", "Susan", self.ROSTER) == "unclear"
+
+    def test_unique_token_of_another_member_contradicts(self) -> None:
+        assert idn.audit_verdict("Susan Buse", "Alderman Harris", self.ROSTER) == "contradict"
+
+    def test_no_overlap_is_unclear(self) -> None:
+        assert idn.audit_verdict("Gary Pierson", "the City Manager", self.ROSTER) == "unclear"
+
+
 class TestChairRequestExclusion:
     def test_chair_soliciting_a_motion_is_not_a_motion(self) -> None:
         # First live run: this question fuzzy-matched the agenda motion, whose minutes
