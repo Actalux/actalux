@@ -779,6 +779,14 @@
     ],
     "board-of-adjustment": [
       {
+        "canonical_name": "Gary Soule",
+        "aliases": ["Gary Soule", "Soule", "Soul"],
+        "role": "Chairman",
+        "term_start": "2015-02-05", "term_start_basis": "observed",
+        "term_end": "2023-05-04", "term_end_basis": "observed",
+        "source": "FORMER BoA chairman, missed by the original roster build. doc 1897 (earliest sighting 2015-02-05, 'Chairman Soule' presiding). doc 1804 (last presided 2023-05-04, 'Chairman Gary Soule'). Rick Bliss chairs from 2023-06-08 (doc 1802) on, closing the window. Present in 41 of 56 BoA minutes; 'Soul' = OCR variant (1 occurrence)."
+      },
+      {
         "canonical_name": "Liza Streett",
         "aliases": [],
         "role": "Board member",
