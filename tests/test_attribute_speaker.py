@@ -48,14 +48,9 @@ def test_wrong_body_document_refused():
         _plan(entity_id=8)
 
 
-def test_empty_slot_refused():
-    with pytest.raises(ActaluxError, match="exactly one identity row"):
-        _plan(slot_rows=[])
-
-
 def test_non_rejected_slot_refused():
     confirmed = dict(REJECTED, confidence="confirmed")
-    with pytest.raises(ActaluxError, match="not 'rejected'"):
+    with pytest.raises(ActaluxError, match="other tiers belong"):
         _plan(slot_rows=[confirmed])
 
 
@@ -78,3 +73,15 @@ def test_out_of_term_meeting_warns_but_plans():
     late = dict(MEMBERSHIP, end_date="2021-05-19")
     plan = _plan(membership=late)
     assert any("postdates" in w for w in plan.warnings)
+
+
+def test_empty_slot_attributes_directly():
+    plan = _plan(slot_rows=[])
+    assert plan.rejected_row_id is None
+    assert plan.rejected_subject_name == ""
+    assert plan.subject_name == "Kim Hurst"
+
+
+def test_two_rows_in_slot_refused():
+    with pytest.raises(ActaluxError, match="2 identity rows"):
+        _plan(slot_rows=[REJECTED, dict(REJECTED, id=100)])

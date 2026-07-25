@@ -50,9 +50,14 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class AttributionPlan:
-    """A validated replace-rejection-with-attribution, ready to execute."""
+    """A validated human attribution, ready to execute.
 
-    rejected_row_id: int
+    ``rejected_row_id`` is None for an empty slot (a never-proposed cluster being
+    attributed directly, e.g. an identified island of an official's voice); set, it
+    is the locked rejection row this attribution replaces.
+    """
+
+    rejected_row_id: int | None
     rejected_subject_name: str
     document_id: int
     cluster_label: str
@@ -78,16 +83,17 @@ def plan_attribution(
             f"document {document['id']} belongs to entity {document.get('entity_id')}, "
             f"not the requested body (entity {entity_id})"
         )
-    if len(slot_rows) != 1:
+    if len(slot_rows) > 1:
         raise ActaluxError(
-            f"expected exactly one identity row for doc {document['id']} {cluster_label}, "
-            f"found {len(slot_rows)} — this tool only replaces an existing rejection"
+            f"doc {document['id']} {cluster_label} has {len(slot_rows)} identity rows — "
+            "expected at most one"
         )
-    slot = slot_rows[0]
-    if slot.get("confidence") != "rejected":
+    slot = slot_rows[0] if slot_rows else None
+    if slot is not None and slot.get("confidence") != "rejected":
         raise ActaluxError(
-            f"doc {document['id']} {cluster_label} is at {slot.get('confidence')!r}, not "
-            "'rejected' — confirm/deny flows own non-rejected slots (confirm_speaker.py)"
+            f"doc {document['id']} {cluster_label} is at {slot.get('confidence')!r} — this "
+            "tool attributes empty slots or replaces rejections; other tiers belong to the "
+            "confirm/deny flows (confirm_speaker.py)"
         )
     if len(subjects) != 1:
         found = [s.get("canonical_name") for s in subjects]
@@ -110,8 +116,8 @@ def plan_attribution(
         warnings.append(f"meeting {meeting_date} postdates roster term end {end}")
 
     return AttributionPlan(
-        rejected_row_id=slot["id"],
-        rejected_subject_name=subject_names.get(slot.get("subject_id"), "?"),
+        rejected_row_id=slot["id"] if slot else None,
+        rejected_subject_name=subject_names.get(slot.get("subject_id"), "?") if slot else "",
         document_id=document["id"],
         cluster_label=cluster_label,
         subject_id=subject["id"],
@@ -199,8 +205,9 @@ def _build_plan(client: Client, args: argparse.Namespace) -> AttributionPlan:
 
 
 def _execute(client: Client, plan: AttributionPlan) -> None:
-    """Replace the rejected row with the human attribution (delete, then insert)."""
-    client.table("speaker_identities").delete().eq("id", plan.rejected_row_id).execute()
+    """Record the human attribution (deleting the rejected row first, if one exists)."""
+    if plan.rejected_row_id is not None:
+        client.table("speaker_identities").delete().eq("id", plan.rejected_row_id).execute()
     client.table("speaker_identities").insert(
         {
             "document_id": plan.document_id,
@@ -227,12 +234,16 @@ def main() -> None:
     client = _service_client()
     plan = _build_plan(client, args)
 
+    prior = (
+        f"rejected-under {plan.rejected_subject_name} (row {plan.rejected_row_id})"
+        if plan.rejected_row_id is not None
+        else "empty slot"
+    )
     logger.info(
-        "doc %d %s: rejected-under %s (row %d) -> %s (subject %d, confirmed/manual)",
+        "doc %d %s: %s -> %s (subject %d, confirmed/manual)",
         plan.document_id,
         plan.cluster_label,
-        plan.rejected_subject_name,
-        plan.rejected_row_id,
+        prior,
         plan.subject_name,
         plan.subject_id,
     )
