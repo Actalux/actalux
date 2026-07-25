@@ -628,3 +628,24 @@ class TestDocumentTypeOverride(TestDateSourcePropagation):
 
         assert captured, "insert_document was never called"
         assert captured[0].document_type == "minutes"
+
+
+# --- wholesale_failure (the CI abort gate) ---
+
+
+def test_wholesale_failure_all_attempted_docs_failed():
+    assert ingest.wholesale_failure(new=0, updated=0, skipped=0, failed=7)
+
+
+def test_wholesale_failure_steady_state_skips_are_healthy():
+    # 2026-07-20 scheduled run: everything unchanged, only the perennial
+    # unsupported-format docs failed — must NOT abort.
+    assert not ingest.wholesale_failure(new=0, updated=0, skipped=235, failed=7)
+
+
+def test_wholesale_failure_partial_failure_is_not_wholesale():
+    assert not ingest.wholesale_failure(new=73, updated=1, skipped=161, failed=7)
+
+
+def test_wholesale_failure_clean_run_never_aborts():
+    assert not ingest.wholesale_failure(new=0, updated=0, skipped=0, failed=0)

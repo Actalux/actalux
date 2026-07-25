@@ -709,6 +709,18 @@ def _infer_portal(filename: str) -> str:
     return "manual"
 
 
+def wholesale_failure(new: int, updated: int, skipped: int, failed: int) -> bool:
+    """True only when every attempted document failed (abort-worthy).
+
+    An unchanged skip is a healthy outcome — the doc was fetched, parsed, and
+    verified current — so a steady-state run where everything skips and only the
+    perennial unsupported-format docs fail is NOT wholesale (that false-failed the
+    2026-07-20 scheduled run). Wholesale means an environmental break (embedder
+    down, DB unreachable) where nothing processes at all.
+    """
+    return bool(failed) and (new + updated + skipped) == 0
+
+
 def ingest_from_manifest(manifest_path: Path, entity_path: str = DEFAULT_ENTITY_PATH) -> None:
     """Ingest documents listed in a crawler manifest JSON file.
 
@@ -787,14 +799,12 @@ def ingest_from_manifest(manifest_path: Path, entity_path: str = DEFAULT_ENTITY_
         total_failed,
     )
     # Surface any failure as a CI annotation (visible without reading the log) but only
-    # ABORT on a WHOLESALE failure — nothing landed, e.g. the embedder couldn't load.
-    # A few bad docs (an empty/no-speech transcript) must not exit non-zero: under the
-    # workflow's `set -e` that would skip every downstream step (persist, timestamps,
-    # summaries, chapters) for the docs that DID ingest. Partial failures are expected
-    # at corpus scale and are logged + annotated, not fatal.
+    # ABORT on a wholesale failure (see wholesale_failure): a non-zero exit under the
+    # workflow's `set -e` skips every downstream step for the docs that DID ingest.
+    # Partial failures are expected at corpus scale and are logged + annotated, not fatal.
     if total_failed:
         print(f"::warning::{total_failed} document(s) failed to ingest; see errors above")
-    if total_failed and (total_new + total_updated) == 0:
+    if wholesale_failure(total_new, total_updated, total_skipped, total_failed):
         logger.error("ingest failed wholesale: 0 succeeded, %d failed", total_failed)
         sys.exit(1)
 
