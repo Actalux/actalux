@@ -182,6 +182,17 @@ def unanchored_recurring_nodes(
                 "n_meetings": len(meetings),
                 "document_ids": sorted(meetings),
                 "total_seconds": round(sum(speech_seconds[i] for i in real), 1),
+                # Per-cluster membership so downstream identification (text-anchoring a
+                # node's speech against minutes attributions) can find the actual turns.
+                # Still name-free: coordinates of anonymous clusters, nothing more.
+                "members": [
+                    {
+                        "document_id": identity[i][0],  # type: ignore[index]
+                        "cluster_label": identity[i][1],  # type: ignore[index]
+                        "speech_seconds": round(speech_seconds[i], 1),
+                    }
+                    for i in real
+                ],
             }
         )
     flagged.sort(key=lambda r: (-int(r["n_meetings"]), -float(r["total_seconds"])))  # type: ignore[arg-type]

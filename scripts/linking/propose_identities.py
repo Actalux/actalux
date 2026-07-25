@@ -27,8 +27,10 @@ Run (dry-run):
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -371,7 +373,8 @@ def run(args: argparse.Namespace) -> None:
 
     # Flag-only roster prompt: a nameless voice recurring across meetings is often a new official
     # the roster does not know yet. Reported, never named — no entity, no identity row.
-    for node in unanchored_recurring_nodes(pred, index_official, identity, seconds):
+    recurring = unanchored_recurring_nodes(pred, index_official, identity, seconds)
+    for node in recurring:
         logger.info(
             "unanchored recurring voice: node %s spans %d meetings / %d clusters / %.0fs "
             "(docs %s) — who is this?",
@@ -381,6 +384,9 @@ def run(args: argparse.Namespace) -> None:
             node["total_seconds"],
             node["document_ids"],
         )
+    if args.dump_nodes:
+        Path(args.dump_nodes).write_text(json.dumps(recurring, indent=1))
+        logger.info("dumped %d unanchored recurring node(s) to %s", len(recurring), args.dump_nodes)
 
     if not args.write:
         logger.info("dry-run: no writes. Re-run with --write to insert below-gate proposals.")
@@ -415,6 +421,11 @@ def main() -> None:
         action="store_true",
         help="augment with per-condition gallery prototypes as virtual anchors (needs a "
         "cleared gallery)",
+    )
+    parser.add_argument(
+        "--dump-nodes",
+        help="write the unanchored recurring voice-nodes (with per-cluster membership) to this "
+        "JSON path — the input for minutes-based text identification of unknown voices",
     )
     parser.add_argument(
         "--write",
