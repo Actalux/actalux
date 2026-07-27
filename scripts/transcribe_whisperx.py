@@ -127,8 +127,15 @@ def process_meeting(
     audio_dir: Path,
     *,
     proxy: str | None,
-) -> dict[str, str]:
-    """Download, transcribe+diarize+attribute, and stage one meeting; return its manifest row."""
+) -> dict[str, str] | None:
+    """Download, transcribe+diarize+attribute, and stage one meeting; return its manifest row.
+
+    Returns ``None`` (staging nothing) when transcription yields an empty canonical text —
+    a silent or broken video. Staging it would fail the whole manifest ingest ("Document is
+    empty after parsing", the 2026-06-30 run-killer) and abort the workflow before the
+    batch's other meetings persist. Discovery re-lists the meeting on later runs, so a
+    permanently empty video keeps warning instead of silently disappearing.
+    """
     logger.info("processing %s (%s)", meeting.title, meeting.video_id)
     retries = WARP_DOWNLOAD_RETRIES if proxy else 1
     audio = download_audio(
@@ -145,6 +152,9 @@ def process_meeting(
         audio.unlink(missing_ok=True)  # audio is transient; only the text is kept
     layer = assemble_speaker_layer(raw, timeline, rules)
     segments = canonical_segments(raw, rules)
+    if not layer.canonical_text.strip():
+        logger.warning("empty transcript for %s (%s); not staging", meeting.title, meeting.video_id)
+        return None
     logger.info(
         "  %d words, %d turns, %d name fixes",
         len(raw.all_words()),
@@ -205,20 +215,21 @@ def main() -> None:
     entries: list[dict[str, str]] = []
     for meeting in meetings:
         try:
-            entries.append(
-                process_meeting(
-                    meeting,
-                    entity["id"],
-                    rules,
-                    transcriber,
-                    diarizer,
-                    OUTPUT_DIR,
-                    AUDIO_DIR,
-                    proxy=args.proxy,
-                )
+            row = process_meeting(
+                meeting,
+                entity["id"],
+                rules,
+                transcriber,
+                diarizer,
+                OUTPUT_DIR,
+                AUDIO_DIR,
+                proxy=args.proxy,
             )
         except ActaluxError:
             logger.exception("failed: %s (%s)", meeting.title, meeting.video_id)
+            continue
+        if row is not None:
+            entries.append(row)
 
     source_files = [e["source_file"] for e in entries]
     if len(set(source_files)) != len(source_files):

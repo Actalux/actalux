@@ -55,6 +55,33 @@ def test_stage_meeting_writes_artifacts_and_roundtrips(tmp_path):
     assert entry["video_id"] == "abc123"
 
 
+def test_process_meeting_skips_empty_transcript(tmp_path, monkeypatch):
+    # A silent/broken video must stage NOTHING: an empty .txt in the manifest fails the
+    # whole ingest ("Document is empty after parsing") and aborts the run before the
+    # batch's other meetings persist (the 2026-06-30 whisperx run-killer).
+    import scripts.transcribe_whisperx as tw
+
+    meeting = BoardMeeting(
+        video_id="silent1",
+        title="2022-12-14 Board of Education",
+        meeting_date="2022-12-14",
+        url="https://www.youtube.com/watch?v=silent1",
+    )
+    audio = tmp_path / "a.m4a"
+    audio.write_bytes(b"x")
+    monkeypatch.setattr(tw, "download_audio", lambda *a, **k: audio)
+    monkeypatch.setattr(
+        tw, "assemble_speaker_layer", lambda *a: SpeakerLayer("", "", [], [], DIAR_MODEL)
+    )
+    monkeypatch.setattr(tw, "canonical_segments", lambda *a: [])
+    transcriber = SimpleNamespace(transcribe=lambda p: "raw")
+    diarizer = SimpleNamespace(run=lambda p: "timeline")
+
+    row = tw.process_meeting(meeting, 3, [], transcriber, diarizer, tmp_path, tmp_path, proxy=None)
+    assert row is None
+    assert list(tmp_path.glob("*.txt")) == []  # nothing staged, manifest stays clean
+
+
 class _Query:
     def __init__(self, data: list[dict[str, Any]]) -> None:
         self._data = data
