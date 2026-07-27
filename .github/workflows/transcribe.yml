@@ -46,16 +46,10 @@ on:
         description: "Meeting title for video_id"
         required: false
         default: ""
-  schedule:
-    # One body per nightly fire (~1:00–1:40 AM US Central, nominal), staggered so
-    # they don't overlap; each catches new meetings (capped at 5/run, already-
-    # ingested skipped). Times are UTC (no DST shift) and GitHub can delay scheduled
-    # runs, so the actual run may land somewhat later than the nominal time.
-    # The cron string maps to a body in the "Resolve target body" step below.
-    - cron: "37 6 * * *" # schools           (~1:37 AM US Central)
-    - cron: "7 6 * * *" # council            (~1:07 AM US Central)
-    - cron: "22 6 * * *" # plan-commission   (~1:22 AM US Central)
-    - cron: "52 6 * * *" # board-of-adjustment (~1:52 AM US Central)
+  # RETIRED from nightly duty 2026-07-26: the WhisperX + diarization pipeline
+  # (transcribe_whisperx.yml) now owns the nightly crons — this Groq path produced
+  # text-only transcripts with no speaker layer. Kept dispatchable as a fallback
+  # (e.g. Modal outage); its "Resolve target body" step still works for dispatch.
 
 permissions:
   contents: read

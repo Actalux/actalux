@@ -8,9 +8,10 @@ name: transcribe-whisperx
 # speaker-attribution layer (raw text, word-level turns, the correction audit, media
 # asset) keyed to the new document id.
 #
-# Manual-trigger only for now — there is NO schedule block. Enabling the nightly cron
-# (and retiring the Groq transcribe.yml path) is a deliberate go-live step taken once
-# the Modal apps are deployed and a live run is verified.
+# NIGHTLY since 2026-07-26 (the go-live step: Modal apps deployed, live run verified on
+# the 07-14-2026 council meeting, Groq transcribe.yml crons retired in the same commit).
+# One body per nightly fire, staggered ~1:00–1:40 AM US Central — the same slots the
+# Groq path used; the cron string maps to a body in the "Resolve target body" step.
 #
 # Prereq: the two Modal apps must already be deployed:
 #   modal deploy src/actalux/diarization/modal_runner.py        (actalux-diarization)
@@ -52,6 +53,16 @@ on:
         description: "Meeting title for video_id"
         required: false
         default: ""
+  schedule:
+    # One body per nightly fire (~1:00–1:40 AM US Central, nominal), staggered so they
+    # never overlap; each catches new meetings via discovery (already-transcribed dates
+    # skipped, capped at 3/run). Times are UTC (no DST shift) and GitHub can delay
+    # scheduled runs. The cron string maps to a body in "Resolve target body" below —
+    # the same slots the retired Groq transcribe.yml crons used.
+    - cron: "7 6 * * *" # council             (~1:07 AM US Central)
+    - cron: "22 6 * * *" # plan-commission    (~1:22 AM US Central)
+    - cron: "37 6 * * *" # schools            (~1:37 AM US Central)
+    - cron: "52 6 * * *" # board-of-adjustment (~1:52 AM US Central)
 
 permissions:
   contents: read
@@ -120,9 +131,28 @@ jobs:
       - name: Verify schema is up to date
         run: uv run python scripts/apply_migrations.py --check
 
+      # A scheduled fire carries no inputs — the cron that fired identifies the body
+      # (github.event.schedule); dispatch runs use the body input. Resolved once into
+      # $GITHUB_ENV so the transcribe + ingest steps agree.
+      - name: Resolve target body
+        env:
+          INPUT_BODY: ${{ inputs.body }}
+          SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            case "$SCHEDULE" in
+              "7 6 * * *") BODY=council ;;
+              "22 6 * * *") BODY=plan-commission ;;
+              "52 6 * * *") BODY=board-of-adjustment ;;
+              *) BODY=schools ;;
+            esac
+          else
+            BODY="${INPUT_BODY:-council}"
+          fi
+          echo "BODY=$BODY" >> "$GITHUB_ENV"
+
       - name: Transcribe + diarize + stage
         env:
-          BODY: ${{ inputs.body }}
           SINCE: ${{ inputs.since }}
           LIMIT: ${{ inputs.limit }}
           FORCE: ${{ inputs.force }}
@@ -142,7 +172,6 @@ jobs:
             [ "$FORCE" = "true" ] && ARGS="$ARGS --force"
             uv run python scripts/transcribe_whisperx.py $ARGS
           fi
-          echo "BODY=$BODY" >> "$GITHUB_ENV"
 
       - name: Ingest canonical transcripts
         run: |
