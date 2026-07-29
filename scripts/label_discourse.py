@@ -21,10 +21,12 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import sys
 import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
@@ -74,7 +76,7 @@ def _docs_with_turns(client: Client, place_id: int, body: str | None) -> list[di
     docs = fetch_all_rows(
         lambda: (
             client.table("documents")
-            .select("id,entity_id,replaces_id,meeting_date")
+            .select("id,entity_id,replaces_id,meeting_date,video_id")
             .in_("entity_id", entity_ids)
             .eq("document_type", "transcript")
         )
@@ -115,6 +117,19 @@ def main() -> None:
     parser.add_argument(
         "--docs", help="comma-separated document ids to target (for spot-check / validation)"
     )
+    parser.add_argument(
+        "--manifest",
+        type=Path,
+        help="transcription manifest; restrict to its meetings' live documents (the "
+        "in-pipeline nightly path: label exactly what the run just transcribed)",
+    )
+    parser.add_argument(
+        "--days",
+        type=int,
+        help="only meetings from the last N days (the weekly re-label window: re-runs "
+        "retract and rewrite only discourse-basis rows, so re-labeling is idempotent "
+        "and picks up roster/alias/correction improvements)",
+    )
     parser.add_argument("--apply", action="store_true", help="persist (default: print-only)")
     args = parser.parse_args()
 
@@ -128,6 +143,13 @@ def main() -> None:
         raise ActaluxError(f"no place {args.state}/{args.place}")
 
     docs = _docs_with_turns(service, place["id"], args.body)
+    if args.manifest:
+        entries = json.loads(args.manifest.read_text(encoding="utf-8"))
+        manifest_ids = {e["video_id"] for e in entries if e.get("video_id")}
+        docs = [d for d in docs if d.get("video_id") in manifest_ids]
+    if args.days:
+        cutoff = (datetime.now(UTC) - timedelta(days=args.days)).date().isoformat()
+        docs = [d for d in docs if (d.get("meeting_date") or "") >= cutoff]
     if args.docs:
         wanted = {int(x) for x in args.docs.split(",") if x.strip()}
         docs = [d for d in docs if d["id"] in wanted]
