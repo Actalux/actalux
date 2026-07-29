@@ -31,8 +31,7 @@ as a first-class portal.
 - **Closed/executive-session content is never published.**
 - **An ingest-time PII guard** blocks SSN/DOB-class records before they reach the
   database, regardless of body.
-- **School coverage is board and administration policy only** — no individual
-  personnel, teachers, or students. City coverage is the full public record as the
+- **School coverage is board and administration policy only** — it is not our intent to cover individual teachers or students. City coverage is the full public record as the
   body published it (public officials, land-use applicants, hearing participants).
 
 ## Stack
