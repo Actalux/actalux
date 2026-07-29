@@ -66,6 +66,7 @@ on:
 
 permissions:
   contents: read
+  issues: write  # the morning-after step files the evidence-sheet notification issue
 
 # One transcription run at a time; never race the Groq transcribe path or the
 # document ingest either (they share the documents table + version chain).
@@ -222,6 +223,104 @@ jobs:
           else
             echo "::warning::no manifest; skipping discourse labeling"
           fi
+
+      # ---- Morning-after voice matching: name a fresh meeting's voices from the confirmed
+      # galleries the night it lands, before any minutes exist. The body's all-cluster
+      # embedding cache persists between runs via actions/cache; the resumable builder then
+      # embeds ONLY tonight's meetings (~3 min each on Modal). A COLD cache never triggers a
+      # full corpus re-embed here — it seeds from the newest uploaded cache/all-cluster
+      # artifact, or skips with a warning (full builds belong to linking_prototype.yml).
+      - name: Restore voice-embedding cache
+        uses: actions/cache@v4
+        with:
+          path: data/linking_cache/mo_clayton_${{ env.BODY }}_all
+          key: voice-cache-${{ env.BODY }}-${{ github.run_id }}
+          restore-keys: voice-cache-${{ env.BODY }}-
+
+      - name: Seed voice cache from the newest artifact (cold start only)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          CACHE="data/linking_cache/mo_clayton_${BODY}_all"
+          [ -f "$CACHE/manifest.json" ] && { echo "cache warm"; exit 0; }
+          for NAME in "voice-cache-${BODY}" "linking-mo-clayton-${BODY}-all"; do
+            ID=$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=${NAME}&per_page=1" \
+                 -q '.artifacts[] | select(.expired == false) | .id' | head -1)
+            if [ -n "$ID" ]; then
+              echo "seeding from artifact ${NAME} (${ID})"
+              gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${ID}/zip" > /tmp/seed.zip
+              mkdir -p /tmp/seed && unzip -q -o /tmp/seed.zip -d /tmp/seed
+              SRC=$(dirname "$(find /tmp/seed -name manifest.json | head -1)")
+              [ -n "$SRC" ] && mkdir -p "$CACHE" && cp "$SRC"/* "$CACHE"/ && exit 0
+            fi
+          done
+          echo "::warning::no voice cache and no seed artifact for ${BODY}; morning-after skipped"
+
+      - name: Embed tonight's meetings into the voice space
+        run: |
+          CACHE="data/linking_cache/mo_clayton_${BODY}_all"
+          MANIFEST=data/documents/whisperx_manifest.json
+          if [ ! -f "$MANIFEST" ] || [ "$(jq length "$MANIFEST")" = "0" ]; then
+            echo "no new meetings; skipping"; exit 0
+          fi
+          if [ ! -f "$CACHE/manifest.json" ]; then
+            echo "::warning::voice cache unavailable; skipping morning-after"; exit 0
+          fi
+          uv run --group diarization python scripts/linking/build_embedding_cache.py \
+            --state mo --place clayton --body "$BODY" \
+            --include-unanchored --proxy "socks5h://127.0.0.1:40000" \
+            --out-dir data/linking_cache
+
+      - name: Score fresh voices and render the evidence sheet
+        run: |
+          CACHE="data/linking_cache/mo_clayton_${BODY}_all"
+          MANIFEST=data/documents/whisperx_manifest.json
+          if [ ! -f "$MANIFEST" ] || [ "$(jq length "$MANIFEST")" = "0" ] \
+             || [ ! -f "$CACHE/manifest.json" ]; then
+            echo "nothing to score"; exit 0
+          fi
+          uv run python scripts/linking/identify_nodes.py \
+            --state mo --place clayton --body "$BODY" \
+            --manifest "$MANIFEST" --out data/evidence_report.json
+          uv run python scripts/render_evidence_sheet.py \
+            --state mo --place clayton --body "$BODY" \
+            --report data/evidence_report.json --title "$(date -u +%Y-%m-%d)" \
+            --out-html data/evidence_sheet.html --out-summary data/evidence_summary.md
+
+      - name: Upload evidence sheet
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-sheet-${{ env.BODY }}-${{ github.run_id }}
+          path: |
+            data/evidence_sheet.html
+            data/evidence_report.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+      # Refresh the seed-chain artifact so a future cold cache restores tonight's state.
+      - name: Upload voice cache snapshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: voice-cache-${{ env.BODY }}
+          path: data/linking_cache/mo_clayton_${{ env.BODY }}_all
+          if-no-files-found: ignore
+          retention-days: 30
+          overwrite: true
+
+      - name: File the review issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [ -f data/evidence_summary.md ] || { echo "no summary; no issue"; exit 0; }
+          if ! grep -qE '^\- \*\*[MG]' data/evidence_summary.md; then
+            echo "no nameable voices; no issue"; exit 0
+          fi
+          gh issue create \
+            --title "Voice evidence: ${BODY} $(date -u +%Y-%m-%d)" \
+            --body-file data/evidence_summary.md \
+            --repo "${GITHUB_REPOSITORY}"
 
       - name: Upload staged artifacts
         if: always()

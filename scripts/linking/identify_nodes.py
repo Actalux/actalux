@@ -16,7 +16,14 @@ independent, jurisdiction-agnostic signals and reports them side by side:
    voice — the same cross-reference that identified a rejected cluster as Pierson by
    three anchors, mechanized.
 
-A second mode, ``--audit-anchors``, turns the minutes signal on the anchors themselves:
+A second input mode, ``--manifest``, takes a transcription-pipeline manifest instead of a
+node dump: every UNCLAIMED cluster (no identity row of any tier) of the manifest's live
+documents becomes its own single-cluster node. This is the nightly "morning-after" scope —
+score a fresh meeting's unknown voices against the galleries the moment diarization lands,
+before any minutes exist. (It generalizes the single-cluster island scan first improvised
+for the council/PC evidence sheets.)
+
+A third mode, ``--audit-anchors``, turns the minutes signal on the anchors themselves:
 every cluster the linker would treat as ground truth (``select_enrollable``, the exact
 filter the embedding-cache builder uses) is cross-checked against the minutes' motion
 attributions, and each match is judged roster-relatively — "agree" only when the minutes
@@ -60,7 +67,7 @@ from supabase import Client  # noqa: E402
 
 from actalux.config import load_config  # noqa: E402
 from actalux.db import fetch_all_rows, get_client, get_entity_by_path  # noqa: E402
-from actalux.diarization.enrollment import select_enrollable  # noqa: E402
+from actalux.diarization.enrollment import select_enrollable, superseded_doc_ids  # noqa: E402
 from actalux.diarization.linking.cache import MODE_ALL, cache_dir, require_mode  # noqa: E402
 from actalux.diarization.linking.observations import load_observation_dir  # noqa: E402
 from actalux.errors import ActaluxError  # noqa: E402
@@ -336,12 +343,70 @@ def _audit_anchors(client: Client, entity_id: int, out_path: str | None) -> None
         logger.info("audit report written to %s", out_path)
 
 
+def manifest_nodes(
+    client: Client, entity_id: int, manifest_path: Path, observations: list
+) -> list[dict[str, Any]]:
+    """One single-cluster node per UNCLAIMED cluster of the manifest's live documents.
+
+    "Unclaimed" = no ``speaker_identities`` row of any tier — the fresh meeting's genuinely
+    unknown voices, scored the morning after diarization lands (no minutes exist yet, so the
+    gallery signal usually carries this pass alone).
+    """
+    entries = json.loads(Path(manifest_path).read_text())
+    video_ids = {e["video_id"] for e in entries if e.get("video_id")}
+    if not video_ids:
+        return []
+    docs = fetch_all_rows(
+        lambda: (
+            client.table("documents").select("id,video_id,replaces_id").eq("entity_id", entity_id)
+        )
+    )
+    superseded = superseded_doc_ids(docs)
+    targets = {
+        d["id"] for d in docs if d.get("video_id") in video_ids and d["id"] not in superseded
+    }
+    claimed: set[tuple[int, str]] = set()
+    for doc_id in sorted(targets):
+        for r in (
+            client.table("speaker_identities")
+            .select("cluster_label")
+            .eq("document_id", doc_id)
+            .execute()
+            .data
+        ):
+            claimed.add((doc_id, r["cluster_label"]))
+    nodes = []
+    for i, o in enumerate(observations):
+        if o.document_id not in targets or (o.document_id, o.cluster_label) in claimed:
+            continue
+        nodes.append(
+            {
+                "node_id": f"solo{i}",
+                "n_meetings": 1,
+                "total_seconds": o.speech_seconds,
+                "members": [
+                    {
+                        "document_id": o.document_id,
+                        "cluster_label": o.cluster_label,
+                        "speech_seconds": o.speech_seconds,
+                    }
+                ],
+            }
+        )
+    return nodes
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--state", required=True)
     parser.add_argument("--place", required=True)
     parser.add_argument("--body", required=True)
     parser.add_argument("--nodes", help="node JSON from --dump-nodes")
+    parser.add_argument(
+        "--manifest",
+        help="transcription manifest; score every unclaimed cluster of its live documents "
+        "(the nightly morning-after scope)",
+    )
     parser.add_argument(
         "--audit-anchors",
         action="store_true",
@@ -350,8 +415,8 @@ def main() -> None:
     parser.add_argument("--cache-dir", default="data/linking_cache")
     parser.add_argument("--out", help="write the full report JSON here")
     args = parser.parse_args()
-    if bool(args.nodes) == args.audit_anchors:
-        parser.error("exactly one of --nodes / --audit-anchors is required")
+    if sum([bool(args.nodes), bool(args.manifest), args.audit_anchors]) != 1:
+        parser.error("exactly one of --nodes / --manifest / --audit-anchors is required")
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     client = _service_client()
@@ -371,7 +436,11 @@ def main() -> None:
         v = np.asarray(o.embedding, dtype=np.float64)
         emb_by_key[(o.document_id, o.cluster_label)] = v / np.linalg.norm(v)
 
-    nodes = json.loads(Path(args.nodes).read_text())
+    nodes = (
+        manifest_nodes(client, entity["id"], Path(args.manifest), obs)
+        if args.manifest
+        else json.loads(Path(args.nodes).read_text())
+    )
     docs = fetch_all_rows(
         lambda: client.table("documents").select("id,meeting_date").eq("entity_id", entity["id"])
     )
@@ -394,6 +463,7 @@ def main() -> None:
                 "node_id": node["node_id"],
                 "n_meetings": node["n_meetings"],
                 "total_seconds": node["total_seconds"],
+                "members": node["members"],
                 "gallery": gallery,
                 "minutes_movers": movers,
                 "minutes_evidence": minutes,
