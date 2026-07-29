@@ -208,6 +208,21 @@ jobs:
             echo "::warning::no transcripts produced; skipping name-correction discovery"
           fi
 
+      # The LLM discourse labeler runs on exactly the meetings this run produced — the
+      # biggest text-recall lever (docs/architecture/speaker-attribution.md). Placed after
+      # the corrections step so fresh manglings already canonicalize in the turns it reads.
+      # Proposals land at inferred_medium basis=discourse — below the public-display gate,
+      # roster-ambiguity-gated, and re-runs retract only their own basis. Never public.
+      - name: Label speakers from meeting discourse
+        run: |
+          if [ -f data/documents/whisperx_manifest.json ]; then
+            uv run python scripts/label_discourse.py \
+              --state mo --place clayton --body "$BODY" \
+              --manifest data/documents/whisperx_manifest.json --apply
+          else
+            echo "::warning::no manifest; skipping discourse labeling"
+          fi
+
       - name: Upload staged artifacts
         if: always()
         uses: actions/upload-artifact@v4

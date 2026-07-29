@@ -1,0 +1,78 @@
+name: weekly-reresolve
+
+# Weekly identity re-resolution sweep (2026-07-29). Resolution normally runs once, inside
+# the nightly transcription pipeline — so improvements that land later (a roster addition,
+# a new alias, a vetted name-correction, a new anchor pattern) never reach already-ingested
+# meetings without a hand run. This closes that loop on a schedule:
+#
+#   1. reresolve_identities — the deterministic resolver over EVERY live transcript of the
+#      place (cheap: DB reads + patterns, no LLM). Confirmed/rejected rows are never
+#      touched; stale auto rows are retracted by reconciliation.
+#   2. label_discourse --days 45 — the LLM discourse labeler over the recent window only
+#      (LLM cost stays bounded; ~2 months covers roster churn and late corrections).
+#      Re-runs retract and rewrite only discourse-basis rows, so the pass is idempotent.
+#      Older history stays a deliberate manual backfill, not a silent weekly spend.
+#
+# Both write at or below the same tiers the nightly pipeline uses — nothing here can
+# publish a name a human didn't confirm or the public gate wouldn't already allow.
+#
+# Required repository secrets:
+#   SUPABASE_URL / SUPABASE_KEY / SUPABASE_SERVICE_KEY / SUPABASE_PAT
+#   OPENROUTER_ACTALUX_KEY   (discourse labeler LLM calls)
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Discourse re-label window in days"
+        required: false
+        default: "45"
+  schedule:
+    # Sunday ~7:07 AM US Central — clear of the nightly transcribe crons (6:07–6:52 UTC
+    # daily) and the Monday 09:00 UTC document ingest.
+    - cron: "7 12 * * 0"
+
+permissions:
+  contents: read
+
+# Shares documents + speaker_identities with the transcription pipeline; never race it.
+concurrency:
+  group: transcribe
+  cancel-in-progress: false
+
+jobs:
+  reresolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      ACTALUX_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      ACTALUX_SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      ACTALUX_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      ACTALUX_SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
+      OPENROUTER_ACTALUX_KEY: ${{ secrets.OPENROUTER_ACTALUX_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv + Python 3.11
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --no-dev
+
+      - name: Verify schema is up to date
+        run: uv run python scripts/apply_migrations.py --check
+
+      - name: Re-resolve identities (deterministic, whole place)
+        run: |
+          uv run python scripts/reresolve_identities.py \
+            --state mo --place clayton --apply
+
+      - name: Re-label recent meetings from discourse (LLM, windowed)
+        env:
+          DAYS: ${{ inputs.days }}
+        run: |
+          uv run python scripts/label_discourse.py \
+            --state mo --place clayton --days "${DAYS:-45}" --apply
