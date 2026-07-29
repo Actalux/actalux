@@ -407,3 +407,90 @@ def test_vote_reference_is_none_without_meeting_date():
 def test_vote_reference_is_none_without_votes():
     client = _CorrClient({"meeting_date": "2025-03-04"}, [])
     assert vote_reference_for_document(client, 7, 42) is None
+
+
+class TestAlignMotions:
+    """Motion-attribution alignment (first-person spoken motion <-> minutes moved_by)."""
+
+    VOTES = [
+        {
+            "motion": "That the Board of Aldermen approve the Consent Agenda as presented.",
+            "details": {"moved_by": "Alderman Yorg"},
+        },
+        {
+            "motion": "That the Board adjourn to a closed meeting as authorized by 610.021.",
+            "details": {"moved_by": "Alderman Hummell"},
+        },
+        {"motion": "Approve the liquor license.", "details": None},  # unattributed
+    ]
+
+    def _turns(self, cluster: str, text: str) -> list:
+        from actalux.identity.resolve import ResolverTurn
+
+        return [ResolverTurn(cluster, text)]
+
+    def test_first_person_motion_proposes_the_minutes_mover(self) -> None:
+        from actalux.identity.vote_align import align_motions
+
+        turns = self._turns(
+            "SPEAKER_04",
+            "I move that the Board of Aldermen approve the consent agenda as presented.",
+        )
+        out = align_motions(turns, _members(), self.VOTES)
+        assert [(p.cluster_label, p.subject_id, p.confidence, p.basis) for p in out] == [
+            ("SPEAKER_04", 4, "inferred_medium", VOTE_ANCHOR_BASIS)
+        ]
+
+    def test_chair_request_never_proposes(self) -> None:
+        from actalux.identity.vote_align import align_motions
+
+        turns = self._turns(
+            "SPEAKER_01", "May I have a motion to approve the consent agenda as presented?"
+        )
+        assert align_motions(turns, _members(), self.VOTES) == []
+
+    def test_divergent_movers_in_one_cluster_taint_it(self) -> None:
+        from actalux.identity.vote_align import align_motions
+
+        text = (
+            "I move that the Board of Aldermen approve the consent agenda as presented. "
+            "I move that the Board adjourn to a closed meeting as authorized by 610.021."
+        )
+        assert align_motions(self._turns("SPEAKER_02", text), _members(), self.VOTES) == []
+
+    def test_unresolvable_mover_taints_the_cluster(self) -> None:
+        from actalux.identity.vote_align import align_motions
+
+        votes = [
+            {
+                "motion": "That the Board of Aldermen approve the Consent Agenda as presented.",
+                "details": {"moved_by": "Alderman Nobody"},
+            }
+        ]
+        turns = self._turns(
+            "SPEAKER_04",
+            "I move that the Board of Aldermen approve the consent agenda as presented.",
+        )
+        assert align_motions(turns, _members(), votes) == []
+
+    def test_member_on_two_clusters_drops_both(self) -> None:
+        from actalux.identity.resolve import ResolverTurn
+        from actalux.identity.vote_align import align_motions
+
+        turns = [
+            ResolverTurn(
+                "SPEAKER_04", "I move that the Board approve the consent agenda as presented."
+            ),
+            ResolverTurn(
+                "SPEAKER_09", "I will move that the Board approve the consent agenda as presented."
+            ),
+        ]
+        assert align_motions(turns, _members(), self.VOTES) == []
+
+    def test_no_votes_contributes_nothing(self) -> None:
+        from actalux.identity.vote_align import align_motions
+
+        turns = self._turns(
+            "SPEAKER_04", "I move that the Board approve the consent agenda as presented."
+        )
+        assert align_motions(turns, _members(), []) == []

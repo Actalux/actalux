@@ -36,9 +36,11 @@ affirmative vocabulary is generic parliamentary English and the member set comes
 from __future__ import annotations
 
 import logging
+import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass, replace
 
+from rapidfuzz import fuzz
 from supabase import Client
 
 from actalux.db import fetch_all_rows
@@ -407,6 +409,169 @@ def merge_vote_anchor(
         # not displace a self_intro / presenter_intro (a spoken self-declaration outranks alignment)
     merged = _demote_contested(list(by_cluster.values()))
     return sorted(merged, key=lambda p: p.cluster_label)
+
+
+# --- motion-attribution alignment ---------------------------------------------------------
+# Third votes-derived signal: a voice MAKING a motion in the first person, fuzzy-matched to the
+# minutes' recorded motion, whose ``details.moved_by`` names the mover. Same containment as the
+# clerk-call aligner: text alone cannot certify the VOICE is the named member (diarization bleed
+# can put another voice's sentence in the cluster), so every proposal stays inferred_medium under
+# ``vote_anchor``. First mechanized report-only in scripts/linking/identify_nodes.py, whose live
+# audits measured the signal at 36-for-40 verdict agreement across council + plan-commission.
+
+# A spoken motion long enough to fuzzy-match against a minutes motion; shorter fragments
+# ("I move") match everything.
+MIN_MOTION_CHARS = 25
+# token_set_ratio threshold for "the spoken motion is the minutes motion". Minutes paraphrase
+# lightly (tense, "that the Board…"); below ~70 unrelated motions start colliding.
+MOTION_MATCH_THRESHOLD = 70.0
+
+# First-person declarative motion-making ONLY. A chair's REQUEST ("May I have a motion to
+# approve…?") contains the motion's words and fuzzy-matches the minutes motion — which the
+# minutes attribute to whoever ANSWERED, not the requesting voice (the identify_nodes first-run
+# misidentification shape). Questions are dropped for the same reason.
+MOTION_CUE = re.compile(
+    r"\b(?:i (?:will |'ll |would like to )?move|i make a motion|so moved)\b|^moved that\b",
+    re.IGNORECASE,
+)
+
+
+def spoken_motions(texts: list[str]) -> list[str]:
+    """First-person motion-making utterances from a cluster's turn texts."""
+    out: list[str] = []
+    for text in texts:
+        for sentence in re.split(r"(?<=[.?!])\s+", text):
+            if sentence.rstrip().endswith("?"):
+                continue
+            m = MOTION_CUE.search(sentence)
+            if not m:
+                continue
+            candidate = sentence[m.start() :].strip()
+            if len(candidate) >= MIN_MOTION_CHARS:
+                out.append(candidate)
+    return out
+
+
+def match_motion(spoken: str, votes: list[dict]) -> tuple[dict, float] | None:
+    """The vote row whose motion text best matches a spoken motion, if above threshold.
+
+    Only votes carrying a minutes attribution (``details.moved_by``) are candidates — an
+    unattributed match identifies nothing.
+    """
+    best: tuple[dict, float] | None = None
+    for vote in votes:
+        if not (vote.get("details") or {}).get("moved_by"):
+            continue
+        score = fuzz.token_set_ratio(spoken.lower(), (vote.get("motion") or "").lower())
+        if score >= MOTION_MATCH_THRESHOLD and (best is None or score > best[1]):
+            best = (vote, score)
+    return best
+
+
+def _resolve_mover(moved_by: str, strong: dict[str, int], surname: dict[str, int]) -> int | None:
+    """The minutes' mover string resolved to exactly one roster member, else ``None``.
+
+    A full-phrase hit on the strong index first ("Gary Pierson"); otherwise the honorific-
+    carrying forms ("Alderman McAndrew") resolve token-wise through the surname index, which
+    already excludes shared surnames — so a two-Smiths body can never resolve on "Smith" alone.
+    Two different members matched by one string is ambiguity, never a guess.
+    """
+    phrase = _norm_text(moved_by)
+    if not phrase:
+        return None
+    hit = strong.get(phrase)
+    if hit is not None:
+        return hit
+    sids = {surname[t] for t in phrase.split() if t in surname}
+    return sids.pop() if len(sids) == 1 else None
+
+
+def align_motions(
+    turns: list[ResolverTurn],
+    members: list[RosterMember],
+    votes: list[dict],
+) -> list[IdentityProposal]:
+    """Motion-attribution cluster -> member proposals for one transcript (pure; no DB, no I/O).
+
+    Per cluster: every first-person spoken motion is matched against the meeting's recorded
+    votes; a cluster proposes ONLY when every matched motion resolves to the same single
+    member (one unresolvable or divergent mover taints the cluster — precision over recall,
+    the same posture as :func:`align_votes`). A member bound to two clusters is dropped the
+    same way (diarization may legitimately split a voice, but a wrong merge is the fatal
+    class). All proposals are inferred_medium — see the module note above.
+    """
+    if not turns or not members or not votes:
+        return []
+    strong, surname = _name_index(members)
+    members_by_id = {m.subject_id: m for m in members}
+
+    texts_by_cluster: dict[str, list[str]] = defaultdict(list)
+    for t in turns:
+        texts_by_cluster[t.cluster_label].append(t.text)
+
+    cluster_sid: dict[str, int] = {}
+    for cluster, texts in texts_by_cluster.items():
+        movers: set[int] = set()
+        tainted = False
+        for spoken in spoken_motions(texts):
+            hit = match_motion(spoken, votes)
+            if hit is None:
+                continue
+            sid = _resolve_mover(hit[0]["details"]["moved_by"], strong, surname)
+            if sid is None:
+                tainted = True  # a matched motion we cannot attribute — do not half-trust
+                break
+            movers.add(sid)
+        if not tainted and len(movers) == 1:
+            cluster_sid[cluster] = movers.pop()
+
+    member_clusters: dict[int, set[str]] = defaultdict(set)
+    for cluster, sid in cluster_sid.items():
+        member_clusters[sid].add(cluster)
+    return sorted(
+        (
+            IdentityProposal(
+                cluster, sid, members_by_id[sid].slug, "inferred_medium", VOTE_ANCHOR_BASIS
+            )
+            for cluster, sid in cluster_sid.items()
+            if len(member_clusters[sid]) == 1
+        ),
+        key=lambda p: p.cluster_label,
+    )
+
+
+def motion_votes_for_document(client: Client, document_id: int, entity_id: int) -> list[dict]:
+    """The body's recorded votes (motion text + details) for a transcript's meeting date.
+
+    Scoped to the body's own documents so a same-date meeting of another body can never
+    supply motions (two bodies share members via liaisons). Empty until the meeting's
+    minutes are ingested and parsed — the motion aligner simply contributes nothing on the
+    day-one pass and fires on the weekly re-resolve once the written record exists.
+    """
+    doc = (
+        client.table("documents")
+        .select("meeting_date")
+        .eq("id", document_id)
+        .limit(1)
+        .execute()
+        .data
+    )
+    if not doc or not doc[0].get("meeting_date"):
+        return []
+    body_doc_ids = [
+        d["id"]
+        for d in fetch_all_rows(
+            lambda: client.table("documents").select("id").eq("entity_id", entity_id)
+        )
+    ]
+    return (
+        client.table("votes")
+        .select("document_id,motion,details")
+        .eq("meeting_date", doc[0]["meeting_date"])
+        .in_("document_id", body_doc_ids)
+        .execute()
+        .data
+    )
 
 
 # --- DB-facing correlation --------------------------------------------------------------

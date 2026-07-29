@@ -53,7 +53,6 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from rapidfuzz import fuzz
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "src"))
 
@@ -66,70 +65,18 @@ from actalux.diarization.linking.cache import MODE_ALL, cache_dir, require_mode 
 from actalux.diarization.linking.observations import load_observation_dir  # noqa: E402
 from actalux.errors import ActaluxError  # noqa: E402
 
-logger = logging.getLogger("identify_nodes")
-
-# A spoken motion long enough to fuzzy-match against a minutes motion; shorter
-# fragments ("I move") match everything.
-_MIN_MOTION_CHARS = 25
-# token_set_ratio threshold for "the spoken motion is the minutes motion". Minutes
-# paraphrase lightly (tense, "that the Board of Education"), so exact matching fails;
-# below ~70 unrelated motions start colliding.
-_MOTION_MATCH_THRESHOLD = 70.0
-# An official's gallery needs a few confirmed clusters before its centroid is stable.
-_MIN_GALLERY_CLUSTERS = 3
-
-# First-person declarative motion-making ONLY. The first live run showed why: a chair's
-# REQUEST ("May I have a motion to approve the agenda, please?") contains the motion's
-# words and fuzzy-matches the minutes motion — which the minutes then attribute to
-# whoever answered the request, not to the requesting voice. Bare "motion to" /
-# "move that" without a first-person subject is exactly that request/paraphrase shape,
-# so only "I move…", "I make a motion…", "so moved", and the read-aloud "Moved that…"
-# opening count as the speaker making the motion themselves.
-_MOTION_CUE = re.compile(
-    r"\b(?:i (?:will |'ll |would like to )?move|i make a motion|so moved)\b|^moved that\b",
-    re.IGNORECASE,
+# The motion primitives are shared with the automatic resolver family (vote_align.align_motions
+# writes what this tool reports); single source keeps their behavior identical.
+from actalux.identity.vote_align import (  # noqa: E402
+    MOTION_MATCH_THRESHOLD,  # noqa: F401  (re-exported: tests + report consumers key off it)
+    match_motion,
+    spoken_motions,
 )
 
+logger = logging.getLogger("identify_nodes")
 
-def spoken_motions(texts: list[str]) -> list[str]:
-    """First-person motion-making utterances from a cluster's turn texts.
-
-    Splits each turn on sentence-ish boundaries and keeps declarative sentences carrying
-    a first-person motion cue, long enough to be matchable. Questions are dropped — a
-    sentence ending in "?" is a chair soliciting a motion, not making one. Remaining
-    caveat for consumers: a single 2-3 second match can still be diarization boundary
-    bleed from an adjacent speaker; treat repeated matches to the SAME mover across
-    meetings as evidence, a lone hit as noise.
-    """
-    out: list[str] = []
-    for text in texts:
-        for sentence in re.split(r"(?<=[.?!])\s+", text):
-            if sentence.rstrip().endswith("?"):
-                continue
-            m = _MOTION_CUE.search(sentence)
-            if not m:
-                continue
-            candidate = sentence[m.start() :].strip()
-            if len(candidate) >= _MIN_MOTION_CHARS:
-                out.append(candidate)
-    return out
-
-
-def match_motion(spoken: str, votes: list[dict[str, Any]]) -> tuple[dict[str, Any], float] | None:
-    """The vote row whose motion text best matches a spoken motion, if above threshold.
-
-    Only votes carrying a minutes attribution (``details.moved_by``) are candidates —
-    an unattributed match identifies nothing.
-    """
-    best: tuple[dict[str, Any], float] | None = None
-    for vote in votes:
-        moved_by = (vote.get("details") or {}).get("moved_by")
-        if not moved_by:
-            continue
-        score = fuzz.token_set_ratio(spoken.lower(), (vote.get("motion") or "").lower())
-        if score >= _MOTION_MATCH_THRESHOLD and (best is None or score > best[1]):
-            best = (vote, score)
-    return best
+# An official's gallery needs a few confirmed clusters before its centroid is stable.
+_MIN_GALLERY_CLUSTERS = 3
 
 
 def name_tokens(name: str) -> set[str]:

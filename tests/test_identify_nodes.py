@@ -53,7 +53,7 @@ class TestMatchMotion:
         assert hit is not None
         vote, score = hit
         assert vote["details"]["moved_by"] == "Gary Pierson"
-        assert score >= idn._MOTION_MATCH_THRESHOLD
+        assert score >= idn.MOTION_MATCH_THRESHOLD
 
     def test_unrelated_motion_below_threshold(self) -> None:
         assert idn.match_motion("I move that we rename the stadium after my dog", self.VOTES) is (

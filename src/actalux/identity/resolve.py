@@ -1036,8 +1036,10 @@ def resolve_document(
     # Local import breaks the resolve <-> vote_align cycle (vote_align reuses this module's name
     # index + proposal types); it is cached after the first document, mirroring db.py's pattern.
     from actalux.identity.vote_align import (
+        align_motions,
         align_votes,
         merge_vote_anchor,
+        motion_votes_for_document,
         vote_reference_for_document,
     )
 
@@ -1055,6 +1057,13 @@ def resolve_document(
     # row stays) so the persisted set is deterministic and independent of DB write order.
     vote_ref = vote_reference_for_document(client, document_id, entity_id)
     merged = merge_vote_anchor(proposals, align_votes(turns, members, vote_ref))
+    # Third votes-derived family: first-person spoken motions matched to the minutes' "Motion
+    # by X" attributions (vote_align.align_motions). Same merge precedence — a medium proposal
+    # fills unclaimed clusters and corroborates agreeing ones, never displaces a disagreement.
+    # Contributes nothing until the meeting's minutes are parsed (day-one passes see no votes);
+    # the weekly re-resolve picks it up once the written record lands.
+    motion_votes = motion_votes_for_document(client, document_id, entity_id)
+    merged = merge_vote_anchor(merged, align_motions(turns, members, motion_votes))
     # Scope retraction to this family's own bases (RESOLVER_BASES includes vote_anchor) so a
     # coexisting discourse-labeler row on another cluster is never deleted here (and vice versa);
     # conflicts on a shared cluster resolve by tier inside persist_identities.
