@@ -64,16 +64,25 @@ def _docs_with_turns(client: Client, place_id: int, body: str | None) -> list[di
         )
     )
     superseded = superseded_doc_ids(docs)
-    live_ids = [d["id"] for d in docs if d["id"] not in superseded]
-    with_turns = {
-        r["document_id"]
-        for r in fetch_all_rows(
-            lambda: (
-                client.table("diarization_turns").select("document_id").in_("document_id", live_ids)
-            )
+    live = sorted((d for d in docs if d["id"] not in superseded), key=lambda d: d["id"])
+    # One indexed limit(1) probe per live document. The bulk alternative — select
+    # document_id from diarization_turns for ALL live ids at once — sorts every matching
+    # turn row server-side to serve the first page and trips the role statement_timeout
+    # (PG 57014; killed the first weekly-sweep run 2026-07-29 in label_discourse's copy
+    # of this helper).
+    with_turns = []
+    for d in live:
+        rows = (
+            client.table("diarization_turns")
+            .select("id")
+            .eq("document_id", d["id"])
+            .limit(1)
+            .execute()
+            .data
         )
-    }
-    return sorted((d for d in docs if d["id"] in with_turns), key=lambda d: d["id"])
+        if rows:
+            with_turns.append(d)
+    return with_turns
 
 
 def main() -> None:

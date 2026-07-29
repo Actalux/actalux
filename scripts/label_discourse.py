@@ -63,8 +63,8 @@ def _service_client() -> Client:
     return get_client(cfg.supabase_url, key)
 
 
-def _docs_with_turns(client: Client, place_id: int, body: str | None) -> list[dict]:
-    """Live (non-superseded) transcript documents of the place that have diarization turns."""
+def _live_transcripts(client: Client, place_id: int, body: str | None) -> list[dict]:
+    """Live (non-superseded) transcript documents of the place, oldest id first."""
     entities = fetch_all_rows(
         lambda: client.table("entities").select("id,body_slug").eq("place_id", place_id)
     )
@@ -82,16 +82,32 @@ def _docs_with_turns(client: Client, place_id: int, body: str | None) -> list[di
         )
     )
     superseded = superseded_doc_ids(docs)
-    live_ids = [d["id"] for d in docs if d["id"] not in superseded]
-    with_turns = {
-        r["document_id"]
-        for r in fetch_all_rows(
-            lambda: (
-                client.table("diarization_turns").select("document_id").in_("document_id", live_ids)
-            )
+    return sorted((d for d in docs if d["id"] not in superseded), key=lambda d: d["id"])
+
+
+def _with_turns(client: Client, docs: list[dict]) -> list[dict]:
+    """Keep only documents that have persisted diarization turns.
+
+    One indexed ``limit(1)`` existence probe per document. The obvious bulk query —
+    ``diarization_turns.select(document_id).in_(document_id, <all live ids>)`` — sorts
+    every matching turn row server-side to serve the first page and trips the role
+    statement_timeout (PG 57014, the 2026-07-29 weekly-sweep failure). Callers should
+    apply their own scoping filters (manifest/days/docs) BEFORE this check so the probe
+    count stays small on scheduled runs.
+    """
+    out = []
+    for d in docs:
+        rows = (
+            client.table("diarization_turns")
+            .select("id")
+            .eq("document_id", d["id"])
+            .limit(1)
+            .execute()
+            .data
         )
-    }
-    return sorted((d for d in docs if d["id"] in with_turns), key=lambda d: d["id"])
+        if rows:
+            out.append(d)
+    return out
 
 
 def _report_doc(doc_id: int, proposals: list, claims: list[DiscourseClaim]) -> None:
@@ -142,7 +158,7 @@ def main() -> None:
     if not place:
         raise ActaluxError(f"no place {args.state}/{args.place}")
 
-    docs = _docs_with_turns(service, place["id"], args.body)
+    docs = _live_transcripts(service, place["id"], args.body)
     if args.manifest:
         entries = json.loads(args.manifest.read_text(encoding="utf-8"))
         manifest_ids = {e["video_id"] for e in entries if e.get("video_id")}
@@ -155,9 +171,9 @@ def main() -> None:
         docs = [d for d in docs if d["id"] in wanted]
         missing = wanted - {d["id"] for d in docs}
         if missing:
-            logger.warning(
-                "requested doc ids not eligible (no turns / superseded): %s", sorted(missing)
-            )
+            logger.warning("requested doc ids not eligible (superseded?): %s", sorted(missing))
+    # Turns existence LAST, after every scoping filter — one indexed probe per candidate.
+    docs = _with_turns(service, docs)
     if args.limit:
         docs = docs[: args.limit]
     logger.info(
