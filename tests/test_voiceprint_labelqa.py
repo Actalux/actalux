@@ -5,7 +5,6 @@ from __future__ import annotations
 import pytest
 
 from actalux.diarization.labelqa import (
-    coherent_core,
     coherent_subset,
     collapse_pairs,
     collapse_suspects,
@@ -26,21 +25,6 @@ def test_mean_cosine_to_others():
 
 def test_singleton_has_no_corroboration():
     assert mean_cosine_to_others([A]) == [0.0]
-
-
-def test_coherent_core_keeps_agreeing_samples():
-    # Three consistent meetings + one mislabeled outlier -> core is the three.
-    core = coherent_core([A, A, A, B], core_floor=0.5, min_core=2)
-    assert core == [0, 1, 2]
-
-
-def test_coherent_core_empty_when_no_agreement():
-    # Kami/Bridget signature: samples that don't agree across meetings -> no core.
-    assert coherent_core([A, B, C], core_floor=0.5, min_core=2) == []
-
-
-def test_coherent_core_respects_min_core():
-    assert coherent_core([A, A], core_floor=0.5, min_core=3) == []
 
 
 def test_collapse_detects_one_voice_many_names():

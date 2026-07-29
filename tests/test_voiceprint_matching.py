@@ -2,13 +2,8 @@
 
 from __future__ import annotations
 
-import math
-
 import numpy as np
 
-from actalux.diarization.labelqa import (
-    coherent_core_asnorm,
-)
 from actalux.diarization.matching import (
     CONSENSUS_MIN_CORE_MEETINGS,
     CONSENSUS_MIN_FAMILIES,
@@ -203,30 +198,6 @@ def test_gate_officials_attaches_collapse_pairs_only_on_request():
     hot = gate_officials(train, core_floor=0.0, min_core=2, collapse_bound=0.85)
     assert hot[1].collapse_pairs == [] and hot[2].collapse_pairs == []
     assert not hot[1].enabled and not hot[2].enabled  # the veto itself is unchanged
-
-
-# --- AS-norm (Gate A E#1) --------------------------------------------------------------------
-# Hand-computable fixture (R^5): person 1 has two samples cosine 0.4 apart (own-coherence 0.4);
-# person 2 (the impostor cohort) sits near-orthogonal. Raw@0.5 enables neither, but person 1's
-# coherence is 4σ (sample s1a) / 10σ (s1b) above the impostor cloud, so asnorm recovers it.
-_R99 = math.sqrt(0.99)
-_R84 = math.sqrt(0.84)
-_S1A = (1.0, 0.0, 0.0, 0.0, 0.0)
-_S1B = (0.4, _R84, 0.0, 0.0, 0.0)  # cosine 0.4 with _S1A
-_S2X = (0.1, 0.0, _R99, 0.0, 0.0)  # cosine 0.1 with _S1A, 0.04 with _S1B
-_S2Y = (-0.1, 0.0, 0.0, _R99, 0.0)  # cosine -0.1 with _S1A, -0.04 with _S1B
-
-
-def test_asnorm_zfloor_pins_core_membership():
-    # z(s1a) = (0.4-0)/0.1 = 4.0 ; z(s1b) = (0.4-0)/0.04 = 10.0 (population σ). min_core=1 exposes
-    # the per-sample decision the enablement filter would otherwise hide. Floors bracket (not equal)
-    # the true z-values so the assertions are robust to the √ round-off in the fixture.
-    both, cohort = [_S1A, _S1B], [_S2X, _S2Y]
-    kw = {"min_core": 1, "min_cohort": 2, "sigma_eps": 1e-6, "raw_fallback_floor": 0.99}
-    assert coherent_core_asnorm(both, cohort, z_floor=3.9, **kw) == [0, 1]  # both above ~4σ / ~10σ
-    assert coherent_core_asnorm(both, cohort, z_floor=4.1, **kw) == [1]  # s1a (z≈4) drops out
-    assert coherent_core_asnorm(both, cohort, z_floor=9.9, **kw) == [1]  # s1b (z≈10) still in
-    assert coherent_core_asnorm(both, cohort, z_floor=10.1, **kw) == []  # s1b drops out
 
 
 def test_consensus_holds_under_asnorm_mode():

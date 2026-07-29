@@ -6,7 +6,7 @@ official's name to the wrong voice (a clerk / a bled-in neighbor), which shows u
 gallery that disagrees with itself across meetings (negative same-person cosines). Gate A
 screens those out with two independent, purely-geometric checks — no ground truth needed:
 
-  - ``coherent_core``: an official must have a subset of meetings whose voiceprints
+  - ``coherent_subset``: an official must have a subset of meetings whose voiceprints
     mutually agree, or they are not trusted as a positive (catches mislabeled / clerk
     galleries like the diagnosed Kami Waldman / Bridget McAndrew).
   - ``collapse_suspects``: if two clusters labeled with DIFFERENT people are near-
@@ -40,65 +40,6 @@ def mean_cosine_to_others(vectors: list[tuple[float, ...]]) -> list[float]:
     return [float((sim[i].sum() - 1.0) / (n - 1)) for i in range(n)]
 
 
-def coherent_core(
-    vectors: list[tuple[float, ...]], *, core_floor: float, min_core: int
-) -> list[int]:
-    """Indices of an official's mutually-agreeing samples, or [] if there is no core.
-
-    A sample is in the core if its mean cosine to the official's other samples is at least
-    ``core_floor``. If fewer than ``min_core`` samples clear that, the official has no
-    trustworthy core and is not enabled as a positive. ``core_floor`` / ``min_core`` are
-    swept per fold (plan §7), not hardcoded.
-    """
-    means = mean_cosine_to_others(vectors)
-    core = [i for i, m in enumerate(means) if m >= core_floor]
-    return core if len(core) >= min_core else []
-
-
-def coherent_core_asnorm(
-    own_vectors: list[tuple[float, ...]],
-    cohort_vectors: list[tuple[float, ...]],
-    *,
-    z_floor: float,
-    min_core: int,
-    min_cohort: int,
-    sigma_eps: float,
-    raw_fallback_floor: float,
-) -> list[int]:
-    """Indices of an official's samples that stand clear of the impostor cohort (AS-norm core).
-
-    The genuine statistic per own sample is its mean cosine to the official's OTHER samples (the
-    same self-coherence ``coherent_core`` thresholds raw). Here it is z-scored against the impostor
-    cohort — that sample's cosines to every OTHER official's vectors — before comparison, so an
-    official whose absolute coherence is modest but clearly above the cross-official cloud can still
-    form a core. A raw cosine floor is meaningless on the z-scale, so asnorm gets its own
-    ``z_floor``. A degenerate cohort (fewer than ``min_cohort`` scores, or a spread below
-    ``sigma_eps``) has no z-scale, so that sample falls back to the raw self-coherence test at
-    ``raw_fallback_floor`` rather than dividing by ~0. Population std (ddof=0) matches AS-norm's
-    cohort statistic. Cohort is caller-supplied and excludes negatives.
-    """
-    if not own_vectors:
-        return []
-    own_means = mean_cosine_to_others(own_vectors)
-    own = _normalize(np.asarray(own_vectors, dtype=np.float64))
-    cohort = _normalize(np.asarray(cohort_vectors, dtype=np.float64)) if cohort_vectors else None
-    core: list[int] = []
-    for i in range(len(own_vectors)):
-        if cohort is None or len(cohort_vectors) < min_cohort:
-            in_core = own_means[i] >= raw_fallback_floor
-        else:
-            cohort_cos = own[i] @ cohort.T  # impostor scores for own sample i
-            sigma = float(cohort_cos.std())
-            if sigma < sigma_eps:
-                in_core = own_means[i] >= raw_fallback_floor
-            else:
-                z = (own_means[i] - float(cohort_cos.mean())) / sigma
-                in_core = z >= z_floor
-        if in_core:
-            core.append(i)
-    return core if len(core) >= min_core else []
-
-
 def coherent_subset(
     vectors: list[tuple[float, ...]],
     *,
@@ -111,8 +52,8 @@ def coherent_subset(
 ) -> list[int]:
     """Grow the largest mutually-coherent subset from the medoid (the "Hummell fix").
 
-    ``coherent_core`` thresholds each sample's mean cosine to *all* the official's other samples,
-    so a scattered minority of anchors (e.g. six unverified discourse labels pointing at
+    Thresholding each sample's mean cosine to *all* the official's other samples means a
+    scattered minority of anchors (e.g. six unverified discourse labels pointing at
     inconsistent voices) drags a coherent majority's mean below the floor and knocks the whole
     official out. This grows the core instead: the medoid (the sample most similar on average to
     the rest) anchors the coherent voice, and a sample joins the core when it sits within the core
