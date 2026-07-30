@@ -119,3 +119,67 @@ def test_resolve_unbroken_tie_is_ambiguous():
 def test_resolve_empty_name():
     roster = Roster([_subject(10, ["Harris"], COUNCIL)])
     assert roster.resolve("", COUNCIL, date(2020, 1, 1)).reason == "empty_name"
+
+
+# --- tenure gates the candidate set, not just the tie (audit 2026-07-30) -------------
+
+
+def test_resolve_rejects_a_lone_match_who_was_not_yet_seated():
+    # The costly case: a 2016 roll call names "Harris", the Harris who cast that vote is a
+    # predecessor the curated roster does not carry, and the only roster Harris took the seat
+    # in 2024. Resolving on "exactly one match" would credit the sitting member with a vote
+    # cast eight years before they held the seat, published as their voting record.
+    roster = Roster([_subject(10, ["Alderman Harris"], COUNCIL, start_date=date(2024, 4, 1))])
+    res = roster.resolve("Alderman Harris", COUNCIL, date(2016, 6, 14))
+    assert res.status == "unresolved"
+    assert res.reason == "not_seated_on_date"
+    assert res.candidates == (10,)  # surfaced for review, never minted
+
+
+def test_resolve_rejects_a_lone_match_after_their_term_ended():
+    roster = Roster([_subject(11, ["Alderman Vance"], COUNCIL, end_date=date(2020, 4, 1))])
+    res = roster.resolve("Alderman Vance", COUNCIL, date(2023, 9, 12))
+    assert res.status == "unresolved"
+    assert res.reason == "not_seated_on_date"
+
+
+def test_resolve_accepts_a_lone_match_inside_the_term():
+    roster = Roster(
+        [
+            _subject(
+                12,
+                ["Alderman Harris"],
+                COUNCIL,
+                start_date=date(2024, 4, 1),
+                end_date=date(2028, 4, 1),
+            )
+        ]
+    )
+    assert roster.resolve("Alderman Harris", COUNCIL, date(2025, 6, 3)) == Resolution(
+        "resolved", subject_id=12
+    )
+
+
+def test_resolve_unsourced_term_dates_still_resolve():
+    # Most curated memberships carry no term bounds yet. Membership.covers treats a NULL
+    # bound as open, so tightening the gate must not strand them.
+    roster = Roster([_subject(13, ["Alderman Harris"], COUNCIL)])
+    assert roster.resolve("Alderman Harris", COUNCIL, date(1999, 1, 1)).status == "resolved"
+    assert roster.resolve("Alderman Harris", COUNCIL, date(2099, 1, 1)).status == "resolved"
+
+
+def test_resolve_same_surname_pair_still_separates_by_term():
+    # The behaviour the tie-break already had must survive moving the filter earlier.
+    old = _subject(14, ["Harris"], COUNCIL, end_date=date(2020, 4, 1))
+    new = _subject(15, ["Harris"], COUNCIL, start_date=date(2020, 4, 2))
+    roster = Roster([old, new])
+    assert roster.resolve("Alderman Harris", COUNCIL, date(2018, 5, 1)).subject_id == 14
+    assert roster.resolve("Alderman Harris", COUNCIL, date(2022, 5, 1)).subject_id == 15
+
+
+def test_resolve_two_seated_holders_of_one_alias_stay_ambiguous():
+    a = _subject(16, ["Harris"], COUNCIL)
+    b = _subject(17, ["Harris"], COUNCIL)
+    res = Roster([a, b]).resolve("Alderman Harris", COUNCIL, date(2021, 1, 1))
+    assert res.status == "ambiguous"
+    assert set(res.candidates) == {16, 17}

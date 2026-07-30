@@ -5,8 +5,9 @@ The minutes name members inconsistently: school roll calls carry honorifics
 ("Alderman Harris", "Mayor Harris", "Mayor Pro Tempore Harris" — one person), and
 both carry OCR drift ("Dr Pamela Lyss— Lerman", "Garhnolz"). This module turns a
 raw name into a normalized key and resolves that key against a curated roster,
-date-bounded so a future same-surname pair (or one alias reused across eras)
-disambiguates by who was seated on the meeting date.
+date-bounded: only members seated on the meeting date are eligible at all, so a
+name spoken before someone took the seat never resolves to them, and a same-surname
+pair or an alias reused across eras separates by term window.
 
 Resolution is deliberately conservative (connections-graph.md §4, §7): a name that
 matches exactly one roster member resolves; zero or more-than-one returns an
@@ -152,25 +153,42 @@ class Roster:
         """Resolve ``raw_name`` (seen in ``entity_id`` on ``meeting_date``).
 
         Matches the normalized name against roster aliases restricted to members of
-        ``entity_id``. One match resolves; several are broken by which member was
-        seated on ``meeting_date``; an unbroken tie is ambiguous. Zero is
-        unresolved. Conservative by construction — never picks arbitrarily.
+        ``entity_id`` **who were seated on** ``meeting_date``. One match resolves; a
+        remaining tie is ambiguous; zero is unresolved. Conservative by construction —
+        never picks arbitrarily.
+
+        The tenure filter runs BEFORE the count, not as a tie-break after it. A name
+        spoken at a meeting a member had not yet joined must not resolve to them just
+        because they are the only roster holder of that alias today: the predecessor
+        who actually cast the vote is typically not on the curated roster at all, so
+        there is no tie to break and the vote would be credited to the wrong official
+        — published on their member page as their voting record. This mirrors
+        :func:`actalux.identity.resolve.members_active_on`, which exists for the same
+        failure observed on the naming side.
+
+        ``Membership.covers`` treats a NULL bound as open, so members whose term dates
+        are unsourced are unaffected.
         """
         key = normalize_name(raw_name)
         if not key:
             return Resolution("unresolved", reason="empty_name")
 
-        candidates = [s for s in self._by_alias.get(key, ()) if s.on_body(entity_id)]
-        if not candidates:
+        on_body = [s for s in self._by_alias.get(key, ()) if s.on_body(entity_id)]
+        if not on_body:
             return Resolution("unresolved", reason="no_roster_match")
+
+        candidates = [s for s in on_body if s.seated_on(entity_id, meeting_date)]
+        if not candidates:
+            # The alias belongs to this body, but nobody holding it was seated that day.
+            # Queue it rather than guess — the speaker is most likely a predecessor the
+            # roster does not carry.
+            return Resolution(
+                "unresolved",
+                reason="not_seated_on_date",
+                candidates=tuple(s.subject_id for s in on_body),
+            )
         if len(candidates) == 1:
             return Resolution("resolved", subject_id=candidates[0].subject_id)
-
-        # More than one member shares this alias (a future same-surname pair, or an
-        # alias reused across eras): let the meeting date pick the seated one.
-        seated = [s for s in candidates if s.seated_on(entity_id, meeting_date)]
-        if len(seated) == 1:
-            return Resolution("resolved", subject_id=seated[0].subject_id)
         return Resolution(
             "ambiguous",
             reason="multiple_roster_match",
