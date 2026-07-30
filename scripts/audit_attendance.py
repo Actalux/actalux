@@ -6,9 +6,9 @@ sides quoted so every reading is checkable. Read-only: nothing is written to the
     doppler run --project mac --config dev -- uv run python scripts/audit_attendance.py \
         --state mo --place clayton --body council
 
-Coverage is bounded by diarization: a meeting is only readable when its transcript has turns.
-The summary prints how many meetings were skipped and why, so a quiet run is never mistaken for
-a clean one.
+Coverage is bounded by what the recording caught: most transcripts begin after the roll was
+already called. The summary prints how many meetings were skipped and why, so a quiet run is
+never mistaken for a clean one.
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ from actalux.db import get_client
 from actalux.identity.attendance import (
     BASE_TITLE_FORMS,
     compare_attendance,
+    merge_rolls,
     parse_minutes_attendance,
     roll_call_from_text,
 )
@@ -149,26 +150,42 @@ def main() -> None:
         .execute()
         .data
     )
-    by_date: dict[str, dict[str, int]] = defaultdict(dict)
+    # A date can carry more than one meeting - a regular session and a special one, or a recessed
+    # meeting reconvened the same evening. Pairing by date alone would then read one meeting's
+    # roll against another's minutes and manufacture a discrepancy out of two correct records, so
+    # an ambiguous date is dropped rather than resolved by guessing which document goes with which.
+    by_date: dict[str, dict[str, list[int]]] = defaultdict(lambda: defaultdict(list))
     for doc in docs:
         if doc.get("meeting_date") and doc["document_type"] in ("minutes", "transcript"):
-            by_date[doc["meeting_date"]][doc["document_type"]] = doc["id"]
-    pairs = {d: v for d, v in sorted(by_date.items()) if len(v) == 2}
+            by_date[doc["meeting_date"]][doc["document_type"]].append(doc["id"])
 
     skipped: dict[str, int] = defaultdict(int)
+    pairs: dict[str, dict[str, int]] = {}
+    for date, found in sorted(by_date.items()):
+        if len(found) < 2:
+            continue  # only one side of the comparison exists
+        if any(len(ids) > 1 for ids in found.values()):
+            skipped["more than one meeting shares this date"] += 1
+            continue
+        pairs[date] = {kind: ids[0] for kind, ids in found.items()}
+
     readings = []
+    by_basis: dict[str, int] = defaultdict(int)
     for date, ids in pairs.items():
-        # Turn-level first: when the diarizer kept the responses in their own turns, a separate
-        # voice answering is the stronger evidence. It rarely does - it usually glues the "here"
-        # into the clerk's turn - so the same roll is then read from the text.
+        # Both readers run, and their answers are unioned. The turn-level reader is the stronger
+        # evidence when it fires (a separate voice audibly answering) but usually finds nothing,
+        # because the diarizer folds the "here" into the clerk's turn; the text reader sees the
+        # words either way. Keeping only the first to succeed would throw away answers the other
+        # heard, and a discarded answer is exactly what turns into a false silence.
         turns = _turns(sb, ids["transcript"])
-        roll = roll_call_attendance(turns, roster) if turns else None
-        basis = "turns"
-        if roll is None:
-            roll = roll_call_from_text(
-                _chunk_text(sb, ids["transcript"], _TRANSCRIPT_CHUNKS), roster, title_forms
-            )
-            basis = "text"
+        from_turns = roll_call_attendance(turns, roster) if turns else None
+        from_text = roll_call_from_text(
+            _chunk_text(sb, ids["transcript"], _TRANSCRIPT_CHUNKS), roster, title_forms
+        )
+        roll = merge_rolls(from_turns, from_text)
+        basis = "+".join(
+            name for name, found in (("turns", from_turns), ("text", from_text)) if found
+        )
         if roll is None:
             skipped["no roll call detected in transcript"] += 1
             continue
@@ -176,6 +193,7 @@ def main() -> None:
         if minutes is None:
             skipped["minutes have no attendance block"] += 1
             continue
+        by_basis[basis] += 1
         votes = (
             sb.table("votes")
             .select("details")
@@ -189,6 +207,7 @@ def main() -> None:
                 {
                     "meeting_date": date,
                     "member": reading.canonical_name,
+                    "transcript_quote": reading.transcript_quote,
                     "minutes_quote": reading.minutes_quote,
                     "signals": list(reading.corroborating_signals),
                     "roll_call_basis": basis,
@@ -203,9 +222,14 @@ def main() -> None:
     print(f"  compared                                  : {comparable}")
     for reason, count in sorted(skipped.items()):
         print(f"  skipped, {reason:40}: {count}")
+    # Which reader carried each meeting. Worth printing: if "turns" ever stops appearing, the
+    # audit has quietly become text-only and the stronger evidence is no longer being used.
+    for basis, count in sorted(by_basis.items()):
+        print(f"  read from {basis:39}: {count}")
     print(f"\n  readings (silent at roll, seated by minutes): {len(readings)}")
     for r in readings:
         print(f"\n  {r['meeting_date']}  {r['member']}")
+        print(f"    transcript  : {r['transcript_quote']}")
         print(f"    minutes say : {r['minutes_quote'][:160]}")
         print(f"    corroborated: {'; '.join(r['signals'])}")
         print(

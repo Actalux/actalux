@@ -44,6 +44,11 @@ from rapidfuzz import fuzz
 from supabase import Client
 
 from actalux.db import fetch_all_rows
+from actalux.identity.attendance import (
+    RollCallAttendance,
+    clip_quote,
+    reads_as_attendance_roll,
+)
 from actalux.identity.resolve import (
     _AFFIRMATIVE_RESPONSES,
     _CONFIDENCE_RANK,
@@ -109,6 +114,10 @@ _RESPONDER_SLACK = 2
 # becomes an alignment gap (safe), never a mislabel; the tighter set keeps a stray one-word turn
 # from ever standing in as a response (codex review 2026-07). Every entry is a whole-turn match.
 _VOTE_AFFIRMATIVES = _AFFIRMATIVE_RESPONSES | frozenset({"aye", "ayes", "yea", "yeas"})
+# The subset that states presence rather than casting a vote. Derived from the vocabulary above
+# rather than re-listed, so the two never drift apart. Used only by :func:`roll_call_attendance`,
+# to tell an opening attendance roll from a per-motion vote roll of identical shape.
+_ATTENDANCE_MARKERS = frozenset(r for r in _VOTE_AFFIRMATIVES if "here" in r or "present" in r)
 
 
 @dataclass(frozen=True)
@@ -300,46 +309,53 @@ def _accept_region(
     return [(resp.cluster_label, call.subject_id, confidence) for call, resp in bindings]
 
 
-@dataclass(frozen=True)
-class RollCallAttendance:
-    """Who the clerk named at the roll, and which of them a distinct voice answered for.
+def _call_quote(turns: list[ResolverTurn], region: _Region, call: _Call) -> str:
+    """The verbatim span a call's answer (or silence) was read from: the call and what followed.
 
-    ``unanswered`` is deliberately NOT "absent". The alignment leaves a call unbound both when a
-    member really is absent and when pyannote glues their "here" into the clerk's next-name turn
-    (see :func:`_align_calls_responses`), so a caller must corroborate before treating silence as
-    absence. ``regions`` counts the accepted roll-call runs the reading came from.
+    Bounded by the next call so the quote shows exactly the window the alignment searched — a
+    reader can see for themselves that nothing answered.
     """
-
-    called: frozenset[int]
-    answered: frozenset[int]
-    regions: int
-
-    @property
-    def unanswered(self) -> frozenset[int]:
-        return self.called - self.answered
+    later = [c.turn_index for c in region.calls if c.turn_index > call.turn_index]
+    end = min(later[0] if later else region.end, len(turns))
+    return clip_quote(" ".join(turn.text for turn in turns[call.turn_index : end]))
 
 
 def roll_call_attendance(
     turns: list[ResolverTurn], members: list[RosterMember]
 ) -> RollCallAttendance | None:
-    """Read the roll as attendance: who was named, and who a separate voice answered for.
+    """Read the opening roll as attendance: who was named, and who a separate voice answered for.
 
     Returns ``None`` when no clerk-read roll is detectable. Unlike :func:`align_votes` this does
     not care WHICH cluster answered — only that some non-clerk voice did — so it keeps regions
     that the 1:1 labeling matching would reject as ambiguous.
+
+    Only the FIRST region is read, and only when its answers state presence rather than cast
+    votes. Later regions in the same meeting are the per-motion vote rolls, which share the
+    clerk-calls-each-name shape but record how each member voted; a recording that begins after
+    the roll makes one of those the first region. Reading either as attendance would report every
+    member who voted no, abstained, or was not reached as absent from the meeting.
     """
     if not turns or not members:
         return None
     strong, surname = _name_index(members)
-    called: set[int] = set()
-    answered: set[int] = set()
     regions = _detect_regions(turns, strong, surname)
-    for region in regions:
-        called.update(call.subject_id for call in region.calls)
-        answered.update(call.subject_id for call, _ in _align_calls_responses(region))
+    if not regions:
+        return None
+    opening = regions[0]
+    called = {call.subject_id for call in opening.calls}
     if not called:
         return None
-    return RollCallAttendance(frozenset(called), frozenset(answered), len(regions))
+    bindings = _align_calls_responses(opening)
+    answered = {call.subject_id for call, _ in bindings}
+    stating_presence = sum(
+        1 for _, resp in bindings if _norm_text(turns[resp.turn_index].text) in _ATTENDANCE_MARKERS
+    )
+    if not reads_as_attendance_roll(len(called), len(answered), stating_presence):
+        return None
+    quotes: dict[int, str] = {}
+    for call in opening.calls:
+        quotes.setdefault(call.subject_id, _call_quote(turns, opening, call))
+    return RollCallAttendance(frozenset(called), frozenset(answered), quotes)
 
 
 def align_votes(
