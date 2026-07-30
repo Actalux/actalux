@@ -87,9 +87,11 @@ def _trusted_clusters(client: Client, place_id: int) -> list[ClusterText]:
     subjects = {
         s["id"]: s
         for s in fetch_all_rows(
-            lambda: client.table("subjects")
-            .select("id,person_id,canonical_name")
-            .eq("place_id", place_id)
+            lambda: (
+                client.table("subjects")
+                .select("id,person_id,canonical_name")
+                .eq("place_id", place_id)
+            )
         )
     }
     idents = fetch_all_rows(
@@ -107,7 +109,12 @@ def _trusted_clusters(client: Client, place_id: int) -> list[ClusterText]:
         )
         if trusted:
             picked.append(
-                (i["document_id"], i["cluster_label"], subject["person_id"], subject["canonical_name"])
+                (
+                    i["document_id"],
+                    i["cluster_label"],
+                    subject["person_id"],
+                    subject["canonical_name"],
+                )
             )
 
     out: list[ClusterText] = []
@@ -200,9 +207,7 @@ def _loco_report(clusters: list[ClusterText], k: int) -> dict[str, dict[str, flo
         top_person, top_delta = ranked[0]
         second_delta = ranked[1][1] if len(ranked) > 1 else float("inf")
         hit = int(top_person == q.person_id)
-        same_deltas.append(
-            next(d for p, d in ranked if p == q.person_id)
-        )
+        same_deltas.append(next(d for p, d in ranked if p == q.person_id))
         diff_deltas.extend(d for p, d in ranked if p != q.person_id)
         if hit:
             margins_correct.append(second_delta - top_delta)
@@ -219,14 +224,22 @@ def _loco_report(clusters: list[ClusterText], k: int) -> dict[str, dict[str, flo
 
     total_hits = sum(sum(v) for v in bins.values())
     total_n = sum(len(v) for v in bins.values())
-    logger.info("K=%d: LOCO rank-1 accuracy %d/%d = %.3f", k, total_hits, total_n, total_hits / max(1, total_n))
+    logger.info(
+        "K=%d: LOCO rank-1 accuracy %d/%d = %.3f",
+        k,
+        total_hits,
+        total_n,
+        total_hits / max(1, total_n),
+    )
     logger.info("  same-person Delta:      %s (n=%d)", _stats(same_deltas), len(same_deltas))
     logger.info("  different-person Delta: %s (n=%d)", _stats(diff_deltas), len(diff_deltas))
     logger.info("  margin when correct (second - top): %s", _stats(margins_correct))
     for (lo, hi), hits in bins.items():
         if hits:
             label = f"{lo}-{hi if hi < 10**9 else '+'}"
-            logger.info("  words %-12s: %d/%d = %.3f", label, sum(hits), len(hits), sum(hits) / len(hits))
+            logger.info(
+                "  words %-12s: %d/%d = %.3f", label, sum(hits), len(hits), sum(hits) / len(hits)
+            )
     return {
         "accuracy": {"hits": total_hits, "n": total_n},
     }
@@ -249,32 +262,40 @@ def _known_truth(client: Client, clusters: list[ClusterText], k: int) -> None:
     }
     growe_subjects = [sid for sid, pid in subjects.items() if pid == GROWE_PERSON_ID]
     idents = fetch_all_rows(
-        lambda: client.table("speaker_identities")
-        .select("document_id,cluster_label,subject_id")
-        .in_("subject_id", growe_subjects)
+        lambda: (
+            client.table("speaker_identities")
+            .select("document_id,cluster_label,subject_id")
+            .in_("subject_id", growe_subjects)
+        )
     )
     docs = {
         d["id"]: d.get("meeting_date")
         for d in fetch_all_rows(
-            lambda: client.table("documents")
-            .select("id,meeting_date")
-            .in_("id", sorted({i["document_id"] for i in idents}))
+            lambda: (
+                client.table("documents")
+                .select("id,meeting_date")
+                .in_("id", sorted({i["document_id"] for i in idents}))
+            )
         )
     }
-    pre_tenure = [
-        i for i in idents if (docs.get(i["document_id"]) or "9999") < "2022-04-20"
-    ]
+    pre_tenure = [i for i in idents if (docs.get(i["document_id"]) or "9999") < "2022-04-20"]
     for i in sorted(pre_tenure, key=lambda r: r["document_id"]):
         tokens = _cluster_text_for(client, i["document_id"], i["cluster_label"])
         if len(tokens) == 0:
-            logger.info("  pre-tenure 'Growe' doc %s %s: no text", i["document_id"], i["cluster_label"])
+            logger.info(
+                "  pre-tenure 'Growe' doc %s %s: no text", i["document_id"], i["cluster_label"]
+            )
             continue
         ranked = _rank_against_profiles(model, tokens, profiles)
         top3 = ", ".join(f"{names.get(p, p)}={d:.3f}" for p, d in ranked[:3])
         verdict = "-> WILSON" if ranked[0][0] == WILSON_PERSON_ID else ""
         logger.info(
             "  pre-tenure 'Growe' doc %s %s (%d words): %s %s",
-            i["document_id"], i["cluster_label"], len(tokens), top3, verdict,
+            i["document_id"],
+            i["cluster_label"],
+            len(tokens),
+            top3,
+            verdict,
         )
 
     for person, doc_id, lab in KNOWN_ALIENS:
@@ -286,14 +307,24 @@ def _known_truth(client: Client, clusters: list[ClusterText], k: int) -> None:
         own = next(d for p, d in ranked if p == person)
         rank_of_own = next(idx for idx, (p, _) in enumerate(ranked) if p == person) + 1
         logger.info(
-            "  alien doc %s %s labeled %s (%d words): Delta-to-own=%.3f (rank %d/%d); best=%s (%.3f)",
-            doc_id, lab, names.get(person, person), len(tokens), own, rank_of_own,
-            len(ranked), names.get(ranked[0][0], ranked[0][0]), ranked[0][1],
+            "  alien doc %s %s labeled %s (%d words):"
+            " Delta-to-own=%.3f (rank %d/%d); best=%s (%.3f)",
+            doc_id,
+            lab,
+            names.get(person, person),
+            len(tokens),
+            own,
+            rank_of_own,
+            len(ranked),
+            names.get(ranked[0][0], ranked[0][0]),
+            ranked[0][1],
         )
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Stylometry S0: measure discrimination (GO/NO-GO).")
+    parser = argparse.ArgumentParser(
+        description="Stylometry S0: measure discrimination (GO/NO-GO)."
+    )
     parser.add_argument("--state", required=True)
     parser.add_argument("--place", required=True)
     args = parser.parse_args()
@@ -301,7 +332,9 @@ def main() -> None:
     cfg = load_config()
     key = os.environ.get("ACTALUX_SUPABASE_SERVICE_KEY", "")
     if not key:
-        raise ActaluxError("ACTALUX_SUPABASE_SERVICE_KEY is required (speaker tables are service-only)")
+        raise ActaluxError(
+            "ACTALUX_SUPABASE_SERVICE_KEY is required (speaker tables are service-only)"
+        )
     client = get_client(cfg.supabase_url, key)
     place = get_place_by_path(client, args.state, args.place)
     if not place:
@@ -311,7 +344,9 @@ def main() -> None:
     people = {c.person_id for c in clusters}
     logger.info(
         "trusted clusters: %d across %d people; total words %d",
-        len(clusters), len(people), sum(len(c.tokens) for c in clusters),
+        len(clusters),
+        len(people),
+        sum(len(c.tokens) for c in clusters),
     )
     for k in K_SWEEP:
         _loco_report(clusters, k)

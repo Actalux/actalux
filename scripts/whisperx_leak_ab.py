@@ -162,10 +162,16 @@ def process(client, doc_id: int, whisperx_fn) -> list[dict]:
         audio.unlink(missing_ok=True)
 
     _write_report(doc, results)
-    return [{"doc_id": doc_id, "meeting_date": doc.get("meeting_date"), **{
-        r["key"]: {"echo": r["echo"], "name_hits": r["name_hits"], "words": r["words"]}
-        for r in results
-    }}]
+    return [
+        {
+            "doc_id": doc_id,
+            "meeting_date": doc.get("meeting_date"),
+            **{
+                r["key"]: {"echo": r["echo"], "name_hits": r["name_hits"], "words": r["words"]}
+                for r in results
+            },
+        }
+    ]
 
 
 def _write_report(doc: dict, results: list[dict]) -> None:
@@ -180,8 +186,12 @@ def _write_report(doc: dict, results: list[dict]) -> None:
     ]
     for r in results:
         lines.append(f"| {r['key']} | {r['echo']} | {r['name_hits']} | {r['words']} |")
-    lines += ["", "_bias echoes = times the prompt/hotword string regurgitated into the",
-              "transcript (0 = clean verbatim record). Read names with the transcripts._", ""]
+    lines += [
+        "",
+        "_bias echoes = times the prompt/hotword string regurgitated into the",
+        "transcript (0 = clean verbatim record). Read names with the transcripts._",
+        "",
+    ]
     for r in results:
         lines += ["", "---", "", f"## {r['key']} — transcript", "", r["text"], ""]
     (OUTPUT_DIR / f"{doc['id']}_{doc.get('meeting_date') or 'undated'}_leak.md").write_text(
