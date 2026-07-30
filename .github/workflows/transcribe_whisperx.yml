@@ -228,8 +228,9 @@ jobs:
       # galleries the night it lands, before any minutes exist. The body's all-cluster
       # embedding cache persists between runs via actions/cache; the resumable builder then
       # embeds ONLY tonight's meetings (~3 min each on Modal). A COLD cache never triggers a
-      # full corpus re-embed here — it seeds from the newest uploaded cache/all-cluster
-      # artifact, or skips with a warning (full builds belong to linking_prototype.yml).
+      # full corpus re-embed here — it skips with a warning (full builds belong to
+      # linking_prototype.yml). The cache is never published as an artifact; see the note
+      # further down for why.
       - name: Restore voice-embedding cache
         uses: actions/cache@v4
         with:
@@ -237,24 +238,17 @@ jobs:
           key: voice-cache-${{ env.BODY }}-${{ github.run_id }}
           restore-keys: voice-cache-${{ env.BODY }}-
 
-      - name: Seed voice cache from the newest artifact (cold start only)
-        env:
-          GH_TOKEN: ${{ github.token }}
+      # The artifact seed path is gone with the artifact itself (see the note by the upload
+      # step below): rebuilding it would mean downloading the embeddings from a public
+      # artifact, which is the exposure being closed. actions/cache is the only seed chain.
+      - name: Report voice-cache state
         run: |
           CACHE="data/linking_cache/mo_clayton_${BODY}_all"
-          [ -f "$CACHE/manifest.json" ] && { echo "cache warm"; exit 0; }
-          for NAME in "voice-cache-${BODY}" "linking-mo-clayton-${BODY}-all"; do
-            ID=$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=${NAME}&per_page=1" \
-                 -q '.artifacts[] | select(.expired == false) | .id' | head -1)
-            if [ -n "$ID" ]; then
-              echo "seeding from artifact ${NAME} (${ID})"
-              gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${ID}/zip" > /tmp/seed.zip
-              mkdir -p /tmp/seed && unzip -q -o /tmp/seed.zip -d /tmp/seed
-              SRC=$(dirname "$(find /tmp/seed -name manifest.json | head -1)")
-              [ -n "$SRC" ] && mkdir -p "$CACHE" && cp "$SRC"/* "$CACHE"/ && exit 0
-            fi
-          done
-          echo "::warning::no voice cache and no seed artifact for ${BODY}; morning-after skipped"
+          if [ -f "$CACHE/manifest.json" ]; then
+            echo "cache warm"
+          else
+            echo "::warning::no voice cache for ${BODY}; morning-after skipped. Rebuild with linking_prototype.yml (include_unanchored) if this persists."
+          fi
 
       - name: Embed tonight's meetings into the voice space
         run: |
@@ -298,16 +292,13 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
-      # Refresh the seed-chain artifact so a future cold cache restores tonight's state.
-      - name: Upload voice cache snapshot
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: voice-cache-${{ env.BODY }}
-          path: data/linking_cache/mo_clayton_${{ env.BODY }}_all
-          if-no-files-found: ignore
-          retention-days: 30
-          overwrite: true
+      # NOTE: the all-cluster voice cache is deliberately NOT uploaded as an artifact.
+      # It holds a 256-d speaker embedding for EVERY diarization cluster, which includes
+      # members of the public, presenters, and (on schools) staff and students — people the
+      # content policy says are never voiceprinted. Workflow artifacts on a public repo are
+      # downloadable, so uploading it would publish biometric templates for untracked people
+      # outside every RLS gate that protects the same data in Postgres. actions/cache above
+      # is repo-scoped and not publicly downloadable, so it is the only persistence path.
 
       - name: File the review issue
         env:
