@@ -364,3 +364,69 @@ def test_analysis_script_still_imports_after_extraction_refactor():
     import scripts.analyze_self_intro_coverage as asic
 
     assert callable(asic.scan_body) and callable(asic.run)
+
+
+# --- the two guards added after the 2026-07-30 audit --------------------------------------
+
+
+def test_third_party_this_is_never_names_the_speaking_cluster():
+    # "This is X" reads both ways. Said by a chair introducing a presenter, attributing the
+    # name to the speaking cluster labels the CHAIR's voice with the presenter's name — and on
+    # an 'auto' body that publishes with no review. The resolver rejects this cue outright;
+    # tier 2 must too.
+    turns = [_pt("SPEAKER_00", "This is Maria Delgado, the applicant's architect.")]
+    assert detect_participant_names(turns, _members(), STOP_WORDS) == []
+
+
+def test_third_party_cue_is_still_extracted_under_its_own_source():
+    # Dropped for naming, but the coverage measurement still needs to count it, so the hit
+    # must survive extraction tagged as third_party rather than vanish.
+    hits = turn_hits("This is Maria Delgado, the architect.", STOP_WORDS)
+    assert [(h.source, h.name) for h in hits] == [("third_party", "Maria Delgado")]
+
+
+def test_first_person_cues_still_name_the_speaker():
+    # The guard must not cost the real self-introductions it sits next to.
+    for text in ("My name is Tyler Stevens.", "I'm Tyler Stevens.", "I am Tyler Stevens."):
+        props = detect_participant_names([_pt("S1", text)], _members(), STOP_WORDS)
+        assert [p.display_name for p in props] == ["Tyler Stevens"], text
+
+
+def test_minor_cue_in_a_later_sentence_still_suppresses():
+    # The canonical student introduction: the name is in sentence one, the minor cue in
+    # sentence two. The evidence quote holds only sentence one, so a quote-scoped test misses
+    # it entirely and publishes a student's name.
+    turn = _pt("S2", "Hi, my name is Jane Doe. I am a sophomore at Clayton High School.")
+    assert detect_participant_names([turn], _members(), STOP_WORDS) == []
+
+
+def test_minor_cue_in_a_later_turn_still_suppresses():
+    # Same speaker, different turn — suppression is a property of the person, not the sentence.
+    # ("junior"/"senior" are deliberately NOT bare minor cues: "junior associate" is an adult
+    # this feature exists to name. "sophomore" carries no adult sense.)
+    turns = [
+        _pt("S3", "My name is Jane Doe."),
+        _pt("S3", "I'm a sophomore and I want to talk about the bond."),
+    ]
+    assert detect_participant_names(turns, _members(), STOP_WORDS) == []
+
+
+def test_an_adult_junior_title_is_still_nameable():
+    # The flip side of the cue design, pinned so widening the suppression window did not
+    # quietly start suppressing the applicants and architects this feature exists to name.
+    turns = [
+        _pt("S6", "My name is Tyler Stevens."),
+        _pt("S6", "I'm a junior associate at the firm handling this application."),
+    ]
+    props = detect_participant_names(turns, _members(), STOP_WORDS)
+    assert [p.display_name for p in props] == ["Tyler Stevens"]
+
+
+def test_minor_suppression_does_not_leak_to_other_clusters():
+    # Cluster-wide suppression must stay scoped to the cluster that tripped it.
+    turns = [
+        _pt("S4", "My name is Jane Doe. I am a sophomore at Clayton High School."),
+        _pt("S5", "My name is Tyler Stevens, a local architect."),
+    ]
+    props = detect_participant_names(turns, _members(), STOP_WORDS)
+    assert [(p.cluster_label, p.display_name) for p in props] == [("S5", "Tyler Stevens")]

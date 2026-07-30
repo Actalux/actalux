@@ -10,19 +10,23 @@ CLAUDE.md Content policy):
 
 This module builds tier 2. **P1 handles self-introductions only** ("my name is X", "I'm X"):
 they are ~88% of the headroom and, because the speaker's own cluster states the name, attach
-unambiguously to that cluster. Third-party presenter introductions ("please welcome X") are
-DEFERRED to a later phase — auto-publishing a non-roster name someone else supplied is the
-riskiest path (git preserves the presenter machinery for that phase). Detection reuses the shared
-introduction extraction (:mod:`actalux.identity.name_extraction`) — the same surface patterns the
-resolver uses — but, unlike the resolver, KEEPS names that are NOT roster members (a roster member
+to that cluster. Third-party introductions — both "please welcome X" and the ambiguous
+"this is X", which can equally name the speaker or the person they are presenting — are
+DEFERRED: auto-publishing a non-roster name someone ELSE supplied is the riskiest path, and
+attributing it to the introducer's voice is simply wrong. Detection reuses the shared
+introduction extraction (:mod:`actalux.identity.name_extraction`), which tags those cues as
+``third_party`` so they never reach this tier. Unlike the resolver it KEEPS names that are NOT
+roster members (a roster member
 is the tracked path; it is never emitted as a tier-2 name). Each surviving hit becomes a proposal
 carrying the extracted name, the verbatim self-ID sentence (the required source cite), and the
 timestamp; ``basis`` is recorded as ``self_intro``.
 
 Two safety layers sit above the per-body policy flag:
 
-* **Minor suppression is universal.** A self-ID that reads as a student/minor is never named on
-  any body (see :data:`MINOR_CUES`) — self-identification is necessary but never sufficient.
+* **Minor suppression is universal, and cluster-wide.** A speaker whose turns read as a
+  student/minor is never named on any body (see :data:`MINOR_CUES`) — self-identification is
+  necessary but never sufficient. The test runs over everything the cluster said, not just the
+  cited sentence, because identification and disclosure routinely land in different sentences.
 * **Tier 1 wins.** A cluster already named by a tracked ``speaker_identities`` row is an official;
   persistence never also writes a tier-2 name for it.
 
@@ -167,17 +171,33 @@ def detect_participant_names(
     augments the static non-name stop-list with place tokens (town/state).
     """
     roster, _ = roster_keys(members)
+    # Minor suppression is decided per CLUSTER, over everything that cluster said — not per
+    # evidence sentence. Someone who is a minor is a minor for the whole meeting, and the
+    # canonical student introduction splits identification from disclosure across sentences
+    # ("My name is Jane Doe. I'm a sophomore at Clayton High School."). The evidence quote
+    # deliberately holds only the sentence containing the name, so a quote-scoped test never
+    # sees the cue and the name is proposed. The citation window and the suppression window
+    # are two different requirements and must not share one string.
+    cluster_text: dict[str, list[str]] = defaultdict(list)
+    for turn in turns:
+        cluster_text[turn.cluster_label].append(turn.text)
+    minor_clusters = {
+        label for label, parts in cluster_text.items() if is_minor_selfid(" ".join(parts))
+    }
+
     by_cluster: dict[str, list[_ClusterHit]] = defaultdict(list)
     for order, turn in enumerate(turns):
+        if turn.cluster_label in minor_clusters:
+            continue  # universal minor suppression, above the per-body flag
         for hit in turn_hits(turn.text, stops):
             if hit.source != "self_intro":
-                continue  # P1: presenter introductions are deferred to a later phase
+                continue  # presenter and third-party introductions never name a cluster
             key = normalize_name(hit.name)
             if not key or key in roster:
                 continue  # blank name, or a roster official (tracked path) -> never tier 2
             quote = evidence_sentence(turn.text, hit.start_index, hit.end_index)
             if is_minor_selfid(quote):
-                continue  # universal minor suppression, above the per-body flag
+                continue  # redundant with the cluster gate, kept as a cheap second check
             by_cluster[turn.cluster_label].append(
                 _ClusterHit(key, hit.name, hit.source, quote, turn.start_seconds, order)
             )

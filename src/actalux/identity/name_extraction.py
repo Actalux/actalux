@@ -42,17 +42,25 @@ SNIPPET_WORDS = 15
 _SENTENCE_END = frozenset(".?!:")
 _EDGE_PUNCT = string.punctuation + "“”‘’—–…"
 
-# Self-intro cue token sequences (matched on the apostrophe/punctuation-stripped lower
-# form: "I'm" -> "im", "name's" -> "names"). "this is" is included per the measurement
-# spec even though the resolver excludes it as too ambiguous — the name gate carries the
-# precision here.
-SELF_INTRO_CUES: tuple[tuple[str, ...], ...] = (
+# First-person self-intro cues (matched on the apostrophe/punctuation-stripped lower form:
+# "I'm" -> "im", "name's" -> "names"). Each one can only be said by the person being named,
+# which is what lets a caller attach the name to the speaking cluster.
+FIRST_PERSON_CUES: tuple[tuple[str, ...], ...] = (
     ("my", "name", "is"),
     ("my", "names"),
-    ("this", "is"),
     ("i", "am"),
     ("im",),
 )
+# "this is" reads both ways: "this is Jane Doe" can name the speaker OR the person they are
+# introducing ("this is my colleague Jane Doe"). The resolver excludes it outright as too
+# ambiguous (see resolve.py's _INTRO_RE). It is kept here — under its own source, never
+# ``self_intro`` — so the coverage measurement can still count it, while every consumer that
+# attributes a name to the speaking cluster filters it out. The name gate cannot save this
+# case: it validates that the token is a name, not that the speaker is the person named.
+THIRD_PARTY_CUES: tuple[tuple[str, ...], ...] = (("this", "is"),)
+# Every cue the extractor scans, first-person first so a position matching both is taken as
+# the stronger reading.
+SELF_INTRO_CUES: tuple[tuple[str, ...], ...] = FIRST_PERSON_CUES + THIRD_PARTY_CUES
 # Presenter/recognition cue verbs (all inflections). Generic English handoff verbs whose
 # object is a person; the name gate rejects the non-handoff uses ("present the budget").
 PRESENTER_CUES = frozenset(
@@ -199,7 +207,8 @@ def _self_intro_hits(tokens: list[str], norms: list[str], stops: frozenset[str])
                 continue
             found = _extract_name(tokens, start + len(cue), stops)
             if found:
-                hits.append(Hit("self_intro", " ".join(cue), found[0], found[1], start))
+                source = "self_intro" if cue in FIRST_PERSON_CUES else "third_party"
+                hits.append(Hit(source, " ".join(cue), found[0], found[1], start))
             break  # at most one cue family per starting position
     return hits
 
