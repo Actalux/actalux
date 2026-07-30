@@ -1,13 +1,13 @@
 """Backfill documents.summary with one-sentence LLM summaries.
 
-For each document, fetch the first ~3 chunks (by id, which roughly
-preserves source order), generate a one-sentence factual summary via
-gpt-4o-mini, and write it to documents.summary.
+For each document, sample chunks across the whole record, generate a short
+factual summary via the configured summary model, and write it to
+documents.summary.
 
 Idempotent: skips documents that already have a non-empty summary.
 Pass --force to regenerate everything.
 
-Run via doppler so OPENAI_API_KEY and Supabase creds are present:
+Run via doppler so OPENROUTER_ACTALUX_KEY and Supabase creds are present:
   doppler run --project mac --config dev -- \\
       uv run python scripts/backfill_doc_summaries.py
   doppler run --project mac --config dev -- \\

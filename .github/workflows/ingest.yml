@@ -40,9 +40,9 @@ jobs:
       # Ingest writes through the service (secret) key, which bypasses RLS.
       ACTALUX_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
       ACTALUX_SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
-      # The change-digest drafter needs OpenAI for cited summaries; without it the
-      # draft still lists documents, just without per-topic cited paragraphs.
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      # The change-digest drafter needs OpenRouter for cited summaries; without it
+      # the draft still lists documents, just without per-topic cited paragraphs.
+      OPENROUTER_ACTALUX_KEY: ${{ secrets.OPENROUTER_ACTALUX_KEY }}
       # SMTP delivery for the draft email. All optional: unset secrets render as
       # empty strings, and the drafter then writes the file but skips the email.
       ACTALUX_SMTP_HOST: ${{ secrets.ACTALUX_SMTP_HOST }}

@@ -59,7 +59,6 @@ class Config:
         default_factory=lambda: os.environ.get("BUTTONDOWN_API_KEY", "")
     )
     anthropic_api_key: str = field(default_factory=lambda: os.environ.get("ANTHROPIC_API_KEY", ""))
-    openai_api_key: str = field(default_factory=lambda: os.environ.get("OPENAI_API_KEY", ""))
     # OpenRouter is the single gateway for every chat/completion LLM call (search
     # summaries, the ask chatbot, follow-up condense, query expansion, the digest):
     # the OpenAI SDK targets ``openrouter_base_url`` with this key and reaches the
