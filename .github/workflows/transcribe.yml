@@ -71,7 +71,6 @@ jobs:
       GROQ_ACTALUX_API_KEY: ${{ secrets.GROQ_ACTALUX_API_KEY }}
       # Summary + chapter generation route through OpenRouter (one gateway for all LLMs).
       OPENROUTER_ACTALUX_KEY: ${{ secrets.OPENROUTER_ACTALUX_KEY }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}  # legacy fallback; unused once OpenRouter is set
     steps:
       - uses: actions/checkout@v4
 
