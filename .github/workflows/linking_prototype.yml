@@ -154,13 +154,23 @@ jobs:
 
       # The cache (.npz centroids) + results JSON die with the VM without this — the cache is the
       # only expensive artifact, reusable to re-measure offline with different scorers/thresholds.
+      # ANCHORED RUNS ONLY. An anchored cache holds embeddings for officials — tracked
+      # entities the content policy already voiceprints — so publishing it discloses nothing
+      # the archive does not already assert. An all-cluster cache holds a 256-d template for
+      # EVERY speaker, including members of the public and (on schools) staff and students,
+      # who are never voiceprinted by policy. Artifacts on a public repo are downloadable, so
+      # an all-cluster upload would publish biometric data for untracked people. Those runs
+      # keep their cache on the runner; re-measure by re-running rather than by downloading.
       - name: Upload embedding cache + results
-        if: always()
+        if: always() && inputs.include_unanchored != true
         uses: actions/upload-artifact@v4
         with:
-          # suffixed by population so an all-cluster run can never overwrite (or be mistaken for)
-          # the anchored benchmark cache
-          name: linking-${{ inputs.state }}-${{ inputs.place }}-${{ inputs.body }}-${{ inputs.include_unanchored && 'all' || 'anchored' }}
+          name: linking-${{ inputs.state }}-${{ inputs.place }}-${{ inputs.body }}-anchored
           path: data/linking_cache/**
           if-no-files-found: ignore
           retention-days: 30
+
+      - name: Note the withheld all-cluster cache
+        if: always() && inputs.include_unanchored == true
+        run: |
+          echo "::notice::all-cluster cache built but NOT uploaded — it contains voice embeddings for non-officials, which must not be published as a downloadable artifact on a public repo."
