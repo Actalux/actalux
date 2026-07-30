@@ -23,7 +23,9 @@ to the verified per-fund expenditures, all functions to the grand total). A
 transcription error in this file fails loudly rather than publishing a wrong
 figure.
 
-Idempotent: replaces all rows in budget_line_items on each run.
+Idempotent: on each run it replaces exactly the rows it owns -- the documents
+and dimensions listed above. budget_line_items is shared with the city budget
+and DESE finance loaders, whose rows this must never touch.
 
 Run:
   doppler run --project mac --config dev -- uv run python scripts/load_budget.py --dry-run
@@ -750,9 +752,27 @@ def main() -> int:
     # Writer: use the service key (bypasses RLS).
     client = get_client(cfg.supabase_url, cfg.supabase_service_key)
 
-    # Replace: this file is the single source of truth for budget_line_items.
-    deleted = client.table("budget_line_items").delete().gte("id", 0).execute()
-    logger.info("Deleted %d existing rows.", len(deleted.data))
+    # Idempotent on this loader's OWN subset only, matching load_adopted_budget.py.
+    # budget_line_items is shared: the city budget/ACFR loaders and the four DESE
+    # loaders write their own dimensions into it. An unscoped delete would destroy
+    # every one of those rows and restore only this file's — so the scope is derived
+    # from what this run is about to insert, and follows automatically if the figure
+    # tables here ever grow a new document or dimension.
+    doc_ids = sorted({item.document_id for item in items})
+    dimensions = sorted({item.dimension for item in items})
+    deleted = (
+        client.table("budget_line_items")
+        .delete()
+        .in_("document_id", doc_ids)
+        .in_("dimension", dimensions)
+        .execute()
+    )
+    logger.info(
+        "Deleted %d existing rows (documents=%s, dimensions=%s).",
+        len(deleted.data),
+        doc_ids,
+        dimensions,
+    )
 
     ids = insert_budget_line_items(client, items)
     logger.info("Inserted %d budget line items.", len(ids))
