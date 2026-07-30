@@ -300,6 +300,48 @@ def _accept_region(
     return [(resp.cluster_label, call.subject_id, confidence) for call, resp in bindings]
 
 
+@dataclass(frozen=True)
+class RollCallAttendance:
+    """Who the clerk named at the roll, and which of them a distinct voice answered for.
+
+    ``unanswered`` is deliberately NOT "absent". The alignment leaves a call unbound both when a
+    member really is absent and when pyannote glues their "here" into the clerk's next-name turn
+    (see :func:`_align_calls_responses`), so a caller must corroborate before treating silence as
+    absence. ``regions`` counts the accepted roll-call runs the reading came from.
+    """
+
+    called: frozenset[int]
+    answered: frozenset[int]
+    regions: int
+
+    @property
+    def unanswered(self) -> frozenset[int]:
+        return self.called - self.answered
+
+
+def roll_call_attendance(
+    turns: list[ResolverTurn], members: list[RosterMember]
+) -> RollCallAttendance | None:
+    """Read the roll as attendance: who was named, and who a separate voice answered for.
+
+    Returns ``None`` when no clerk-read roll is detectable. Unlike :func:`align_votes` this does
+    not care WHICH cluster answered — only that some non-clerk voice did — so it keeps regions
+    that the 1:1 labeling matching would reject as ambiguous.
+    """
+    if not turns or not members:
+        return None
+    strong, surname = _name_index(members)
+    called: set[int] = set()
+    answered: set[int] = set()
+    regions = _detect_regions(turns, strong, surname)
+    for region in regions:
+        called.update(call.subject_id for call in region.calls)
+        answered.update(call.subject_id for call, _ in _align_calls_responses(region))
+    if not called:
+        return None
+    return RollCallAttendance(frozenset(called), frozenset(answered), len(regions))
+
+
 def align_votes(
     turns: list[ResolverTurn],
     members: list[RosterMember],
