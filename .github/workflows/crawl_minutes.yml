@@ -9,7 +9,7 @@ name: crawl-minutes
 #
 # Required repository secrets:
 #   SUPABASE_URL / SUPABASE_KEY / SUPABASE_SERVICE_KEY / SUPABASE_PAT  (ingest)
-#   OPENAI_API_KEY                                                     (summaries)
+#   OPENROUTER_ACTALUX_KEY                                             (summaries)
 
 on:
   workflow_dispatch:
@@ -61,7 +61,7 @@ jobs:
       ACTALUX_SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
       ACTALUX_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
       ACTALUX_SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENROUTER_ACTALUX_KEY: ${{ secrets.OPENROUTER_ACTALUX_KEY }}
     steps:
       - uses: actions/checkout@v4
 
