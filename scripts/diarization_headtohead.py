@@ -85,9 +85,7 @@ def resolve_prompt_and_place(client, entity_id: int) -> tuple[str, int | None]:
     return "", place_id
 
 
-def label_units(
-    units: list[tuple[float, float, str]], turns: list[SpeakerTurn]
-) -> list[dict]:
+def label_units(units: list[tuple[float, float, str]], turns: list[SpeakerTurn]) -> list[dict]:
     """Assign each (start, end, text) unit to its max-overlap turn, then merge runs.
 
     Consecutive units sharing a cluster collapse into one speaker block; this is the
@@ -209,11 +207,7 @@ def process(client, doc_id: int, whisperx_fn, names_cache: dict) -> dict:
         a_text = transcript.text
         # Path B: WhisperX words.
         wx = whisperx_fn.remote(audio.read_bytes(), prompt)
-        b_units = [
-            (w["start"], w["end"], w["word"])
-            for s in wx["segments"]
-            for w in s["words"]
-        ]
+        b_units = [(w["start"], w["end"], w["word"]) for s in wx["segments"] for w in s["words"]]
         b_text = " ".join(s["text"] for s in wx["segments"]).strip()
     finally:
         audio.unlink(missing_ok=True)

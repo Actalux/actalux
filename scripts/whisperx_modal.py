@@ -33,11 +33,7 @@ app = modal.App(APP_NAME)
 
 # whisperx pulls a CUDA torch + ctranslate2 + the wav2vec2 align stack. cuDNN 8 is
 # needed by ctranslate2's CUDA backend; the pip wheel provides it.
-image = (
-    modal.Image.debian_slim(python_version="3.11")
-    .apt_install("ffmpeg")
-    .pip_install("whisperx")
-)
+image = modal.Image.debian_slim(python_version="3.11").apt_install("ffmpeg").pip_install("whisperx")
 
 
 @app.function(image=image, gpu="T4", timeout=60 * 60)
