@@ -172,6 +172,7 @@ class TestFindExistingDocument:
             file_hash="deadbeef",
             portal="diligent",
             filename="resolution.pdf",
+            meeting_date=date(2025, 2, 19),
         )
 
         assert existing == {"id": 1}
@@ -188,6 +189,7 @@ class TestFindExistingDocument:
             file_hash="deadbeef",
             portal="diligent",
             filename="resolution.pdf",
+            meeting_date=date(2025, 2, 19),
         )
 
         assert existing == {"id": 2}
@@ -203,6 +205,7 @@ class TestFindExistingDocument:
             file_hash="deadbeef",
             portal="diligent",
             filename="resolution.pdf",
+            meeting_date=date(2025, 2, 19),
         )
 
         assert existing == {"id": 3}
@@ -219,6 +222,7 @@ class TestFindExistingDocument:
             file_hash="deadbeef",
             portal="manual",
             filename="resolution.pdf",
+            meeting_date=date(2025, 2, 19),
         )
 
         assert existing == {"id": 2}
@@ -236,12 +240,84 @@ class TestFindExistingDocument:
             file_hash="deadbeef",
             portal="youtube",
             filename="meeting.txt",
+            meeting_date=date(2025, 2, 19),
             entity_id=42,
         )
 
         assert rec.order == ["source_ref", "content_hash", "source_file"]
         assert rec.entity_ids == [42, 42, 42]  # forwarded to all three tiers
         assert rec.portals == ["youtube", "youtube", "youtube"]  # portal-scoped too
+
+
+class TestContentHashMatchMustBeTheSameDocument:
+    """A content-hash match is accepted only when nothing contradicts it.
+
+    Tier 2 collapses two documents that read identically. The caller then sees
+    "same hash as an existing document" and takes the unchanged-skip path, so the
+    incoming record is never stored — it disappears from the archive with no
+    error. A recurring notice reissued for a later meeting is exactly this shape.
+    Splitting requires positive evidence, so the pre-existing behaviour holds
+    wherever the evidence is absent or weak.
+    """
+
+    def _find(self, monkeypatch, rec, **overrides):
+        _patch_lookups(monkeypatch, rec)
+        kwargs = {
+            "source_ref": "",
+            "file_hash": "deadbeef",
+            "portal": "civicplus",
+            "filename": "notice.pdf",
+            "meeting_date": date(2025, 6, 10),
+            "date_source": "filename",
+        }
+        kwargs.update(overrides)
+        return _find_existing_document(object(), **kwargs)
+
+    def test_different_sourced_date_is_a_different_record(self, monkeypatch) -> None:
+        rec = _CallRecorder(
+            {
+                "content_hash": {
+                    "id": 2,
+                    "meeting_date": "2025-05-13",
+                    "date_source": "filename",
+                },
+                "source_file": None,
+            }
+        )
+        assert self._find(monkeypatch, rec) is None  # not collapsed onto document 2
+        assert rec.order == ["content_hash", "source_file"]
+
+    def test_different_source_ref_is_a_different_record(self, monkeypatch) -> None:
+        rec = _CallRecorder(
+            {"content_hash": {"id": 2, "source_ref": "https://x/doc/2"}, "source_file": None}
+        )
+        assert self._find(monkeypatch, rec, source_ref="https://x/doc/9") is None
+
+    def test_unsourced_dates_do_not_split(self, monkeypatch) -> None:
+        # Both dates are ingest-day fallbacks, so they differ only by WHEN the two
+        # runs happened. Splitting on that would mint a duplicate of the same record.
+        rec = _CallRecorder(
+            {"content_hash": {"id": 2, "meeting_date": "2025-05-13", "date_source": "default"}}
+        )
+        assert self._find(monkeypatch, rec, date_source="default")["id"] == 2
+
+    def test_missing_prior_source_ref_does_not_split(self, monkeypatch) -> None:
+        # A legacy row with no origin URL carries no evidence either way.
+        rec = _CallRecorder({"content_hash": {"id": 2, "source_ref": ""}})
+        assert self._find(monkeypatch, rec, source_ref="https://x/doc/9")["id"] == 2
+
+    def test_same_date_and_ref_still_matches(self, monkeypatch) -> None:
+        rec = _CallRecorder(
+            {
+                "content_hash": {
+                    "id": 2,
+                    "source_ref": "https://x/doc/2",
+                    "meeting_date": "2025-06-10",
+                    "date_source": "filename",
+                }
+            }
+        )
+        assert self._find(monkeypatch, rec, source_ref="https://x/doc/2")["id"] == 2
 
 
 class TestUnchangedSkipBackfillsSourceRef:
@@ -412,6 +488,43 @@ class TestChunklessRepairAndRollback:
         assert result["chunks"] == 1
         assert [c.document_id for c in inserted] == [7]  # repaired the EXISTING doc
         assert checked == [7]
+
+    def test_repair_is_gated_on_pii(self, monkeypatch) -> None:
+        # Building chunks is what publishes a document — it is what search returns
+        # and what a citation links to. The row being repaired may predate the guard,
+        # so the repair path has to scan, and it has to scan BEFORE clearing the
+        # existing chunks or a blocked document would also lose what it had.
+        existing = {
+            "id": 7,
+            "content_hash": "samehash",
+            "source_ref": "https://x/doc/7",
+            "source_file": "m.txt",
+        }
+        monkeypatch.setattr(ingest, "_find_existing_document", lambda *_a, **_k: existing)
+        monkeypatch.setattr(ingest, "document_has_chunks", lambda _c, _id: False)
+        monkeypatch.setattr(ingest, "_pii_gate", lambda *_a, **_k: True)
+        checked: list = []
+        monkeypatch.setattr(
+            ingest, "update_document_checked", lambda _c, doc_id: checked.append(doc_id)
+        )
+        inserted: list = []
+        cleared: list = []
+        self._patch_chunk_pipeline(monkeypatch, inserted, cleared=cleared)
+
+        result = _ingest_with_dedup(
+            client=object(),
+            path=Path("m.txt"),
+            meeting_date=date(2024, 9, 25),
+            meeting_title="M",
+            config=self._config(),
+            source_url="https://x/doc/7",
+            source_portal="youtube",
+        )
+
+        assert result == {"status": "blocked", "chunks": 0}
+        assert inserted == []  # nothing published
+        assert cleared == []  # and nothing destroyed on the way out
+        assert checked == []  # not marked healthy, so it stays queued for repair
 
     def test_skips_when_current_doc_has_chunks(self, monkeypatch) -> None:
         existing = {
