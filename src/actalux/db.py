@@ -1046,30 +1046,38 @@ def get_chunk_citation_ids(client: Client, chunk_ids: list[int]) -> dict[int, st
     return result
 
 
-def _prefer_current_chunk(client: Client, rows: list[dict[str, Any]]) -> int:
-    """Pick one chunk id from citation_id candidates, preferring a current version.
+def _prefer_current_chunk(client: Client, rows: list[dict[str, Any]]) -> int | None:
+    """Pick one chunk id from citation_id candidates, or None if it is ambiguous.
 
-    A citation_id can be shared by a current chunk and its superseded twins (the
-    same passage across versions). Routing prefers the chunk whose document is
-    current (``replaces_id IS NULL``); ties and all-superseded sets fall back to
-    the lowest chunk id (deterministic), logging any genuine current-vs-current
-    ambiguity so it is visible rather than silent.
+    A citation_id can legitimately be shared by a current chunk and its superseded
+    twins (the same passage across versions), so routing prefers the chunk whose
+    document is current (``replaces_id IS NULL``).
+
+    What survives that preference decides the rest, and the two cases are not
+    alike. Candidates inside ONE document must be identical text — the id is a hash
+    of (document key + normalized content), so sharing it means sharing the passage
+    — and any of them serves the reader correctly; take the lowest id. Candidates
+    spanning SEVERAL documents mean the 32-bit id space collided: two unrelated
+    passages landed on the same token. There is no way to tell which one the
+    citation named, so return None and let the caller 404 rather than send the
+    reader to a passage that is not the one that was cited. A citation resolving to
+    the wrong record is the one failure this product cannot have; a citation that
+    resolves to nothing is merely broken.
     """
     if len(rows) == 1:
         return rows[0]["id"]
     doc_ids = list({r["document_id"] for r in rows})
     docs = client.table("documents").select("id, replaces_id").in_("id", doc_ids).execute().data
     current_docs = {d["id"] for d in (docs or []) if d.get("replaces_id") is None}
-    current_chunks = sorted(r["id"] for r in rows if r["document_id"] in current_docs)
-    if current_chunks:
-        if len(current_chunks) > 1:
-            logger.warning(
-                "citation_id resolves to %d current chunks; using lowest id %d",
-                len(current_chunks),
-                current_chunks[0],
-            )
-        return current_chunks[0]
-    return sorted(r["id"] for r in rows)[0]
+    candidates = [r for r in rows if r["document_id"] in current_docs] or rows
+    if len({r["document_id"] for r in candidates}) > 1:
+        logger.error(
+            "citation_id collision: resolves to chunks %s across documents %s; refusing to guess",
+            sorted(r["id"] for r in candidates),
+            sorted({r["document_id"] for r in candidates}),
+        )
+        return None
+    return min(r["id"] for r in candidates)
 
 
 def resolve_chunk_ref(client: Client, ref: str) -> int | None:
@@ -1080,6 +1088,11 @@ def resolve_chunk_ref(client: Client, ref: str) -> int | None:
     a citation_id first (preferring a current-version chunk); if nothing matches it
     falls through to a numeric interpretation, so an all-digit ref still resolves.
     Returns the numeric chunk id, or None when the ref names nothing.
+
+    A ref that matches several documents' chunks returns None rather than falling
+    through to the numeric branch: an id like "12345678" is both valid hex and a
+    valid row id, and answering an ambiguous citation with an unrelated chunk is
+    worse than answering with a 404.
     """
     if _CITATION_ID_RE.match(ref):
         rows = (

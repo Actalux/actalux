@@ -5,9 +5,17 @@ from __future__ import annotations
 import hashlib
 
 # Length (hex chars) of a chunk's stable citation id. 8 hex = 32 bits: a compact
-# token (#qa3f91c08) that is collision-safe at the corpus scale (~15k chunks ->
-# ~2.6% chance of a single collided pair anywhere; tolerated by routing, which
-# prefers the current-version chunk and logs ambiguity).
+# token (#qa3f91c08), but a small space — the birthday bound puts a single collided
+# pair anywhere in the corpus at ~2.6% around 15k chunks and ~69% around 100k. A
+# collision no longer misroutes anyone (db._prefer_current_chunk refuses to guess
+# between two documents and the route 404s), so the cost is a broken citation
+# rather than a wrong one.
+#
+# Widening this is NOT a constant bump: compute_vote_ref derives every vote's
+# durable identity from the citation_id, and that ref is the reconciliation key
+# for idempotent vote re-derivation and the member-vote/matter graph. Changing the
+# width re-mints every vote_ref, and invalidates already-published #q links plus
+# the chunk ids pinned in facilities_plan_data. It needs a planned migration.
 CITATION_ID_LEN = 8
 
 

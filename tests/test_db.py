@@ -495,6 +495,60 @@ class TestResolveChunkRef:
         assert resolve_chunk_ref(client, "00123456") == 123456
 
 
+class TestCitationIdCollision:
+    """A citation that could name two different documents must resolve to neither.
+
+    The id is 32 bits, so two unrelated passages will eventually hash to the same
+    token. Serving the lower chunk id — the old behaviour — sends the reader to a
+    passage that is not the one that was cited, silently, with the citation still
+    presented as verified. A citation that resolves to nothing is a broken link; a
+    citation that resolves to the wrong record is a false attribution, which is the
+    one failure this archive cannot ship.
+    """
+
+    def test_two_current_documents_refuse_to_resolve(self) -> None:
+        client = _Client(
+            [
+                [{"id": 47, "document_id": 10}, {"id": 8017, "document_id": 487}],
+                [{"id": 10, "replaces_id": None}, {"id": 487, "replaces_id": None}],
+            ]
+        )
+        assert resolve_chunk_ref(client, "9f0a7e9e") is None
+
+    def test_two_superseded_documents_refuse_to_resolve(self) -> None:
+        # With no current candidate the fallback used to pick the lowest id across
+        # the whole set — same wrong-passage failure, just via the other branch.
+        client = _Client(
+            [
+                [{"id": 47, "document_id": 10}, {"id": 8017, "document_id": 487}],
+                [{"id": 10, "replaces_id": 99}, {"id": 487, "replaces_id": 98}],
+            ]
+        )
+        assert resolve_chunk_ref(client, "9f0a7e9e") is None
+
+    def test_repeats_within_one_document_still_resolve(self) -> None:
+        # Same document + same citation_id means the same normalized text (the id
+        # hashes both), so either chunk shows the reader the cited passage.
+        client = _Client(
+            [
+                [{"id": 8017, "document_id": 487}, {"id": 47, "document_id": 487}],
+                [{"id": 487, "replaces_id": None}],
+            ]
+        )
+        assert resolve_chunk_ref(client, "9f0a7e9e") == 47
+
+    def test_ambiguous_hex_ref_does_not_fall_back_to_a_row_id(self) -> None:
+        # "12345678" is both valid hex and a valid SERIAL id. Falling through to the
+        # numeric branch on an ambiguous citation would serve an unrelated chunk.
+        client = _Client(
+            [
+                [{"id": 47, "document_id": 10}, {"id": 8017, "document_id": 487}],
+                [{"id": 10, "replaces_id": None}, {"id": 487, "replaces_id": None}],
+            ]
+        )
+        assert resolve_chunk_ref(client, "12345678") is None
+
+
 class TestGetChunkCitationIds:
     def test_maps_ids_to_citation_ids(self) -> None:
         client = _Client([[{"id": 1, "citation_id": "aaaa1111"}, {"id": 2, "citation_id": None}]])
