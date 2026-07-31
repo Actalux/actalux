@@ -8,6 +8,8 @@ from postgrest.exceptions import APIError
 
 from actalux.db import (
     _CHUNK_INSERT_BATCH,
+    _IN_FILTER_BATCH,
+    _PAGE_SIZE,
     _WRITE_RETRIES,
     backfill_document_source_ref,
     delete_chunks_for_document,
@@ -16,6 +18,7 @@ from actalux.db import (
     fetch_all_rows,
     get_chunk_citation_ids,
     get_chunk_with_context,
+    get_entity_votes,
     insert_chunks,
     insert_document,
     insert_rows_resilient,
@@ -552,6 +555,148 @@ class TestFetchAllRows:
         backing = [{"id": i} for i in range(3)]
         out = fetch_all_rows(lambda: _PagedBuilder(backing), order="id", desc=True)
         assert [r["id"] for r in out] == [2, 1, 0]
+
+
+class _VotesFeedDocuments(_PagedBuilder):
+    """The documents half, with the server's response cap modelled.
+
+    PostgREST truncates any single response at ~1000 rows whether or not the
+    caller asked for a range, so a body past that only reads whole if the caller
+    pages. ``_PagedBuilder`` alone would hand back the full backing list and hide
+    exactly the bug under test.
+    """
+
+    def is_(self, *_a) -> "_VotesFeedDocuments":
+        return self
+
+    def execute(self) -> _Result:
+        return _Result(super().execute().data[:_PAGE_SIZE])
+
+
+class _VotesFeedVotes:
+    """The votes half: applies in_/gte/lte/order/limit the way PostgREST does, and
+    records every id set it was handed so a test can assert the batch cap held."""
+
+    def __init__(self, rows: list[dict], batches: list[list[int]]) -> None:
+        self._rows = rows
+        self._batches = batches
+        self._ids: list[int] = []
+        self._since: str | None = None
+        self._to: str | None = None
+        self._limit: int | None = None
+
+    def select(self, *_a) -> "_VotesFeedVotes":
+        return self
+
+    def in_(self, _column: str, values: list[int]) -> "_VotesFeedVotes":
+        self._batches.append(list(values))
+        self._ids = list(values)
+        return self
+
+    def gte(self, _column: str, value: str) -> "_VotesFeedVotes":
+        self._since = value
+        return self
+
+    def lte(self, _column: str, value: str) -> "_VotesFeedVotes":
+        self._to = value
+        return self
+
+    def order(self, *_a, **_k) -> "_VotesFeedVotes":
+        return self
+
+    def limit(self, n: int) -> "_VotesFeedVotes":
+        self._limit = n
+        return self
+
+    def execute(self) -> _Result:
+        ids = set(self._ids)
+        rows = [r for r in self._rows if r["document_id"] in ids]
+        if self._since:
+            rows = [r for r in rows if r["meeting_date"] >= self._since]
+        if self._to:
+            rows = [r for r in rows if r["meeting_date"] <= self._to]
+        rows = sorted(rows, key=lambda r: (r["meeting_date"], -r["id"]), reverse=True)
+        return _Result(rows[: self._limit] if self._limit else rows)
+
+
+class _VotesFeedClient:
+    def __init__(self, docs: list[dict], votes: list[dict]) -> None:
+        self._docs = docs
+        self._votes = votes
+        self.batches: list[list[int]] = []
+
+    def table(self, name: str):
+        if name == "documents":
+            return _VotesFeedDocuments(self._docs)
+        return _VotesFeedVotes(self._votes, self.batches)
+
+
+def _votes_feed(n_docs: int, votes_per_doc: int = 1) -> tuple[list[dict], list[dict]]:
+    """A body with ``n_docs`` current meetings, oldest first, one date per meeting."""
+    docs = [{"id": i} for i in range(n_docs)]
+    votes = []
+    vote_id = 0
+    for doc in docs:
+        for _ in range(votes_per_doc):
+            votes.append(
+                {
+                    "id": vote_id,
+                    "document_id": doc["id"],
+                    "meeting_date": f"20{20 + doc['id'] // 300:02d}-01-{doc['id'] % 28 + 1:02d}",
+                }
+            )
+            vote_id += 1
+    return docs, votes
+
+
+class TestGetEntityVotes:
+    """The public votes feed must not silently lose a body's newest meetings.
+
+    Council already carries >500 current documents, so both halves of this query
+    are past the point where a single round trip is safe: the document read hits
+    the ~1000-row response cap, and the id set handed to ``in_`` grows the URL
+    without bound. Both failures drop rows silently rather than erroring.
+    """
+
+    def test_reads_documents_past_the_row_cap(self) -> None:
+        docs, votes = _votes_feed(1200)
+        client = _VotesFeedClient(docs, votes)
+        out = get_entity_votes(client, entity_id=1, limit=2000)
+        assert len(out) == 1200  # every meeting's votes, not just the first page
+
+    def test_id_set_is_batched_under_the_url_cap(self) -> None:
+        docs, votes = _votes_feed(1200)
+        client = _VotesFeedClient(docs, votes)
+        get_entity_votes(client, entity_id=1)
+        assert client.batches, "votes were never queried"
+        assert max(len(b) for b in client.batches) <= _IN_FILTER_BATCH
+        assert sorted(i for b in client.batches for i in b) == [d["id"] for d in docs]
+
+    def test_merged_order_matches_a_single_query(self) -> None:
+        docs, votes = _votes_feed(700, votes_per_doc=2)
+        expected = [
+            r["id"]
+            for r in sorted(votes, key=lambda r: (r["meeting_date"], -r["id"]), reverse=True)[:50]
+        ]
+        out = get_entity_votes(_VotesFeedClient(docs, votes), entity_id=1, limit=50)
+        assert [r["id"] for r in out] == expected
+
+    def test_date_bounds_apply_across_batches(self) -> None:
+        docs, votes = _votes_feed(700)
+        out = get_entity_votes(
+            _VotesFeedClient(docs, votes),
+            entity_id=1,
+            since="2021-01-01",
+            date_to="2021-12-31",
+            limit=2000,
+        )
+        assert out
+        assert all(r["meeting_date"].startswith("2021") for r in out)
+
+    def test_no_documents_short_circuits(self) -> None:
+        client = _VotesFeedClient([], [])
+        assert get_entity_votes(client, entity_id=1) == []
+        assert client.batches == []
 
 
 class _CountResult:
