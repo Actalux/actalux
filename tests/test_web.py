@@ -3,6 +3,7 @@
 Tests static pages (no DB required) and verifies template rendering.
 """
 
+import inspect
 import threading
 from contextlib import contextmanager
 from dataclasses import replace
@@ -1576,3 +1577,58 @@ class TestPersonPage:
     def test_unknown_person_404(self, m_dos, m_db) -> None:
         r = client.get("/people/nobody")
         assert r.status_code == 404
+
+
+def _is_our_handler(route: object) -> bool:
+    """True for a route this project declares, excluding FastAPI's own doc routes."""
+    endpoint = getattr(route, "endpoint", None)
+    return endpoint is not None and getattr(endpoint, "__module__", "").startswith("actalux.")
+
+
+class TestHandlersDoNotBlockTheEventLoop:
+    """No route handler that does I/O may be declared ``async def``.
+
+    Every page in this app reaches Supabase, the local embedder, or an LLM through
+    a synchronous client. An ``async def`` handler runs that blocking work on the
+    event loop itself, so a single slow request — an Ask turn is seconds long —
+    stalls every other request in flight. A plain ``def`` handler runs in
+    Starlette's threadpool, which is what these calls need. This test pins the
+    convention so a new route can't quietly reintroduce the stall.
+    """
+
+    # The only handlers allowed to stay async: their whole body is a redirect, so
+    # there is nothing to block on and the threadpool hop would be pure overhead.
+    _REDIRECT_ONLY = {
+        "apex",
+        "search_redirect",
+        "budget_redirect",
+        "topic_budget_redirect",
+        "facilities_plan_redirect",
+        "topic_facilities_redirect",
+        "meetings_redirect",
+        "topic_meetings_redirect",
+        "privacy_scoped",
+        "terms_scoped",
+    }
+
+    def _async_endpoints(self) -> set[str]:
+        return {
+            r.endpoint.__name__
+            for r in app.routes
+            if _is_our_handler(r) and inspect.iscoroutinefunction(r.endpoint)
+        }
+
+    def test_no_io_handler_is_async(self) -> None:
+        assert self._async_endpoints() <= self._REDIRECT_ONLY
+
+    def test_allowlisted_handlers_still_exist(self) -> None:
+        # Guards the test itself: a stale allowlist would silently stop asserting.
+        endpoints = {r.endpoint.__name__ for r in app.routes if _is_our_handler(r)}
+        assert self._REDIRECT_ONLY <= endpoints
+
+    def test_page_handlers_are_sync(self) -> None:
+        # Spot-check the routes a visitor actually waits on, by name, so the
+        # assertion survives a refactor of the allowlist above.
+        by_name = {r.endpoint.__name__: r.endpoint for r in app.routes if _is_our_handler(r)}
+        for name in ("home", "budget", "document_view", "chunk_source", "summarize", "place_hub"):
+            assert not inspect.iscoroutinefunction(by_name[name]), name

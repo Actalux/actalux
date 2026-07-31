@@ -455,6 +455,14 @@ BUDGET_QUERIES = [
 jurisdiction = APIRouter(prefix="/{state}/{place}/{body}")
 
 
+# Route handlers are declared `def`, not `async def`. Every page here reaches
+# Supabase, the local embedder, or an LLM through synchronous clients; declaring
+# the handler `async` puts that blocking work directly on the event loop, where it
+# stalls EVERY other in-flight request until it returns — an Ask turn is seconds
+# long, so one visitor asking a question freezes the site for everyone else.
+# Starlette runs a `def` handler in its threadpool instead, which is what these
+# calls need. The exceptions below are handlers whose whole body is a redirect
+# (no I/O to block on) and the middleware, which genuinely awaits.
 @app.get("/healthz")
 def healthz(response: Response) -> dict[str, str]:
     """Readiness probe for the platform health check.
@@ -499,7 +507,7 @@ async def apex() -> RedirectResponse:
 
 
 @jurisdiction.get("", response_class=HTMLResponse)
-async def home(request: Request, view: EntityView = Depends(resolve_entity)) -> HTMLResponse:
+def home(request: Request, view: EntityView = Depends(resolve_entity)) -> HTMLResponse:
     """A body's home page with the search box."""
     # Real recent meeting records for this body (newest first) — replaces the old
     # hardcoded "start here" list. Minutes + transcripts only (they carry real dates).
@@ -1526,7 +1534,7 @@ def _gaap_figures_context(line_items: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 @jurisdiction.get("/budget", response_class=HTMLResponse)
-async def budget(request: Request, view: EntityView = Depends(resolve_entity)) -> HTMLResponse:
+def budget(request: Request, view: EntityView = Depends(resolve_entity)) -> HTMLResponse:
     """First-class Budget page: charts from budget_line_items plus cited quotes.
 
     Every figure source is scoped to this body (``entity_id``) — figures,
@@ -1568,7 +1576,7 @@ async def budget(request: Request, view: EntityView = Depends(resolve_entity)) -
 
 
 @jurisdiction.get("/budget/breakdown", response_class=HTMLResponse)
-async def budget_breakdown(
+def budget_breakdown(
     request: Request,
     view: EntityView = Depends(resolve_entity),
     breakdown_view: str = Query(_DEFAULT_BREAKDOWN_VIEW, alias="view"),
@@ -1585,7 +1593,7 @@ async def budget_breakdown(
 
 
 @jurisdiction.get("/budget/detail", response_class=HTMLResponse)
-async def budget_detail(
+def budget_detail(
     request: Request,
     view: EntityView = Depends(resolve_entity),
     breakdown_view: str = Query(_DEFAULT_BREAKDOWN_VIEW, alias="view"),
@@ -1691,9 +1699,7 @@ def _facilities_plan_context(client: Client) -> dict[str, Any]:
 
 
 @jurisdiction.get("/facilities-plan", response_class=HTMLResponse)
-async def facilities_plan(
-    request: Request, view: EntityView = Depends(resolve_entity)
-) -> HTMLResponse:
+def facilities_plan(request: Request, view: EntityView = Depends(resolve_entity)) -> HTMLResponse:
     """Long-Range Facilities Master Plan topic: a structured, source-cited briefing.
 
     Built from the curated ``facilities_plan_data`` dataset (every figure verbatim
@@ -1793,7 +1799,7 @@ def _transcript_speaker_turns(client: Client, doc: dict[str, Any]) -> list[dict[
 
 
 @app.get("/document/{doc_id}", response_class=HTMLResponse, response_model=None)
-async def document_view(request: Request, doc_id: int) -> HTMLResponse | RedirectResponse:
+def document_view(request: Request, doc_id: int) -> HTMLResponse | RedirectResponse:
     """Full document view; redirects a superseded id to its current version."""
     client = _get_db()
     resolved = resolve_canonical_document(client, doc_id)
@@ -1819,7 +1825,7 @@ async def document_view(request: Request, doc_id: int) -> HTMLResponse | Redirec
 
 
 @app.get("/document/{doc_id}/pane", response_class=HTMLResponse, response_model=None)
-async def document_pane(request: Request, doc_id: int) -> HTMLResponse | RedirectResponse:
+def document_pane(request: Request, doc_id: int) -> HTMLResponse | RedirectResponse:
     """Document-level reader pane (summary + original embed) for browse clicks.
 
     Unlike the chunk source pane, there is no cited passage — browse opens a
@@ -1932,7 +1938,7 @@ def _chunk_source_render_context(ref: str) -> tuple[EntityView | None, dict[str,
 
 
 @app.get("/chunk/{ref}/source", response_class=HTMLResponse)
-async def chunk_source(request: Request, ref: str, q: str = "", embed: int = 0) -> HTMLResponse:
+def chunk_source(request: Request, ref: str, q: str = "", embed: int = 0) -> HTMLResponse:
     """Citation context shown as the source in its native form.
 
     The page leads with the original document — the embedded PDF cued to the
@@ -1950,7 +1956,7 @@ async def chunk_source(request: Request, ref: str, q: str = "", embed: int = 0) 
 
 
 @app.get("/chunk/{ref}/source-pane", response_class=HTMLResponse)
-async def chunk_source_pane(request: Request, ref: str, q: str = "") -> HTMLResponse:
+def chunk_source_pane(request: Request, ref: str, q: str = "") -> HTMLResponse:
     """Return the source pane only (native-format document view) for a chunk.
 
     Called by HTMX when the user clicks a search result — the same native-format
@@ -1967,7 +1973,7 @@ async def chunk_source_pane(request: Request, ref: str, q: str = "") -> HTMLResp
 
 
 @jurisdiction.get("/methodology", response_class=HTMLResponse)
-async def methodology(request: Request, view: EntityView = Depends(resolve_entity)) -> HTMLResponse:
+def methodology(request: Request, view: EntityView = Depends(resolve_entity)) -> HTMLResponse:
     """How the system works — transparency page (body-specific copy)."""
     return templates.TemplateResponse(
         request, "methodology.html", _page(view, active="methodology")
@@ -1975,7 +1981,7 @@ async def methodology(request: Request, view: EntityView = Depends(resolve_entit
 
 
 @app.get("/methodology", response_class=HTMLResponse)
-async def methodology_apex(request: Request) -> HTMLResponse:
+def methodology_apex(request: Request) -> HTMLResponse:
     """Site-wide /methodology. Renders the generic (no-body) version so the footer
     link stays at the apex; a body's own /methodology adds body-specific copy."""
     return templates.TemplateResponse(
@@ -1987,7 +1993,7 @@ async def methodology_apex(request: Request) -> HTMLResponse:
 # is canonical and renders directly; the body-scoped path 301s up to it. (Contrast
 # methodology, which keeps body-specific copy at its body-scoped path.)
 @app.get("/privacy", response_class=HTMLResponse)
-async def privacy(request: Request) -> HTMLResponse:
+def privacy(request: Request) -> HTMLResponse:
     """Privacy policy (site-wide)."""
     return templates.TemplateResponse(request, "privacy.html", _page(None, active="privacy"))
 
@@ -1999,7 +2005,7 @@ async def privacy_scoped() -> RedirectResponse:
 
 
 @app.get("/terms", response_class=HTMLResponse)
-async def terms(request: Request) -> HTMLResponse:
+def terms(request: Request) -> HTMLResponse:
     """Terms of use (site-wide)."""
     return templates.TemplateResponse(request, "terms.html", _page(None, active="terms"))
 
@@ -2011,7 +2017,7 @@ async def terms_scoped() -> RedirectResponse:
 
 
 @app.post("/report-error", response_class=HTMLResponse)
-async def report_error(
+def report_error(
     request: Request,
     chunk_id: int = Form(...),
     description: str = Form(...),
@@ -2033,7 +2039,7 @@ async def report_error(
 
 
 @jurisdiction.post("/summarize", response_class=HTMLResponse)
-async def summarize(
+def summarize(
     request: Request,
     view: EntityView = Depends(resolve_entity),
     q: str = Form(""),
@@ -2667,7 +2673,7 @@ def person_detail(request: Request, slug: str) -> HTMLResponse:
 # Registered after the flat routes so /document/{id} and /topic/budget win the
 # match over this greedy two-segment prefix.
 @app.get("/{state}/{place}", response_class=HTMLResponse)
-async def place_hub(request: Request, state: str, place: str) -> HTMLResponse:
+def place_hub(request: Request, state: str, place: str) -> HTMLResponse:
     """Place hub: the directory of public bodies archived for this place."""
     db = _get_db()
     bodies = [
