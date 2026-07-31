@@ -331,6 +331,41 @@ def _pii_gate(path: Path, text: str, config: Any) -> bool:
     return block
 
 
+# A date is evidence of identity only when we know where it came from. These two
+# provenances mean ingest fell back to the run date, so two rows can differ purely
+# by when they were ingested.
+_UNSOURCED_DATE_PROVENANCE = frozenset({"default", "unknown"})
+
+
+def _is_same_document(
+    existing: dict[str, Any],
+    *,
+    source_ref: str,
+    meeting_date: date,
+    date_source: str,
+) -> bool:
+    """Whether a content-hash match is the same record, or a distinct one that
+    happens to read identically.
+
+    Only positive evidence splits them: two different origin URLs, or two
+    different dates that were both actually sourced from the document. Anything
+    weaker (a missing origin, an ingest-day fallback date) is treated as the same
+    record, which is the behaviour that held before this check existed.
+    """
+    prior_ref = existing.get("source_ref") or ""
+    if source_ref and prior_ref and source_ref != prior_ref:
+        return False
+    prior_date = existing.get("meeting_date") or ""
+    prior_source = existing.get("date_source") or "unknown"
+    both_dates_sourced = (
+        prior_source not in _UNSOURCED_DATE_PROVENANCE
+        and date_source not in _UNSOURCED_DATE_PROVENANCE
+    )
+    if both_dates_sourced and prior_date and prior_date != meeting_date.isoformat():
+        return False
+    return True
+
+
 def _find_existing_document(
     client: Any,
     *,
@@ -338,6 +373,8 @@ def _find_existing_document(
     file_hash: str,
     portal: str,
     filename: str,
+    meeting_date: date,
+    date_source: str = "unknown",
     entity_id: int | None = None,
 ) -> dict[str, Any] | None:
     """Locate the current document this file should dedup against, or None.
@@ -346,8 +383,14 @@ def _find_existing_document(
       1. ``source_ref`` (normalized origin URL) within the same portal -- the
          identity that survives a PDF/HTML twin or a renamed file. This is what
          actually prevents the twin-document recurrence.
-      2. ``content_hash`` -- identical bytes are the same document even when the
-         filename and origin both changed.
+      2. ``content_hash`` -- identical bytes are usually the same document even
+         when the filename and origin both changed, but not always: a boilerplate
+         notice reissued for a later meeting reads identically and is still a
+         separate record. A hash match is therefore only accepted when nothing
+         contradicts it (see ``_is_same_document``); a contradicted match falls
+         through to tier 3 rather than collapsing the two, because the caller reads
+         "same hash as an existing document" as "unchanged, skip" and the incoming
+         record would never be stored at all.
       3. ``source_file`` (filename) -- legacy fallback for rows ingested before
          source_ref existed, or hand-added docs with no origin URL.
 
@@ -362,7 +405,20 @@ def _find_existing_document(
             return existing
     existing = find_document_by_content_hash(client, file_hash, portal, entity_id)
     if existing:
-        return existing
+        if _is_same_document(
+            existing, source_ref=source_ref, meeting_date=meeting_date, date_source=date_source
+        ):
+            return existing
+        logger.warning(
+            "  DUPLICATE-CONTENT: %s reads identically to document %d (%s, %s) but is a "
+            "different record (%s, %s); ingesting separately",
+            filename,
+            existing["id"],
+            existing.get("source_ref") or "no source_ref",
+            existing.get("meeting_date") or "no date",
+            source_ref or "no source_ref",
+            meeting_date.isoformat(),
+        )
     return find_document_by_source(client, filename, portal, entity_id)
 
 
@@ -406,6 +462,8 @@ def _ingest_with_dedup(
         file_hash=file_hash,
         portal=portal,
         filename=path.name,
+        meeting_date=meeting_date,
+        date_source=date_source,
         entity_id=entity_id,
     )
 
@@ -416,6 +474,20 @@ def _ingest_with_dedup(
             # the free-tier-timeout failure mode) would otherwise be skipped forever.
             # Repair it in place by (re)building its chunks instead.
             if not document_has_chunks(client, existing["id"]):
+                # Scan before rebuilding, not just on the insert paths. Chunks are
+                # what search serves and what a citation links to, so building them
+                # is the step that publishes a document — and the row being repaired
+                # may predate this guard or its current patterns. Blocking leaves the
+                # document at 0 chunks (unsearchable, still flagged for repair); the
+                # row's stored content is untouched, so a hit here needs the operator
+                # to decide what happens to the row itself.
+                if _pii_gate(path, text, config):
+                    logger.warning(
+                        "  REPAIR BLOCKED (PII in existing document %d): %s",
+                        existing["id"],
+                        path.name,
+                    )
+                    return {"status": "blocked", "chunks": 0}
                 logger.warning("  REPAIR (chunkless current doc): %s", path.name)
                 # Key citations on the same source_ref a fresh ingest would use, and
                 # backfill it onto a legacy row that lacks one (same as the skip path).
