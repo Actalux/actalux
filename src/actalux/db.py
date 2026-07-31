@@ -1018,10 +1018,10 @@ def document_has_chunks(client: Client, doc_id: int) -> bool:
 _CITATION_ID_RE = re.compile(r"^[0-9a-f]{8}$")
 
 
-# Cap on ids per ``in_`` lookup so a large id set can't overrun the PostgREST
+# Cap on ids per ``in_`` filter so a large id set can't overrun the PostgREST
 # URL/row limits (which would silently drop rows). 300 keeps the query string well
 # within limits while staying one round-trip for the search/answer path's handful.
-_CITATION_LOOKUP_BATCH = 300
+_IN_FILTER_BATCH = 300
 
 
 def get_chunk_citation_ids(client: Client, chunk_ids: list[int]) -> dict[int, str]:
@@ -1036,8 +1036,8 @@ def get_chunk_citation_ids(client: Client, chunk_ids: list[int]) -> dict[int, st
         return {}
     unique = list(dict.fromkeys(chunk_ids))
     result: dict[int, str] = {}
-    for start in range(0, len(unique), _CITATION_LOOKUP_BATCH):
-        batch = unique[start : start + _CITATION_LOOKUP_BATCH]
+    for start in range(0, len(unique), _IN_FILTER_BATCH):
+        batch = unique[start : start + _IN_FILTER_BATCH]
         rows = (
             client.table("chunks").select("id, citation_id").in_("id", batch).execute().data or []
         )
@@ -1444,24 +1444,45 @@ def get_entity_votes(
     superseded document (re-ingested minutes) are excluded with it. ``since`` is
     an inclusive lower bound and ``date_to`` an inclusive upper bound on
     ``meeting_date`` (YYYY-MM-DD).
+
+    Both halves outgrow a single round trip as a body accumulates meetings, and
+    both fail silently when they do. The document lookup pages (a bare select
+    caps at ~1000 rows and would drop whole meetings from the feed), and the vote
+    lookup splits the id set into ``_IN_FILTER_BATCH`` windows so the ``in_``
+    filter cannot overrun the URL limit. Each batch is asked for the full
+    ``limit``, so the newest ``limit`` votes overall are always inside the merged
+    set; the merge re-applies the server-side ordering before truncating.
     """
-    docs = (
-        client.table("documents")
-        .select("id")
-        .eq("entity_id", entity_id)
-        .is_("replaces_id", "null")
-        .execute()
-    ).data or []
+    docs = fetch_all_rows(
+        lambda: (
+            client.table("documents")
+            .select("id")
+            .eq("entity_id", entity_id)
+            .is_("replaces_id", "null")
+        )
+    )
     doc_ids = [d["id"] for d in docs]
     if not doc_ids:
         return []
-    query = client.table("votes").select(_VOTE_COLUMNS).in_("document_id", doc_ids)
-    if since:
-        query = query.gte("meeting_date", since)
-    if date_to:
-        query = query.lte("meeting_date", date_to)
-    result = query.order("meeting_date", desc=True).order("id").limit(limit).execute()
-    return result.data or []
+
+    rows: list[dict[str, Any]] = []
+    for start in range(0, len(doc_ids), _IN_FILTER_BATCH):
+        query = (
+            client.table("votes")
+            .select(_VOTE_COLUMNS)
+            .in_("document_id", doc_ids[start : start + _IN_FILTER_BATCH])
+        )
+        if since:
+            query = query.gte("meeting_date", since)
+        if date_to:
+            query = query.lte("meeting_date", date_to)
+        result = query.order("meeting_date", desc=True).order("id").limit(limit).execute()
+        rows.extend(result.data or [])
+
+    # Two stable passes reproduce the server's "meeting_date DESC, id ASC".
+    rows.sort(key=lambda r: r["id"])
+    rows.sort(key=lambda r: r["meeting_date"] or "", reverse=True)
+    return rows[:limit]
 
 
 # --- Speakers ---
