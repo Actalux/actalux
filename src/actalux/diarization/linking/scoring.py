@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from actalux.diarization.vectors import l2_normalize_rows
+
 # AS-norm cohort size: the number of top impostor scores per cluster used to estimate the
 # score distribution. VBx-style default; swept during calibration, not a magic inline literal.
 AS_NORM_COHORT_TOPK = 100
@@ -31,16 +33,9 @@ EPS = 1e-8
 SELF_MATCH_TOL = 1e-6
 
 
-def _l2_normalize_rows(mat: np.ndarray) -> np.ndarray:
-    """Row-wise L2 normalize; a zero row stays zero (so its cosine is 0, never NaN)."""
-    norms = np.linalg.norm(mat, axis=1, keepdims=True)
-    norms[norms == 0] = 1.0
-    return mat / norms
-
-
 def _cosine_between(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     """Cosine similarity of every row of ``a`` against every row of ``b`` -> ``(len a, len b)``."""
-    return _l2_normalize_rows(a) @ _l2_normalize_rows(b).T
+    return l2_normalize_rows(a) @ l2_normalize_rows(b).T
 
 
 def cosine_matrix(embeddings: np.ndarray) -> np.ndarray:
@@ -57,7 +52,7 @@ def cosine_matrix(embeddings: np.ndarray) -> np.ndarray:
         The symmetric ``(N, N)`` cosine similarity matrix; zero-norm rows score 0.
     """
     mat = np.asarray(embeddings, dtype=np.float64)
-    normed = _l2_normalize_rows(mat)
+    normed = l2_normalize_rows(mat)
     return normed @ normed.T
 
 

@@ -21,11 +21,7 @@ from __future__ import annotations
 
 import numpy as np
 
-
-def _normalize(mat: np.ndarray) -> np.ndarray:
-    norms = np.linalg.norm(mat, axis=1, keepdims=True)
-    norms[norms == 0] = 1.0
-    return mat / norms
+from actalux.diarization.vectors import l2_normalize_rows
 
 
 def mean_cosine_to_others(vectors: list[tuple[float, ...]]) -> list[float]:
@@ -35,7 +31,7 @@ def mean_cosine_to_others(vectors: list[tuple[float, ...]]) -> list[float]:
         return []
     if n == 1:
         return [0.0]  # a singleton has no corroboration
-    vecs = _normalize(np.asarray(vectors, dtype=np.float64))
+    vecs = l2_normalize_rows(np.asarray(vectors, dtype=np.float64))
     sim = vecs @ vecs.T
     return [float((sim[i].sum() - 1.0) / (n - 1)) for i in range(n)]
 
@@ -73,7 +69,7 @@ def coherent_subset(
     n = len(vectors)
     if n == 0:
         return []
-    vecs = _normalize(np.asarray(vectors, dtype=np.float64))
+    vecs = l2_normalize_rows(np.asarray(vectors, dtype=np.float64))
     sim = vecs @ vecs.T
     if n == 1:
         mean_to_others = np.array([1.0])
@@ -85,7 +81,7 @@ def coherent_subset(
     asnorm = (
         cohort_vectors is not None and z_floor is not None and len(cohort_vectors) >= min_cohort
     )
-    cohort = _normalize(np.asarray(cohort_vectors, dtype=np.float64)) if asnorm else None
+    cohort = l2_normalize_rows(np.asarray(cohort_vectors, dtype=np.float64)) if asnorm else None
 
     core: list[int] = []
     for i in range(n):
@@ -122,7 +118,7 @@ def collapse_pairs(
     if len(labeled) < 2:
         return []
     persons = np.array([p for p, _ in labeled])
-    vecs = _normalize(np.asarray([v for _, v in labeled], dtype=np.float64))
+    vecs = l2_normalize_rows(np.asarray([v for _, v in labeled], dtype=np.float64))
     sim = vecs @ vecs.T
     pairs: list[tuple[int, int, float]] = []
     n = len(labeled)

@@ -23,6 +23,7 @@ from actalux.diarization.labelqa import (
     coherent_subset,
     collapse_pairs,
 )
+from actalux.diarization.vectors import l2_normalize_rows
 
 # Operating-point search grid (cosine on L2-normalized vectors, so scores in [-1, 1]).
 # Threshold grid runs to 0.95 because the diagnostic same-person p90 is 0.937 — a 0.90
@@ -141,10 +142,7 @@ def build_sim(samples: list[Sample]) -> list[list[float]]:
         return []
     for i, s in enumerate(samples):
         s.idx = i
-    mat = np.asarray([s.embedding for s in samples], dtype=np.float64)
-    norms = np.linalg.norm(mat, axis=1, keepdims=True)
-    norms[norms == 0] = 1.0
-    mat = mat / norms
+    mat = l2_normalize_rows(np.asarray([s.embedding for s in samples], dtype=np.float64))
     return (mat @ mat.T).tolist()
 
 
