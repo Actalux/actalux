@@ -25,6 +25,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from actalux.diarization.vectors import l2_normalize_rows
+
 
 @dataclass(frozen=True)
 class Pooled:
@@ -40,13 +42,6 @@ class Pooled:
     n_turns: int
     coherent_turns: int
     seconds: float
-
-
-def _l2_normalize_rows(mat: np.ndarray) -> np.ndarray:
-    """Row-wise L2 normalize; zero rows stay zero (so cosine == dot product)."""
-    norms = np.linalg.norm(mat, axis=1, keepdims=True)
-    norms[norms == 0] = 1.0
-    return mat / norms
 
 
 def pool_turn_embeddings(
@@ -84,7 +79,7 @@ def pool_turn_embeddings(
     if n == 0 or n < min_coherent_turns:
         return None
 
-    vecs = _l2_normalize_rows(np.asarray(vectors, dtype=np.float64))
+    vecs = l2_normalize_rows(np.asarray(vectors, dtype=np.float64))
     durs = np.asarray(durations, dtype=np.float64)
 
     # Pairwise cosine (rows are normalized). Medoid = highest mean similarity to others.

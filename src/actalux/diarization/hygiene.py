@@ -28,6 +28,7 @@ import numpy as np
 
 from actalux.diarization.families import CONFIRMED_CONFIDENCE
 from actalux.diarization.matching import Sample
+from actalux.diarization.vectors import l2_normalize_rows
 
 # A negative this close (mean cosine) to one official's samples is treated as that official's
 # own voice, not a citizen. Measured band (diagnosis above): same-voice twins score 0.785-0.915
@@ -74,10 +75,7 @@ class NegativeQuarantine:
 
 
 def _unit_rows(vectors: list[tuple[float, ...]]) -> np.ndarray:
-    mat = np.asarray(vectors, dtype=np.float64)
-    norms = np.linalg.norm(mat, axis=1, keepdims=True)
-    norms[norms == 0] = 1.0
-    return mat / norms
+    return l2_normalize_rows(np.asarray(vectors, dtype=np.float64))
 
 
 def vet_confirmed_positives(
