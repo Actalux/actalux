@@ -37,8 +37,11 @@ jobs:
         with:
           python-version: "3.11"
           enable-cache: true
+      # `diarization` is not a default group, so a bare `uv sync` omits the modal
+      # client and three test modules fail at import. A green local run masks this,
+      # because a working tree usually already has the group installed.
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --group diarization
       - name: Lint
         run: uv run ruff check . && uv run ruff format --check .
       - name: Tests
