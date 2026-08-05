@@ -37,6 +37,14 @@ jobs:
         with:
           python-version: "3.11"
           enable-cache: true
+      # tesseract is a system binary, not a Python package, so `uv sync` cannot
+      # supply it. The Zoom label tests run OCR for real rather than against a stub
+      # — deliberately, so a regression in the crop/preprocess pipeline fails
+      # instead of passing — which means they need the binary present. Installing
+      # it keeps that coverage; skipping when it is absent would delete the tests
+      # on exactly the clean machines this job exists to represent.
+      - name: Install tesseract (OCR tests)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq tesseract-ocr
       # `diarization` is not a default group, so a bare `uv sync` omits the modal
       # client and three test modules fail at import. A green local run masks this,
       # because a working tree usually already has the group installed.
