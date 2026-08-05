@@ -134,6 +134,15 @@ jobs:
           uv run python scripts/seed_roster.py --apply
           uv run python scripts/project_member_votes.py --apply
 
+      # A meeting document filed under an unvouched-for date makes the meetings
+      # endpoint report a meeting on that date, which consumers read as the district
+      # having met. Checked here, right where documents enter, so a bad date is
+      # caught in the run that introduced it rather than by a reader weeks later.
+      # Hard-fails on purpose — the check ignores non-meeting types precisely so it
+      # stays quiet enough to be worth failing on.
+      - name: Check meeting dates
+        run: uv run python scripts/check_meeting_dates.py
+
       # Draft a cited "what changed this run" post and (if SMTP is configured)
       # email it for human review. Soft-fails: a drafting/email hiccup must not
       # fail the run or undo the ingest above. Never publishes.

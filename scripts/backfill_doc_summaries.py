@@ -65,6 +65,12 @@ def main() -> int:
     parser.add_argument(
         "--sleep", type=float, default=0.0, help="seconds to sleep between API calls"
     )
+    parser.add_argument(
+        "--doc",
+        type=int,
+        action="append",
+        help="only this document id (repeatable); implies --force",
+    )
     args = parser.parse_args()
 
     cfg = load_config()
@@ -81,6 +87,12 @@ def main() -> int:
             "id,meeting_title,document_type,meeting_date,source_portal,summary"
         )
     )
+    if args.doc:
+        # Redoing one document's summary must not mean redoing all 1700, which is
+        # why --doc implies --force rather than requiring both.
+        wanted = set(args.doc)
+        docs = [d for d in docs if d["id"] in wanted]
+        args.force = True
     if args.limit > 0:
         docs = docs[: args.limit]
 

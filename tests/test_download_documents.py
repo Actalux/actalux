@@ -81,3 +81,64 @@ def test_personnel_hold_back_passes_civic_records():
     ]
     for name in kept:
         assert not dd.PERSONNEL_HOLD_BACK.search(name), name
+
+
+def _packet_linking(path, guid):
+    """A one-page PDF whose only link points at `guid` on the portal."""
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_link(
+        {
+            "kind": fitz.LINK_URI,
+            "from": fitz.Rect(10, 10, 100, 30),
+            "uri": f"https://claytonschools.diligent.community/document/{guid}",
+        }
+    )
+    doc.save(path)
+    doc.close()
+
+
+def test_linked_manifest_entry_carries_the_packet_and_its_date(tmp_path, monkeypatch):
+    # A packet attachment (an exec summary, a policy PDF, a signed MOU) usually
+    # states no date of its own. The packet that links it does, and that is the
+    # only thing that knows which meeting the attachment belongs to — dropping it
+    # is what left 20 attachments undatable after the fact.
+    packet = tmp_path / "12.10.2025 BOE Meeting Minutes - DRAFT.pdf"
+    _packet_linking(packet, GUID)
+
+    monkeypatch.setattr(dd, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(dd, "LINKED_INDEX_PATH", tmp_path / "index.json")
+    monkeypatch.setattr(dd, "load_linked_index", lambda: {})
+    monkeypatch.setattr(
+        dd, "download_document", lambda client, guid: ("Policy JEC.pdf", b"%PDF-1.4 ")
+    )
+
+    manifest: list[dict[str, str]] = []
+    dd.follow_embedded_links(client=None, scan_paths=[packet], seen_guids=set(), manifest=manifest)
+
+    assert len(manifest) == 1
+    entry = manifest[0]
+    assert entry["linked_from"] == packet.name
+    assert entry["meeting_date"] == "2025-12-10"
+    assert entry["date_source"] == "packet"
+
+
+def test_linked_manifest_omits_a_date_when_the_packet_has_none(tmp_path, monkeypatch):
+    # No date on the packet means no date for the attachment. Ingest must receive
+    # nothing rather than something plausible.
+    packet = tmp_path / "Board Candidate Resource Guide.pdf"
+    _packet_linking(packet, GUID)
+
+    monkeypatch.setattr(dd, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(dd, "LINKED_INDEX_PATH", tmp_path / "index.json")
+    monkeypatch.setattr(dd, "load_linked_index", lambda: {})
+    monkeypatch.setattr(
+        dd, "download_document", lambda client, guid: ("Policy JEC.pdf", b"%PDF-1.4 ")
+    )
+
+    manifest: list[dict[str, str]] = []
+    dd.follow_embedded_links(client=None, scan_paths=[packet], seen_guids=set(), manifest=manifest)
+
+    assert manifest[0]["linked_from"] == packet.name
+    assert "meeting_date" not in manifest[0]
+    assert "date_source" not in manifest[0]

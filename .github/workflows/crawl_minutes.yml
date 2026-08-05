@@ -175,6 +175,13 @@ jobs:
         if: ${{ github.event_name == 'schedule' || inputs.ingest }}
         run: uv run python scripts/backfill_doc_summaries.py
 
+      # See ingest.yml: a meeting document with an unvouched-for date makes the
+      # meetings endpoint assert a meeting that may not have happened. Caught in
+      # the run that introduces it.
+      - name: Check meeting dates
+        if: ${{ github.event_name == 'schedule' || inputs.ingest }}
+        run: uv run python scripts/check_meeting_dates.py
+
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
