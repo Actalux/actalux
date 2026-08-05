@@ -5,8 +5,86 @@ from datetime import date
 from actalux.ingest.classify import (
     classify_document_type,
     is_annual_schedule,
+    meeting_date_from_text,
     parse_meeting_date,
 )
+
+
+class TestFourDigitYearFilenames:
+    """Formats the district posts that used to fall through to the ingest date.
+
+    Each of these produced a document filed under the day it was crawled, which
+    is what put December minutes under an August meeting.
+    """
+
+    def test_dotted_four_digit_year(self) -> None:
+        assert parse_meeting_date("12.10.2025 BOE Meeting Minutes - DRAFT.pdf") == date(
+            2025, 12, 10
+        )
+
+    def test_dotted_two_digit_year_still_works(self) -> None:
+        assert parse_meeting_date("12.10.25 BOE Meeting Minutes - DRAFT.pdf") == date(2025, 12, 10)
+
+    def test_compact_yyyymmdd(self) -> None:
+        assert parse_meeting_date("20260121BondElectionResolution.pdf") == date(2026, 1, 21)
+
+    def test_underscore_separated(self) -> None:
+        assert parse_meeting_date("Exec Summary_approval_12_10_2025.pdf") == date(2025, 12, 10)
+
+    def test_compact_mmddyyyy_not_broken_by_yyyymmdd(self) -> None:
+        # "06242020" is MMDDYYYY. The YYYYMMDD pattern is anchored on a 20xx year
+        # so it cannot claim this one first.
+        assert parse_meeting_date("BOE_Adopt 20-21 Budget_06242020") == date(2020, 6, 24)
+
+
+class TestMeetingDateFromText:
+    """The packet-header reader used to repair placeholder dates."""
+
+    HEADER = (
+        "School District of Clayton\nFor Information Only | Action Required\n"
+        "Board of Education\nPage 1 of 1\n{item}\n{meeting}\nSummary\n"
+    )
+
+    def test_reads_the_header_meeting_date(self) -> None:
+        text = self.HEADER.format(
+            item="Foster Care Transportation MOU", meeting="December 10, 2025"
+        )
+        assert meeting_date_from_text(text) == date(2025, 12, 10)
+
+    def test_header_date_beats_a_period_named_in_the_body(self) -> None:
+        # The filename says 20250430, but April 2025 is the period the report
+        # covers; June 4 is the meeting it was presented at.
+        text = self.HEADER.format(item="April 2025 Financial Reporting", meeting="June 4, 2025")
+        text += "Financial Reports are attached for April 30, 2025, and are presented in two ways."
+        assert meeting_date_from_text(text) == date(2025, 6, 4)
+
+    def test_refuses_a_policy_revision_date(self) -> None:
+        # Regression guard. Policies are revised AT board meetings, so this date is
+        # a real meeting date and passes any calendar check — it is simply a
+        # different meeting's. The label is the only thing distinguishing it, and
+        # matching non-word instead of non-digit after "Revised" silently disables
+        # the guard, because the gap reads "Revised Date: ".
+        text = (
+            "POLICY KB PUBLIC INFORMATION PROGRAM Status: DRAFT "
+            "Original Adopted Date: 06/10/2015 | Last Revised Date: 05/13/2020 "
+            "25B UPDATE EXPLANATION"
+        )
+        assert meeting_date_from_text(text) is None
+
+    def test_refuses_an_effective_date(self) -> None:
+        text = (
+            "THIS CLINICAL SERVICE AGREEMENT is entered into as of "
+            'September 1, 2025 (the "Effective Date")'
+        )
+        assert meeting_date_from_text(text) is None
+
+    def test_calendar_predicate_rejects_a_non_meeting_date(self) -> None:
+        text = self.HEADER.format(item="Some Item", meeting="December 11, 2025")
+        assert meeting_date_from_text(text, {date(2025, 12, 10)}.__contains__) is None
+
+    def test_returns_none_rather_than_guessing(self) -> None:
+        assert meeting_date_from_text("A document with no date at all.") is None
+        assert meeting_date_from_text("") is None
 
 
 class TestParseMeetingDate:
@@ -38,9 +116,17 @@ class TestParseMeetingDate:
         # "BOE_Adopt 20-21 Budget_06242020.pdf" -> June 24, 2020.
         assert parse_meeting_date("BOE_Adopt 20-21 Budget_06242020.pdf") == date(2020, 6, 24)
 
-    def test_compact_mmddyyyy_rejects_invalid(self) -> None:
-        # YYYYMMDD order (month 20) is not a valid MMDDYYYY date -> no false match.
-        assert parse_meeting_date("report_20200624_final.pdf") is None
+    def test_compact_yyyymmdd_is_read(self) -> None:
+        # Previously asserted to be None: read as MMDDYYYY this is month 20, and no
+        # other pattern covered it, so the file fell through to the ingest-day date.
+        # The district posts this form constantly (20260121BondElectionResolution),
+        # and that fallthrough is what filed 63 documents under a Sunday.
+        assert parse_meeting_date("report_20200624_final.pdf") == date(2020, 6, 24)
+
+    def test_compact_eight_digits_rejected_when_no_valid_reading(self) -> None:
+        # Neither YYYYMMDD (month 99) nor MMDDYYYY (month 99) is a real date, so
+        # the "no false match" intent still holds where it should.
+        assert parse_meeting_date("report_20209924_final.pdf") is None
 
     def test_compact_needs_today(self) -> None:
         assert parse_meeting_date("jan21_board_meeting.txt") is None  # no today -> skip

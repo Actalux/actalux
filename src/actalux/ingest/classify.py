@@ -11,6 +11,7 @@ keeps the render-time display titles (web.display) homogeneous going forward.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from datetime import date
 
 _MONTHS = {
@@ -38,6 +39,15 @@ _MONTH_DATE_RE = re.compile(
     re.I,
 )
 _MMDDYY_DOT_RE = re.compile(r"(?<!\d)(\d{1,2})\.(\d{1,2})\.(\d{2})(?!\d)")
+# Same dotted scheme with a four-digit year ("12.10.2025"). The district posts both
+# widths; only the two-digit one used to parse, so every four-digit filename fell
+# through to the ingest-day fallback.
+_MMDDYYYY_DOT_RE = re.compile(r"(?<!\d)(\d{1,2})\.(\d{1,2})\.(\d{4})(?!\d)")
+# Underscore-separated ("12_10_2025"), used by exec-summary attachments.
+_MMDDYYYY_US_RE = re.compile(r"(?<!\d)(\d{1,2})_(\d{1,2})_(\d{4})(?!\d)")
+# Compact YYYYMMDD ("20251210"). Anchored on a 20xx year so it cannot swallow a
+# compact MMDDYYYY like "06242020", which _MMDDYYYY_RE below still handles.
+_YYYYMMDD_RE = re.compile(r"(?<!\d)(20\d{2})(\d{2})(\d{2})(?!\d)")
 _MMDDYY_DASH_RE = re.compile(r"(?<!\d)(\d{1,2})-(\d{1,2})-(\d{2})(?!\d)")
 _MMDDYY_SPACE_RE = re.compile(r"(?<!\d)(\d{1,2})\s+(\d{1,2})\s+(\d{2})(?!\d)")
 _MONTH_YEAR_RE = re.compile(
@@ -93,6 +103,19 @@ def parse_meeting_date(name: str, today: date | None = None) -> date | None:
         d = _safe_date(int(m.group(3)), _MONTHS[m.group(1).lower()[:3]], int(m.group(2)))
         if d:
             return d
+    # Four-digit-year forms before the two-digit ones: "12.10.2025" would otherwise
+    # be read as "12.10.20" with a stray "25" and rejected.
+    for pat in (_MMDDYYYY_DOT_RE, _MMDDYYYY_US_RE):
+        m = pat.search(name)
+        if m:
+            d = _safe_date(int(m.group(3)), int(m.group(1)), int(m.group(2)))
+            if d:
+                return d
+    m = _YYYYMMDD_RE.search(name)
+    if m:
+        d = _safe_date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        if d:
+            return d
     for pat in (_MMDDYY_DOT_RE, _MMDDYY_DASH_RE, _MMDDYY_SPACE_RE):
         m = pat.search(name)
         if m:
@@ -131,6 +154,70 @@ def parse_meeting_date(name: str, today: date | None = None) -> date | None:
                 candidate = _safe_date(today.year - 1, month, day)
             if candidate:
                 return candidate
+    return None
+
+
+# A date carrying one of these labels describes the document's own history — when a
+# policy was last revised, when a contract took effect — never the meeting it was
+# presented at. This distinction is load-bearing: a board policy PDF footer reads
+# "Last Revised Date: 05/13/2020", and because policies are revised *at* board
+# meetings that date is a genuine meeting date, so it passes a calendar check
+# happily. Refusing the labelled forms is the only thing that stops a policy's
+# revision history being read as the meeting it was attached to.
+_PROVENANCE_LABEL_RE = re.compile(
+    # \D (any non-digit), not \W: the gap between the label word and the date is
+    # "Revised Date: ", which contains word characters. Requiring non-word chars
+    # here silently disables the whole guard.
+    r"(adopted|revised|revision|release|expire|effective|reviewed|originally|"
+    r"entered into as of|first read)\D{0,24}$",
+    re.I,
+)
+
+# Board packet cover sheets state the meeting date in a header block — district
+# name, "Board of Education", the item title, the date, then "Summary". Body text
+# below carries other dates (the period a financial report covers, the election a
+# resolution calls), so the search is confined to the header.
+_HEADER_WINDOW = 1500
+
+_TEXT_DATE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (_MONTH_DATE_RE, "mdy_name"),
+    (_ISO_RE, "iso"),
+    (_MMDDYYYY_DOT_RE, "mdy"),
+    (_MMDDYYYY_US_RE, "mdy"),
+    (re.compile(r"(?<!\d)(\d{1,2})/(\d{1,2})/(\d{4})(?!\d)"), "mdy"),
+]
+
+
+def meeting_date_from_text(
+    text: str, is_meeting_date: Callable[[date], bool] | None = None
+) -> date | None:
+    """The meeting date a board-packet document states for itself, or None.
+
+    Reads only the header block, skips dates carrying a provenance label
+    (``_PROVENANCE_LABEL_RE``), and — when ``is_meeting_date`` is supplied —
+    returns the first surviving date the caller confirms is a real meeting date.
+    Returning None is the correct answer for a document that never names its
+    meeting (a policy attachment, a signed contract); the caller must not
+    substitute a placeholder.
+    """
+    head = (text or "")[:_HEADER_WINDOW]
+    found: list[tuple[int, date]] = []
+    for pat, kind in _TEXT_DATE_PATTERNS:
+        for m in pat.finditer(head):
+            if kind == "mdy_name":
+                d = _safe_date(int(m.group(3)), _MONTHS[m.group(1).lower()[:3]], int(m.group(2)))
+            elif kind == "iso":
+                d = _safe_date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+            else:
+                d = _safe_date(int(m.group(3)), int(m.group(1)), int(m.group(2)))
+            if not d:
+                continue
+            if _PROVENANCE_LABEL_RE.search(head[max(0, m.start() - 40) : m.start()]):
+                continue
+            found.append((m.start(), d))
+    for _, d in sorted(found):
+        if is_meeting_date is None or is_meeting_date(d):
+            return d
     return None
 
 
