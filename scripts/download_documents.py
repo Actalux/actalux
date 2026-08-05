@@ -28,6 +28,8 @@ from pathlib import Path
 import fitz
 import httpx
 
+from actalux.ingest.classify import parse_meeting_date
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
@@ -156,15 +158,22 @@ def follow_embedded_links(
     downloaded = reused = 0
     frontier = scan_paths
     for depth in range(1, MAX_LINK_DEPTH + 1):
-        targets: set[str] = set()
+        # guid -> the packet that linked it. A packet attachment (an exec summary,
+        # a policy PDF, a signed MOU) usually carries no date of its own, so the
+        # packet is the only thing that knows which meeting it belongs to. Dropping
+        # this is what left 20 attachments undatable after the fact.
+        targets: dict[str, Path] = {}
         for path in frontier:
-            targets |= extract_linked_guids(path)
-        targets -= seen_guids
+            for linked_guid in extract_linked_guids(path):
+                targets.setdefault(linked_guid, path)
+        for known in seen_guids:
+            targets.pop(known, None)
         if not targets:
             break
         logger.info("Link depth %d: %d new linked documents", depth, len(targets))
         next_frontier: list[Path] = []
         for guid in sorted(targets):
+            parent_path = targets[guid]
             seen_guids.add(guid)
             cached_name = linked_index.get(guid)
             if cached_name and (OUTPUT_DIR / cached_name).exists():
@@ -184,14 +193,21 @@ def follow_embedded_links(
             if PERSONNEL_HOLD_BACK.search(out_path.name):
                 logger.info("  Held back (personnel): %s", out_path.name)
                 continue
-            manifest.append(
-                {
-                    "source_file": out_path.name,
-                    "source_url": f"{BASE_URL}/document/{guid}",
-                    "source_portal": "diligent",
-                    "document_type": infer_doc_type(out_path.name, ""),
-                }
-            )
+            entry = {
+                "source_file": out_path.name,
+                "source_url": f"{BASE_URL}/document/{guid}",
+                "source_portal": "diligent",
+                "document_type": infer_doc_type(out_path.name, ""),
+                "linked_from": parent_path.name,
+            }
+            # The packet's own filename dates the meeting, and every attachment it
+            # links belongs to that meeting. Supplying it here is what keeps an
+            # undated attachment from reaching ingest with no date at all.
+            parent_date = parse_meeting_date(parent_path.name)
+            if parent_date:
+                entry["meeting_date"] = parent_date.isoformat()
+                entry["date_source"] = "packet"
+            manifest.append(entry)
             next_frontier.append(out_path)
         frontier = next_frontier
     LINKED_INDEX_PATH.write_text(json.dumps(linked_index, indent=2, sort_keys=True))
