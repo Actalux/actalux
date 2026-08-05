@@ -1,0 +1,74 @@
+name: deploy
+
+# Deploys the web app to Fly. Until this existed, `fly deploy` was manual and ran
+# from whoever's laptop happened to be authenticated — which is how the event-loop
+# fix in f419d33 sat merged-but-unshipped for five days while the stall it fixes
+# was live in production (machine version 82, deployed 2026-07-19).
+#
+# Tests gate the deploy: a red suite must not reach production. The suite is the
+# only thing standing between master and the public site now that shipping is
+# automatic, so `deploy` depends on `test` rather than running alongside it.
+#
+# Required repository secret: FLY_API_TOKEN (a Fly deploy token, scoped to this
+# app — see `fly tokens create deploy`).
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never let two deploys race for the same machine, and never cancel one partway —
+# a half-applied release is worse than a queued one.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up uv + Python 3.11
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+          enable-cache: true
+      - name: Install dependencies
+        run: uv sync
+      - name: Lint
+        run: uv run ruff check . && uv run ruff format --check .
+      - name: Tests
+        run: uv run python -m pytest tests/ -q
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy
+        run: flyctl deploy --remote-only --app actalux
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      # `flyctl deploy` already waits for the platform health check, which only
+      # proves /healthz answered within its 5s timeout. This asserts the stronger
+      # property the deploy is meant to protect: that a do-nothing endpoint is
+      # actually fast, not merely under the wire. A blocked event loop shows up
+      # here as seconds, not milliseconds.
+      - name: Smoke-check response time
+        run: |
+          for i in 1 2 3; do
+            t=$(curl -sS -o /dev/null -w '%{time_starttransfer}' https://actalux.org/healthz)
+            echo "healthz ttfb=${t}s"
+            if awk "BEGIN{exit !($t > 2.0)}"; then
+              echo "::error::/healthz took ${t}s — expected well under 1s. The event loop may be blocked."
+              exit 1
+            fi
+            sleep 2
+          done
