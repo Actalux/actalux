@@ -187,11 +187,14 @@ def ingest_directory(data_dir: Path, entity_path: str = DEFAULT_ENTITY_PATH) -> 
         logger.info("Found %d files in flat directory %s", len(flat_files), data_dir)
         for doc_file in flat_files:
             _parsed_date = infer_meeting_date(doc_file.name)
-            meeting_date = _parsed_date or date.today()
-            # 'filename' when the date is parsed from the filename; 'default' when
-            # no date was found and we fell back to today (the most common source
-            # of wrong dates — docs with no date in their filename).
-            flat_date_source = "filename" if _parsed_date else "default"
+            # An undated file gets no date. Substituting today's date used to look
+            # harmless, but meeting_date is what the meetings endpoint keys on, so a
+            # placeholder does not merely mis-file the document — it manufactures a
+            # meeting on the ingest date and serves the document as that meeting's
+            # record. A NULL is excluded from those views; a plausible wrong date is
+            # not. Content-derived dating happens downstream, where the text exists.
+            meeting_date = _parsed_date
+            flat_date_source = "filename" if _parsed_date else "undetermined"
             meeting_title = infer_meeting_title(doc_file.name)
 
             try:
@@ -221,7 +224,7 @@ def ingest_directory(data_dir: Path, entity_path: str = DEFAULT_ENTITY_PATH) -> 
         meeting_date = _parsed_date  # may be None; resolved per-doc below
         # 'filename' when the directory name parses to a date; 'default' when
         # no date pattern matched (the subdirectory name lacks a recognisable date).
-        dir_date_source = "filename" if _parsed_date else "default"
+        dir_date_source = "filename" if _parsed_date else "undetermined"
         meeting_title = infer_meeting_title(meeting_dir.name)
 
         doc_files = sorted(
@@ -250,7 +253,7 @@ def ingest_directory(data_dir: Path, entity_path: str = DEFAULT_ENTITY_PATH) -> 
                 result = _ingest_with_dedup(
                     client=client,
                     path=doc_file,
-                    meeting_date=meeting_date or date.today(),
+                    meeting_date=meeting_date,
                     meeting_title=meeting_title,
                     config=config,
                     entity_id=entity_id,
@@ -835,8 +838,11 @@ def ingest_from_manifest(manifest_path: Path, entity_path: str = DEFAULT_ENTITY_
             manifest_date_source = entry.get("date_source", "manual")
         else:
             _inferred = infer_meeting_date(source_file)
-            meeting_date = _inferred or date.today()
-            manifest_date_source = "filename" if _inferred else "default"
+            # No date in the manifest and none in the filename means the date is
+            # unknown, not today. See the flat-file branch above for why a
+            # placeholder here manufactures a meeting rather than just mis-filing.
+            meeting_date = _inferred
+            manifest_date_source = "filename" if _inferred else "undetermined"
         meeting_title = entry.get("meeting_title", infer_meeting_title(source_file))
 
         try:
