@@ -48,10 +48,10 @@ LATENCY_MODE = "fast"
 class RerankProvider:
     """One hosted reranker: where to POST, which model, and its own knobs.
 
-    The three vendors differ only in URL, model string, and one or two
-    provider-specific fields — all of them take ``{query, documents}`` with a
-    bearer token and answer ``{"results": [{"index", "relevance_score"}]}``. That
-    shared shape is why swapping vendors is a table entry rather than a client.
+    The three vendors differ only in URL, model string, one or two payload
+    fields, and which key holds the ranked list — all take ``{query, documents}``
+    with a bearer token and answer a list of ``{"index", "relevance_score"}``.
+    That shared shape is why swapping vendors is a table entry, not a client.
     """
 
     name: str
@@ -59,6 +59,10 @@ class RerankProvider:
     default_model: str
     # Provider-specific payload fields merged into every request.
     extra: dict[str, object] = field(default_factory=dict)
+    # Top-level key holding the ranked list. Voyage answers `data` where the other
+    # two answer `results` — its published docs say `results`, so this was found by
+    # calling the API rather than by reading them.
+    results_key: str = "results"
 
 
 PROVIDERS: dict[str, RerankProvider] = {
@@ -85,6 +89,7 @@ PROVIDERS: dict[str, RerankProvider] = {
         url="https://api.voyageai.com/v1/rerank",
         default_model="rerank-2.5-lite",
         extra={"truncation": True},
+        results_key="data",
     ),
 }
 
@@ -148,7 +153,7 @@ def _request_rerank_order(
             continue
         if resp.status_code == 429:
             wait = float(resp.headers.get("retry-after", 0.5 * (attempt + 1)))
-            logger.warning("reranker ratelimited (429); waiting %.1fs", wait)
+            logger.warning("%s reranker ratelimited (429); waiting %.1fs", provider.name, wait)
             time.sleep(wait)
             last_error = "ratelimited (429)"
             continue
@@ -157,7 +162,7 @@ def _request_rerank_order(
                 f"{provider.name} reranker returned {resp.status_code}: {resp.text[:200]}"
             )
         try:
-            results = resp.json()["results"]
+            results = resp.json()[provider.results_key]
             ordered = [r["index"] for r in results]
         except (ValueError, KeyError, TypeError) as exc:
             raise RerankError(f"{provider.name} returned an unreadable response: {exc}") from exc
