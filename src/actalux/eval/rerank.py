@@ -164,6 +164,31 @@ _api_pool_cache: dict[tuple[str, str, str, tuple[int, ...]], list[SearchResult]]
 _EVAL_RETRY_ATTEMPTS = 6
 _EVAL_RETRY_BACKOFF = 8.0  # seconds; the byte/min ratelimit clears within a minute
 
+# Minimum gap between requests to the same provider, applied only here. A live
+# search reranks once and never trips a per-minute cap; the eval fires 25 pools
+# back-to-back and trips it immediately — badly enough on a free-tier key that
+# retry-with-backoff alone exhausts its attempts and kills the run. Pacing the
+# requests is what makes an evaluation possible on a trial key at all, and it
+# costs nothing but wall-clock. Overridden per run by the CLI.
+_MIN_REQUEST_INTERVAL = {"cohere": 6.5, "voyage": 6.5, "zeroentropy": 0.0}
+_last_request_at: dict[str, float] = {}
+
+
+def set_request_interval(provider: str, seconds: float) -> None:
+    """Set the minimum gap between requests to one provider (eval pacing only)."""
+    _MIN_REQUEST_INTERVAL[provider] = seconds
+
+
+def _pace(provider: str) -> None:
+    """Sleep until this provider's minimum request interval has elapsed."""
+    gap = _MIN_REQUEST_INTERVAL.get(provider, 0.0)
+    if gap <= 0:
+        return
+    since = time.monotonic() - _last_request_at.get(provider, 0.0)
+    if since < gap:
+        time.sleep(gap - since)
+    _last_request_at[provider] = time.monotonic()
+
 
 def rerank_pool_api(
     query: str,
@@ -200,6 +225,7 @@ def _rerank_patient(
     """
     for attempt in range(_EVAL_RETRY_ATTEMPTS):
         try:
+            _pace(provider)
             return rerank_results(query, pool, api_key, model, provider)
         except RerankError:
             if attempt == _EVAL_RETRY_ATTEMPTS - 1:

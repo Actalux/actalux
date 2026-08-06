@@ -113,6 +113,14 @@ def main() -> None:
         "own key (ACTALUX_COHERE_API_KEY / ACTALUX_VOYAGE_API_KEY)",
     )
     parser.add_argument(
+        "--rerank-interval",
+        type=float,
+        default=None,
+        help="minimum seconds between requests to each hosted provider. Free-tier "
+        "keys have per-minute caps a 25-query eval trips instantly; pacing is what "
+        "lets the run finish. Default 6.5s for cohere/voyage",
+    )
+    parser.add_argument(
         "--combined-report",
         action="store_true",
         help="build the multi-arm report from persisted rankings + judgments "
@@ -170,6 +178,8 @@ def main() -> None:
                 f"no API key for provider {name!r}; set ACTALUX_{name.upper()}_API_KEY "
                 "in Doppler (project actalux, config dev)."
             )
+        if args.rerank_interval is not None:
+            rerank.set_request_interval(name, args.rerank_interval)
         arms[f"{spec.default_model}-{name}"] = (
             lambda query, pool, k=key, m=spec.default_model, p=name: rerank.rerank_pool_api(
                 query, pool, k, m, p

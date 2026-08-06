@@ -125,14 +125,16 @@ class TestProviders:
     actually builds is pinned here rather than trusted.
     """
 
-    def _capture(self, monkeypatch) -> dict:
+    def _capture(self, monkeypatch, provider: str = "zeroentropy") -> dict:
+        """Record the outgoing request, answering under that provider's own key."""
         sent: dict = {}
+        results_key = rerank.PROVIDERS[provider].results_key
 
         def fake_post(url, json=None, headers=None, timeout=None):  # noqa: A002
             sent["url"] = url
             sent["json"] = json
             sent["headers"] = headers
-            return _FakeResponse(payload={"results": [{"index": 0}, {"index": 1}]})
+            return _FakeResponse(payload={results_key: [{"index": 0}, {"index": 1}]})
 
         monkeypatch.setattr(httpx, "post", fake_post)
         return sent
@@ -144,7 +146,7 @@ class TestProviders:
         assert sent["json"]["latency"] == "fast"
 
     def test_cohere_request_shape(self, monkeypatch) -> None:
-        sent = self._capture(monkeypatch)
+        sent = self._capture(monkeypatch, "cohere")
         rerank.rerank_results("q", [_result(1), _result(2)], "key", "", provider="cohere")
         assert sent["url"] == "https://api.cohere.com/v2/rerank"
         assert sent["json"]["model"] == "rerank-v3.5"
@@ -153,7 +155,7 @@ class TestProviders:
         assert sent["headers"]["Authorization"] == "Bearer key"
 
     def test_voyage_request_shape(self, monkeypatch) -> None:
-        sent = self._capture(monkeypatch)
+        sent = self._capture(monkeypatch, "voyage")
         rerank.rerank_results("q", [_result(1), _result(2)], "key", "", provider="voyage")
         assert sent["url"] == "https://api.voyageai.com/v1/rerank"
         assert sent["json"]["model"] == "rerank-2.5-lite"
@@ -161,21 +163,34 @@ class TestProviders:
         assert "max_tokens_per_doc" not in sent["json"]  # a Cohere-only field
 
     def test_explicit_model_overrides_the_provider_default(self, monkeypatch) -> None:
-        sent = self._capture(monkeypatch)
+        sent = self._capture(monkeypatch, "voyage")
         rerank.rerank_results("q", [_result(1), _result(2)], "key", "rerank-2.5", provider="voyage")
         assert sent["json"]["model"] == "rerank-2.5"
 
-    def test_every_provider_reorders_from_the_same_response_shape(self, monkeypatch) -> None:
-        # All three answer {"results": [{"index", "relevance_score"}]}, which is
-        # what lets one client serve them; if a vendor diverged, this breaks.
-        for name in rerank.PROVIDERS:
+    def test_every_provider_reorders_from_its_own_response_key(self, monkeypatch) -> None:
+        # Each answers a list of {"index", "relevance_score"} — but under its own
+        # top-level key. Voyage uses `data` where the others use `results`, and its
+        # published docs say `results`, so this was found by calling the API. Read
+        # the key from the table, not from a shared assumption.
+        for name, spec in rerank.PROVIDERS.items():
             monkeypatch.setattr(
                 httpx,
                 "post",
-                lambda *a, **k: _FakeResponse(payload={"results": [{"index": 1}, {"index": 0}]}),
+                lambda *a, _k=spec.results_key, **kw: _FakeResponse(
+                    payload={_k: [{"index": 1}, {"index": 0}]}
+                ),
             )
             out = rerank.rerank_results("q", [_result(10), _result(20)], "key", "", provider=name)
             assert [r.chunk_id for r in out] == [20, 10], name
+
+    def test_voyage_reads_data_not_results(self, monkeypatch) -> None:
+        # Pinned separately because it is the one divergence, and a silent revert
+        # to "results" would make every Voyage rerank fall back to RRF order —
+        # search would still answer, just unranked, with nothing surfacing it.
+        assert rerank.PROVIDERS["voyage"].results_key == "data"
+        _patch_post(monkeypatch, _FakeResponse(payload={"data": [{"index": 1}, {"index": 0}]}))
+        out = rerank.rerank_results("q", [_result(7), _result(8)], "key", "", provider="voyage")
+        assert [r.chunk_id for r in out] == [8, 7]
 
     def test_unknown_provider_names_the_known_set(self) -> None:
         with pytest.raises(ValueError, match="cohere"):
