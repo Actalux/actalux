@@ -158,7 +158,7 @@ API_ARM_NAME = "zerank-1-small-api"
 # Memo: (model, query, pool chunk_ids) -> reordered pool. The harness calls each
 # arm twice per query (judge union, then scoring); this makes that one API
 # request, keyed on chunk_ids so distinct pools never collide.
-_api_pool_cache: dict[tuple[str, str, tuple[int, ...]], list[SearchResult]] = {}
+_api_pool_cache: dict[tuple[str, str, str, tuple[int, ...]], list[SearchResult]] = {}
 
 
 _EVAL_RETRY_ATTEMPTS = 6
@@ -170,20 +170,26 @@ def rerank_pool_api(
     pool: list[SearchResult],
     api_key: str,
     model: str = "zerank-1-small",
+    provider: str = "zeroentropy",
 ) -> list[SearchResult]:
-    """Reorder `pool` via the production ZeroEntropy reranker (memoized)."""
+    """Reorder `pool` via a hosted reranker (memoized).
+
+    The provider is part of the cache key: two vendors scoring the same pool for
+    the same query are different arms, and collapsing them would silently compare
+    a model against itself.
+    """
     if not pool:
         return []
-    cache_key = (model, query, tuple(r.chunk_id for r in pool))
+    cache_key = (provider, model, query, tuple(r.chunk_id for r in pool))
     reordered = _api_pool_cache.get(cache_key)
     if reordered is None:
-        reordered = _rerank_patient(query, pool, api_key, model)
+        reordered = _rerank_patient(query, pool, api_key, model, provider)
         _api_pool_cache[cache_key] = reordered
     return reordered
 
 
 def _rerank_patient(
-    query: str, pool: list[SearchResult], api_key: str, model: str
+    query: str, pool: list[SearchResult], api_key: str, model: str, provider: str = "zeroentropy"
 ) -> list[SearchResult]:
     """Call the production reranker, but wait out ratelimits instead of failing.
 
@@ -194,7 +200,7 @@ def _rerank_patient(
     """
     for attempt in range(_EVAL_RETRY_ATTEMPTS):
         try:
-            return rerank_results(query, pool, api_key, model)
+            return rerank_results(query, pool, api_key, model, provider)
         except RerankError:
             if attempt == _EVAL_RETRY_ATTEMPTS - 1:
                 raise
