@@ -102,8 +102,19 @@ class Config:
     # read here so the eval can run a provider arm; production still selects
     # zeroentropy until the eval says which one earns the swap. An unset key
     # simply means that arm cannot run — it is not an error.
-    cohere_api_key: str = field(default_factory=lambda: os.environ.get("COHERE_API_KEY", ""))
-    voyage_api_key: str = field(default_factory=lambda: os.environ.get("VOYAGE_API_KEY", ""))
+    # ACTALUX_-prefixed first: third-party tokens carry a product prefix so a
+    # shared Doppler project cannot collide with another consumer's key. The bare
+    # names are accepted as a fallback, matching how the ZeroEntropy key resolves.
+    cohere_api_key: str = field(
+        default_factory=lambda: (
+            os.environ.get("ACTALUX_COHERE_API_KEY") or os.environ.get("COHERE_API_KEY", "")
+        )
+    )
+    voyage_api_key: str = field(
+        default_factory=lambda: (
+            os.environ.get("ACTALUX_VOYAGE_API_KEY") or os.environ.get("VOYAGE_API_KEY", "")
+        )
+    )
     # Which hosted reranker production calls. See search/rerank.py PROVIDERS.
     rerank_provider: str = field(
         default_factory=lambda: os.environ.get("ACTALUX_RERANK_PROVIDER", "zeroentropy")

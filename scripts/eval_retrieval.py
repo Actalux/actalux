@@ -110,7 +110,7 @@ def main() -> None:
         help="comma-separated hosted rerank providers to add as arms, e.g. "
         "'cohere,voyage'. Candidate replacements for the ZeroEntropy sunset — "
         "compared on this corpus rather than on vendor benchmarks. Each needs its "
-        "own key (COHERE_API_KEY / VOYAGE_API_KEY)",
+        "own key (ACTALUX_COHERE_API_KEY / ACTALUX_VOYAGE_API_KEY)",
     )
     parser.add_argument(
         "--combined-report",
@@ -166,7 +166,10 @@ def main() -> None:
             name, cfg.zeroentropy_api_key
         )
         if not key:
-            parser.error(f"no API key for provider {name!r}; set {name.upper()}_API_KEY.")
+            parser.error(
+                f"no API key for provider {name!r}; set ACTALUX_{name.upper()}_API_KEY "
+                "in Doppler (project actalux, config dev)."
+            )
         arms[f"{spec.default_model}-{name}"] = (
             lambda query, pool, k=key, m=spec.default_model, p=name: rerank.rerank_pool_api(
                 query, pool, k, m, p
