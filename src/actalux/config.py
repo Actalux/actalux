@@ -98,6 +98,16 @@ class Config:
         )
     )
     rerank_model: str = "zerank-1-small"
+    # Candidate replacements for the ZeroEntropy sunset (2026-09-04). Keys are
+    # read here so the eval can run a provider arm; production still selects
+    # zeroentropy until the eval says which one earns the swap. An unset key
+    # simply means that arm cannot run — it is not an error.
+    cohere_api_key: str = field(default_factory=lambda: os.environ.get("COHERE_API_KEY", ""))
+    voyage_api_key: str = field(default_factory=lambda: os.environ.get("VOYAGE_API_KEY", ""))
+    # Which hosted reranker production calls. See search/rerank.py PROVIDERS.
+    rerank_provider: str = field(
+        default_factory=lambda: os.environ.get("ACTALUX_RERANK_PROVIDER", "zeroentropy")
+    )
     # "off" (RRF only, default) or "api" (rerank the RRF pool via ZeroEntropy).
     # Default off so the reranker is a deliberate, deploy-time opt-in (set
     # ACTALUX_RERANK=api in the web host's secrets) with no surprise cost/latency.

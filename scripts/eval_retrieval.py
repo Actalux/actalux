@@ -23,6 +23,7 @@ from actalux.config import load_config
 from actalux.db import get_client
 from actalux.eval import harness, judge, rerank
 from actalux.ingest.embedder import load_model
+from actalux.search import rerank as search_rerank
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -104,6 +105,14 @@ def main() -> None:
         "alongside the RRF baseline; needs ZEROENTROPY_API_KEY",
     )
     parser.add_argument(
+        "--api-providers",
+        default="",
+        help="comma-separated hosted rerank providers to add as arms, e.g. "
+        "'cohere,voyage'. Candidate replacements for the ZeroEntropy sunset — "
+        "compared on this corpus rather than on vendor benchmarks. Each needs its "
+        "own key (COHERE_API_KEY / VOYAGE_API_KEY)",
+    )
+    parser.add_argument(
         "--combined-report",
         action="store_true",
         help="build the multi-arm report from persisted rankings + judgments "
@@ -142,6 +151,26 @@ def main() -> None:
         ze_key, ze_model = cfg.zeroentropy_api_key, cfg.rerank_model
         arms[rerank.API_ARM_NAME] = lambda query, pool, k=ze_key, m=ze_model: (
             rerank.rerank_pool_api(query, pool, k, m)
+        )
+
+    # Candidate replacements. Unlike the self-hosted arms these can share a
+    # process — each is an HTTP call, so there is no global CrossEncoder patching
+    # to collide over, and running them together is what keeps the judgment union
+    # (and therefore recall@K) comparable across arms in one pass.
+    for name in (p.strip() for p in args.api_providers.split(",") if p.strip()):
+        try:
+            spec = search_rerank.get_provider(name)
+        except ValueError as exc:
+            parser.error(str(exc))
+        key = {"cohere": cfg.cohere_api_key, "voyage": cfg.voyage_api_key}.get(
+            name, cfg.zeroentropy_api_key
+        )
+        if not key:
+            parser.error(f"no API key for provider {name!r}; set {name.upper()}_API_KEY.")
+        arms[f"{spec.default_model}-{name}"] = (
+            lambda query, pool, k=key, m=spec.default_model, p=name: rerank.rerank_pool_api(
+                query, pool, k, m, p
+            )
         )
 
     client = get_client(cfg.supabase_url, cfg.supabase_key)

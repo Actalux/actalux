@@ -115,3 +115,91 @@ class TestHybridSearchRerankIntegration:
         assert seen["pool"] == 30
         # Returned set is truncated to max_results.
         assert len(out) == hybrid.MAX_RESULTS
+
+
+class TestProviders:
+    """The vendor table, which is what makes the ZeroEntropy sunset survivable.
+
+    A wrong URL or model string would not raise — it would rerank against the
+    wrong endpoint or silently fall back to RRF — so the request each provider
+    actually builds is pinned here rather than trusted.
+    """
+
+    def _capture(self, monkeypatch) -> dict:
+        sent: dict = {}
+
+        def fake_post(url, json=None, headers=None, timeout=None):  # noqa: A002
+            sent["url"] = url
+            sent["json"] = json
+            sent["headers"] = headers
+            return _FakeResponse(payload={"results": [{"index": 0}, {"index": 1}]})
+
+        monkeypatch.setattr(httpx, "post", fake_post)
+        return sent
+
+    def test_zeroentropy_is_the_default_so_production_is_unchanged(self, monkeypatch) -> None:
+        sent = self._capture(monkeypatch)
+        rerank.rerank_results("q", [_result(1), _result(2)], "key", "zerank-1-small")
+        assert sent["url"] == "https://api.zeroentropy.dev/v1/models/rerank"
+        assert sent["json"]["latency"] == "fast"
+
+    def test_cohere_request_shape(self, monkeypatch) -> None:
+        sent = self._capture(monkeypatch)
+        rerank.rerank_results("q", [_result(1), _result(2)], "key", "", provider="cohere")
+        assert sent["url"] == "https://api.cohere.com/v2/rerank"
+        assert sent["json"]["model"] == "rerank-v3.5"
+        assert sent["json"]["max_tokens_per_doc"] == 1024
+        assert "latency" not in sent["json"]  # a ZeroEntropy-only field
+        assert sent["headers"]["Authorization"] == "Bearer key"
+
+    def test_voyage_request_shape(self, monkeypatch) -> None:
+        sent = self._capture(monkeypatch)
+        rerank.rerank_results("q", [_result(1), _result(2)], "key", "", provider="voyage")
+        assert sent["url"] == "https://api.voyageai.com/v1/rerank"
+        assert sent["json"]["model"] == "rerank-2.5-lite"
+        assert sent["json"]["truncation"] is True
+        assert "max_tokens_per_doc" not in sent["json"]  # a Cohere-only field
+
+    def test_explicit_model_overrides_the_provider_default(self, monkeypatch) -> None:
+        sent = self._capture(monkeypatch)
+        rerank.rerank_results("q", [_result(1), _result(2)], "key", "rerank-2.5", provider="voyage")
+        assert sent["json"]["model"] == "rerank-2.5"
+
+    def test_every_provider_reorders_from_the_same_response_shape(self, monkeypatch) -> None:
+        # All three answer {"results": [{"index", "relevance_score"}]}, which is
+        # what lets one client serve them; if a vendor diverged, this breaks.
+        for name in rerank.PROVIDERS:
+            monkeypatch.setattr(
+                httpx,
+                "post",
+                lambda *a, **k: _FakeResponse(payload={"results": [{"index": 1}, {"index": 0}]}),
+            )
+            out = rerank.rerank_results("q", [_result(10), _result(20)], "key", "", provider=name)
+            assert [r.chunk_id for r in out] == [20, 10], name
+
+    def test_unknown_provider_names_the_known_set(self) -> None:
+        with pytest.raises(ValueError, match="cohere"):
+            rerank.get_provider("nope")
+
+
+class TestMalformedProviderResponse:
+    """A vendor answering oddly must degrade to RRF, not 500 the search."""
+
+    def test_out_of_range_index_raises_rerank_error(self, monkeypatch) -> None:
+        # Would otherwise be an IndexError at the subscript, which the search
+        # boundary does not catch — so the whole request fails instead of falling
+        # back to RRF order.
+        _patch_post(monkeypatch, _FakeResponse(payload={"results": [{"index": 99}]}))
+        with pytest.raises(RerankError, match="out-of-range"):
+            rerank.rerank_results("q", [_result(1), _result(2)], "key", "")
+
+    def test_missing_results_key_raises_rerank_error(self, monkeypatch) -> None:
+        _patch_post(monkeypatch, _FakeResponse(payload={"unexpected": []}))
+        with pytest.raises(RerankError, match="unreadable"):
+            rerank.rerank_results("q", [_result(1)], "key", "")
+
+    def test_a_bad_response_degrades_to_rrf_at_the_search_boundary(self, monkeypatch) -> None:
+        _patch_post(monkeypatch, _FakeResponse(payload={"results": [{"index": 99}]}))
+        pool = [_result(1), _result(2)]
+        reranker = lambda q, rs: rerank.rerank_results(q, rs, "key", "")  # noqa: E731
+        assert [r.chunk_id for r in _apply_reranker(reranker, "q", pool)] == [1, 2]
