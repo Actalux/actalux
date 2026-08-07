@@ -140,3 +140,98 @@ class TestSearchExpansions:
             out = retrieval.search_expansions("merrimack", 10)
         assert out == [("Meramec", [0.9])]  # the duplicate correction text is dropped
         emb.assert_not_called()
+
+
+class TestBuildRerankerProvider:
+    """Selecting the reranker vendor, which is how the ZeroEntropy cutover happens.
+
+    ZeroEntropy shuts down 2026-09-04. The switch and its rollback are both a
+    config change, so what these pin is that the config change actually reaches
+    the client — a version that silently kept calling the old vendor would look
+    identical from outside right up until the endpoint went dark.
+    """
+
+    def _cfg(self, monkeypatch, **env: str) -> None:
+        for key in (
+            "ACTALUX_RERANK",
+            "ACTALUX_RERANK_PROVIDER",
+            "ACTALUX_ZE",
+            "ZEROENTROPY_API_KEY",
+            "ACTALUX_COHERE_API_KEY",
+            "COHERE_API_KEY",
+            "ACTALUX_VOYAGE_API_KEY",
+            "VOYAGE_API_KEY",
+        ):
+            monkeypatch.delenv(key, raising=False)
+        for k, v in env.items():
+            monkeypatch.setenv(k, v)
+
+    def _provider_used(self, monkeypatch) -> dict:
+        seen: dict = {}
+
+        def fake_rerank(query, results, key, model, provider="zeroentropy"):
+            seen.update(key=key, model=model, provider=provider)
+            return results
+
+        monkeypatch.setattr(retrieval, "rerank_results", fake_rerank)
+        return seen
+
+    def test_off_by_default(self, monkeypatch) -> None:
+        self._cfg(monkeypatch, ACTALUX_ZE="ze-key")
+        assert retrieval.build_reranker() is None
+
+    def test_defaults_to_zeroentropy(self, monkeypatch) -> None:
+        self._cfg(monkeypatch, ACTALUX_RERANK="api", ACTALUX_ZE="ze-key")
+        seen = self._provider_used(monkeypatch)
+        retrieval.build_reranker()("q", [])
+        assert seen["provider"] == "zeroentropy"
+        assert seen["key"] == "ze-key"
+
+    def test_switching_provider_reaches_the_client(self, monkeypatch) -> None:
+        self._cfg(
+            monkeypatch,
+            ACTALUX_RERANK="api",
+            ACTALUX_RERANK_PROVIDER="voyage",
+            ACTALUX_ZE="ze-key",
+            ACTALUX_VOYAGE_API_KEY="voyage-key",
+        )
+        seen = self._provider_used(monkeypatch)
+        retrieval.build_reranker()("q", [])
+        assert seen["provider"] == "voyage"
+        assert seen["key"] == "voyage-key"  # not the ZeroEntropy key
+        # Empty model lets the provider table supply rerank-2.5-lite, so a vendor
+        # switch does not also require remembering to change the model name.
+        assert seen["model"] == ""
+
+    def test_works_without_a_zeroentropy_key_at_all(self, monkeypatch) -> None:
+        # The end state after the sunset: ZE key deleted, Voyage serving. The old
+        # gate keyed on the ZE key, so this configuration silently served RRF.
+        self._cfg(
+            monkeypatch,
+            ACTALUX_RERANK="api",
+            ACTALUX_RERANK_PROVIDER="voyage",
+            ACTALUX_VOYAGE_API_KEY="voyage-key",
+        )
+        seen = self._provider_used(monkeypatch)
+        assert retrieval.build_reranker() is not None
+        retrieval.build_reranker()("q", [])
+        assert seen["provider"] == "voyage"
+
+    def test_selected_provider_without_a_key_degrades_to_rrf(self, monkeypatch) -> None:
+        # A typo'd provider name or a forgotten secret must not raise mid-search.
+        self._cfg(
+            monkeypatch,
+            ACTALUX_RERANK="api",
+            ACTALUX_RERANK_PROVIDER="voyage",
+            ACTALUX_ZE="ze-key",
+        )
+        assert retrieval.build_reranker() is None
+
+    def test_unknown_provider_degrades_to_rrf(self, monkeypatch) -> None:
+        self._cfg(
+            monkeypatch,
+            ACTALUX_RERANK="api",
+            ACTALUX_RERANK_PROVIDER="nonesuch",
+            ACTALUX_ZE="ze-key",
+        )
+        assert retrieval.build_reranker() is None

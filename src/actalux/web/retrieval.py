@@ -159,14 +159,37 @@ def search_expansions(query: str, place_id: int | None = None) -> list[tuple[str
     return llm + corr
 
 
+# Which config field holds each provider's key. Keeping this beside the builder
+# means adding a vendor is one table entry here and one in search.rerank.PROVIDERS.
+_PROVIDER_KEYS = {
+    "zeroentropy": lambda c: c.zeroentropy_api_key,
+    "cohere": lambda c: c.cohere_api_key,
+    "voyage": lambda c: c.voyage_api_key,
+}
+
+
 def build_reranker() -> Reranker | None:
     """Build the search reranker from config, or None for RRF-only retrieval.
 
-    Active only when ACTALUX_RERANK=api and a ZeroEntropy key is present, so a
+    Active only when ACTALUX_RERANK=api and the selected provider has a key, so a
     missing key or the default "off" mode degrades to RRF rather than erroring.
+
+    The provider comes from ACTALUX_RERANK_PROVIDER. This used to read the
+    ZeroEntropy key unconditionally, which made two things impossible: selecting
+    another vendor did nothing, and removing the ZeroEntropy key turned reranking
+    off entirely rather than falling through to the replacement. Both matter now
+    that ZeroEntropy shuts down 2026-09-04 — the cutover has to be a config change
+    and the rollback has to be the same change in reverse.
     """
     cfg = get_config()
-    if cfg.rerank_mode != "api" or not cfg.zeroentropy_api_key:
+    if cfg.rerank_mode != "api":
         return None
-    key, model = cfg.zeroentropy_api_key, cfg.rerank_model
-    return lambda query, results: rerank_results(query, results, key, model)
+    provider = cfg.rerank_provider
+    key = _PROVIDER_KEYS.get(provider, lambda c: "")(cfg)
+    if not key:
+        logger.warning("rerank_mode=api but no key for provider %r; serving RRF order", provider)
+        return None
+    # An empty model string lets the provider table supply its own default, so a
+    # vendor switch does not also require remembering to change the model name.
+    model = cfg.rerank_model if provider == "zeroentropy" else ""
+    return lambda query, results: rerank_results(query, results, key, model, provider)
