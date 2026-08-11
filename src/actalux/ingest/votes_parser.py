@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -533,24 +534,39 @@ def parse_votes(content: str) -> list[ParsedVote]:
     return out
 
 
-def find_citing_chunk(anchors: tuple[str, ...], chunks: list[dict]) -> dict | None:
-    """The first chunk whose content contains one of ``anchors`` (normalized).
+def citing_chunk_by(
+    anchors: tuple[str, ...], chunks: list[dict], normalize: Callable[[str], str]
+) -> dict | None:
+    """The first chunk whose ``normalize``-normalized content contains one of
+    ``anchors`` (also ``normalize``-normalized).
 
-    Chunks are verbatim whitespace-normalized substrings of the source document
-    (``chunker.validate_chunks``), so an anchor taken from the same text matches
-    the chunk it lives in. Anchors are tried most-specific first. Returns None when
-    none match (the caller then skips the vote rather than cite a passage that does
-    not carry it).
+    Shared by both minutes formats' ``find_citing_chunk``: each format normalizes
+    away its own PDF-interleaved header/footer noise before the substring match, so
+    this loop only owns the matching, not the normalization. Anchors are tried
+    most-specific first. Returns None when none match (the caller then skips the
+    vote rather than cite a passage that does not carry it).
     """
-    normalized = [(c, _norm(_PAGE_FOOTER_INLINE_RE.sub(" ", c.get("content", "")))) for c in chunks]
+    normalized = [(c, normalize(c.get("content", ""))) for c in chunks]
     for anchor in anchors:
-        na = _norm(_PAGE_FOOTER_INLINE_RE.sub(" ", anchor))
+        na = normalize(anchor)
         if not na:
             continue
         for chunk, content in normalized:
             if na in content:
                 return chunk
     return None
+
+
+def find_citing_chunk(anchors: tuple[str, ...], chunks: list[dict]) -> dict | None:
+    """The first chunk whose content contains one of ``anchors`` (normalized).
+
+    Chunks are verbatim whitespace-normalized substrings of the source document
+    (``chunker.validate_chunks``), so an anchor taken from the same text matches
+    the chunk it lives in.
+    """
+    return citing_chunk_by(
+        anchors, chunks, lambda text: _norm(_PAGE_FOOTER_INLINE_RE.sub(" ", text))
+    )
 
 
 def build_details(vote: ParsedVote) -> dict | None:

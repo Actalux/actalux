@@ -57,7 +57,7 @@ from __future__ import annotations
 import logging
 import re
 
-from actalux.ingest.votes_parser import ParsedVote
+from actalux.ingest.votes_parser import ParsedVote, citing_chunk_by
 
 logger = logging.getLogger(__name__)
 
@@ -504,15 +504,7 @@ def find_citing_chunk(anchors: tuple[str, ...], chunks: list[dict]) -> dict | No
     interleaves (and the chunker preserves) does not block a match. Returns None
     when none match (the loader then skips the vote — cite or abstain).
     """
-    normalized = [(c, _clean(c.get("content", ""))) for c in chunks]
-    for anchor in anchors:
-        na = _clean(anchor)
-        if not na:
-            continue
-        for chunk, content in normalized:
-            if na in content:
-                return chunk
-    return None
+    return citing_chunk_by(anchors, chunks, _clean)
 
 
 def count_lead_ins(content: str) -> int:
