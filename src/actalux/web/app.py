@@ -115,6 +115,7 @@ from actalux.web.display import (
     meeting_date_long,
     source_label,
 )
+from actalux.web.landuse_api import landuse_router
 from actalux.web.retrieval import (
     build_reranker,
     embed_query,
@@ -2720,6 +2721,13 @@ def place_hub(request: Request, state: str, place: str) -> HTMLResponse:
 # The JSON API lives under the literal /api/v1 prefix; include it before the
 # jurisdiction router so its specific routes are matched first.
 app.include_router(api_router)
+
+# The land-use dataset's stealth keyed API (docs/architecture/land-use-cases.md):
+# every route 404s without a key and a configured service client, so mounting it
+# adds nothing visible to the public surface — no sitemap entry, no schema entry,
+# no UI link, and probing an unauthorized path is indistinguishable from the
+# route not existing.
+app.include_router(landuse_router)
 
 # Include the jurisdiction router LAST so its greedy /{state}/{place}/{body}
 # prefix is matched only after the specific flat routes above.
