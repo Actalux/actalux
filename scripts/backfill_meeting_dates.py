@@ -59,7 +59,7 @@ logger = logging.getLogger(__name__)
 
 # Provenance values whose meeting_date is trustworthy enough to define the
 # body's real meeting calendar.
-TRUSTED_SOURCES = frozenset({"filename", "content", "civicplus", "manual", "packet"})
+TRUSTED_SOURCES = frozenset({"filename", "content", "civicplus", "manual", "packet", "diligent"})
 # Downloaded portal PDFs, rescanned to rebuild which packet links which attachment.
 DOWNLOAD_DIR = Path("data/documents")
 _GUID_IN_URL = re.compile(r"/document/([0-9a-f-]{36})", re.I)

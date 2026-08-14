@@ -512,17 +512,28 @@ def find_document_by_source_ref(
     """
     if not source_ref:
         return None
-    query = (
-        client.table("documents")
-        .select("*")
-        .eq("source_portal", source_portal)
-        .eq("source_ref", source_ref)
-        .is_("replaces_id", "null")
-    )
-    if entity_id is not None:
-        query = query.eq("entity_id", entity_id)
-    result = query.execute()
-    return result.data[0] if result.data else None
+
+    def _lookup(only_current: bool) -> dict[str, Any] | None:
+        query = (
+            client.table("documents")
+            .select("*")
+            .eq("source_portal", source_portal)
+            .eq("source_ref", source_ref)
+        )
+        if only_current:
+            query = query.is_("replaces_id", "null")
+        if entity_id is not None:
+            query = query.eq("entity_id", entity_id)
+        rows = query.order("id", desc=True).limit(1).execute().data
+        return rows[0] if rows else None
+
+    # Prefer the current version, but a superseded row still answers "is this
+    # document known?". Without the fallback, superseding a draft to its final
+    # removes the draft's source_ref from the live set, and the next crawl of the
+    # unchanged portal file re-ingests it as a brand-new document — which is
+    # exactly how four duplicate draft minutes appeared, mis-dated, five days
+    # after the originals were linked to their finals.
+    return _lookup(only_current=True) or _lookup(only_current=False)
 
 
 def find_document_by_content_hash(

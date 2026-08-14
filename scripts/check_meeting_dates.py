@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 # of these asserts that a meeting happened.
 MEETING_TYPES = frozenset({"minutes", "transcript", "resolution", "agenda"})
 # Provenance values that actually vouch for a date.
-TRUSTED_SOURCES = frozenset({"filename", "content", "civicplus", "manual", "packet"})
+TRUSTED_SOURCES = frozenset({"filename", "content", "civicplus", "manual", "packet", "diligent"})
 
 
 def untrusted(row: dict) -> bool:

@@ -544,6 +544,12 @@ def _ingest_with_dedup(
                 # happens via changed content, never via repair.
                 update_document_checked(client, existing["id"])
                 return {"status": "skipped", "chunks": 0}
+            if existing.get("replaces_id"):
+                # A superseded version matching unchanged bytes is a plain skip:
+                # the canonical record lives at the end of its replaces_id chain,
+                # and "repairing" chunks onto a superseded row would put retired
+                # text back into a searchable state.
+                return {"status": "skipped", "chunks": 0}
             if not document_has_chunks(client, existing["id"]):
                 # Scan before rebuilding, not just on the insert paths. Chunks are
                 # what search serves and what a citation links to, so building them
@@ -621,8 +627,13 @@ def _ingest_with_dedup(
             video_id=video_id,
         )
         # Mark old document as replaced by the new one (retries on a timeout so a
-        # slow cutover doesn't leave two current versions).
-        supersede_document(client, existing["id"], result["doc_id"])
+        # slow cutover doesn't leave two current versions). Unless the old row is
+        # ALREADY superseded — a draft points at the final that replaced it, and
+        # overwriting that link would break the draft's redirect to the adopted
+        # record. A revised draft becomes a fresh live document instead, and the
+        # draft/final linker re-folds it by meeting date.
+        if not existing.get("replaces_id"):
+            supersede_document(client, existing["id"], result["doc_id"])
         return {"status": "updated", "chunks": result["chunks"]}
 
     # New document
@@ -797,6 +808,22 @@ def _civicplus_doc_id(parts: SplitResult) -> tuple[str, str] | None:
     return None
 
 
+def _diligent_meeting_id(parts: SplitResult) -> str | None:
+    """Return the meeting id for a Diligent MeetingInformation page, else None.
+
+    Same trap as YouTube: the per-document identity lives in the QUERY STRING
+    (``MeetingInformation.aspx?Id=1373``), which the generic normalization drops
+    — so two different meetings' agenda pages collapsed into one ref and the
+    second agenda ingested as a "new version" superseding the first. Third
+    appearance of this failure shape (YouTube, CivicPlus, now Diligent): any
+    portal whose URLs are ``page.aspx?Id=N`` needs its id kept.
+    """
+    if not parts.path.lower().endswith("/meetinginformation.aspx"):
+        return None
+    q = {k.lower(): v for k, v in parse_qs(parts.query).items()}
+    return q["id"][0] if q.get("id") else None
+
+
 def normalize_source_ref(source_url: str) -> str:
     """Derive a stable external id from a crawler's canonical origin URL.
 
@@ -836,6 +863,8 @@ def normalize_source_ref(source_url: str) -> str:
         return (
             f"{parts.scheme.lower()}://{parts.netloc.lower()}{parts.path.rstrip('/')}?{key}={val}"
         )
+    if mid := _diligent_meeting_id(parts):
+        return f"{parts.scheme.lower()}://{parts.netloc.lower()}{parts.path.rstrip('/')}?Id={mid}"
     return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), parts.path.rstrip("/"), "", ""))
 
 
