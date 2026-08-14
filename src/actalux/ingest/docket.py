@@ -182,3 +182,14 @@ def extract_docket(pdf_bytes: bytes) -> DocketResult:
         "warnings": warnings,
     }
     return DocketResult(text, confidence, boundary, meta)
+
+
+def stub_disposition(confidence: str, pdf_page_count: int) -> str:
+    """Classify a quarantined agenda: "stub" (real packet, gets a link-only
+    entry) or "notice" (not an agenda at all; stays quarantined only).
+
+    A multi-page packet, or any "low"-confidence parse, is a real agenda whose
+    docket we could not extract; a 1-page "failed" with no agenda markers is a
+    retreat/Zoom/special-meeting notice (issue #1's out-of-scope bucket).
+    """
+    return "stub" if confidence == "low" or pdf_page_count >= 2 else "notice"

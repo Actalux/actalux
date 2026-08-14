@@ -87,6 +87,7 @@ def insert_document(client: Client, doc: Document) -> int:
         "video_id": doc.video_id,
         "version": doc.version,
         "date_source": doc.date_source,
+        "link_only": doc.link_only,
     }
     if doc.entity_id is not None:
         data["entity_id"] = doc.entity_id

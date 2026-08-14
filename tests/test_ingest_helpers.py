@@ -762,3 +762,56 @@ def test_wholesale_failure_partial_failure_is_not_wholesale():
 
 def test_wholesale_failure_clean_run_never_aborts():
     assert not ingest.wholesale_failure(new=0, updated=0, skipped=0, failed=0)
+
+
+class TestLinkOnlyStubs:
+    """Issue #1: link-only stubs must never grow chunks, never downgrade a real
+    document, and always carry the label that keeps the entry honest."""
+
+    def test_crawler_classification(self) -> None:
+        from actalux.ingest.docket import stub_disposition
+
+        assert stub_disposition("low", 12) == "stub"  # weak OCR on a real packet
+        assert stub_disposition("failed", 5) == "stub"  # multi-page always real
+        assert stub_disposition("failed", 1) == "notice"  # 1-page no-marker notice
+
+    def test_display_label(self) -> None:
+        from actalux.web.display import display_title
+
+        stub = {
+            "document_type": "agenda",
+            "meeting_date": "2025-04-03",
+            "meeting_title": "April 3, 2025 — Agenda packet",
+            "link_only": True,
+        }
+        assert "(link only — not searchable)" in display_title(stub)
+        assert "(link only" not in display_title({**stub, "link_only": False})
+
+    def test_stub_skipped_when_real_document_exists(self) -> None:
+        from unittest.mock import MagicMock
+
+        from scripts.ingest import _ingest_link_only
+
+        client = MagicMock()
+        chain = client.table.return_value.select.return_value.eq.return_value
+        chain.is_.return_value.limit.return_value.execute.return_value.data = [
+            {"id": 5, "link_only": False}  # a real agenda already owns this ref
+        ]
+        out = _ingest_link_only(
+            client,
+            {"source_url": "https://www.claytonmo.gov/x?id=1", "source_file": "a.pdf"},
+            date(2025, 4, 3),
+            "civicplus",
+            2,
+        )
+        assert out["status"] == "skipped"
+        client.table.return_value.insert.assert_not_called()
+
+    def test_repair_path_never_touches_a_stub(self) -> None:
+        # The chunkless-repair path exists for documents that SHOULD have chunks.
+        # A stub is chunkless by design; "repairing" it would publish unparsed
+        # garbage into search. Source-level assert: the guard precedes the repair.
+        import inspect
+
+        src = inspect.getsource(ingest._ingest_with_dedup)  # module imported at top
+        assert src.index('existing.get("link_only")') < src.index("document_has_chunks")
