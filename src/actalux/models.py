@@ -43,6 +43,9 @@ class Document:
     # 'default' means ingest fell back to date.today() — a suspect value that needs
     # human review. 'unknown' is the column default for rows ingested before A3.
     date_source: str = "unknown"
+    # A pointer to an official record we could not parse into searchable text
+    # (issue #1): shown in meeting bundles, labeled, but never chunked/searched.
+    link_only: bool = False
     video_id: str = ""  # YouTube video id for board-meeting docs; "" for non-video docs
     # Owning public body (entities.id). Entity-scoped browse/search filter on it,
     # so a doc with entity_id=None is invisible to those views — ingest must set it.

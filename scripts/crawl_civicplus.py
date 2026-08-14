@@ -38,7 +38,7 @@ from pathlib import Path
 from playwright.sync_api import Error as PWError
 from playwright.sync_api import sync_playwright
 
-from actalux.ingest.docket import extract_docket
+from actalux.ingest.docket import extract_docket, stub_disposition
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -244,17 +244,45 @@ def crawl(
                 if doc.document_type == "agenda":
                     result = extract_docket(pdf)
                     if result.confidence not in ("high", "medium"):
+                        # Two very different failures (issue #1). A multi-page
+                        # packet graded "low" is a real agenda whose docket we
+                        # could not extract confidently — the official record
+                        # exists and deserves a labeled, link-only stub in the
+                        # meeting bundle. A 1-page "failed" with no agenda
+                        # markers is a notice (retreat, Zoom/special-meeting
+                        # announcement), not an agenda at all; surfacing it as
+                        # one would mislead, so it stays quarantined only.
+                        pages = int(result.metadata.get("pdf_page_count") or 0)
+                        is_real_packet = stub_disposition(result.confidence, pages) == "stub"
                         quarantine.append(
                             {
                                 "meeting_date": doc.meeting_date,
                                 "doc_url": doc.doc_url,
+                                "disposition": "stub" if is_real_packet else "notice",
                                 **result.metadata,
                             }
                         )
+                        if is_real_packet:
+                            stem = safe_stem(body, doc.meeting_date, "agenda", doc.doc_id)
+                            fname = f"{stem}.pdf"
+                            (OUTPUT_DIR / fname).write_bytes(pdf)
+                            entries.append(
+                                {
+                                    "source_file": fname,
+                                    "source_url": doc.doc_url,
+                                    "source_portal": "civicplus",
+                                    "document_type": "agenda",
+                                    "meeting_date": doc.meeting_date,
+                                    "meeting_title": f"{pretty} — Agenda packet",
+                                    "date_source": "civicplus",
+                                    "link_only": True,
+                                }
+                            )
                         logger.warning(
-                            "  %s agenda: docket %s — quarantined (link only): %s",
+                            "  %s agenda: docket %s — %s: %s",
                             doc.meeting_date,
                             result.confidence,
+                            "link-only stub" if is_real_packet else "quarantined (notice)",
                             "; ".join(result.metadata.get("warnings", [])),
                         )
                         continue
@@ -321,7 +349,20 @@ def main() -> None:
         args.body, limit=args.limit, since=since, minutes_only=args.minutes_only
     )
     MANIFEST_PATH.write_text(json.dumps(entries, indent=2))
-    QUARANTINE_PATH.write_text(json.dumps(quarantine, indent=2))
+    # Merge with the existing file rather than overwrite: each run sees only its
+    # crawl window, and a plain overwrite erases every earlier run's record (the
+    # July 41 shrank to 7 exactly this way). Keyed by doc_url; a re-crawled
+    # packet's newest grade wins.
+    merged: dict[str, dict] = {}
+    if QUARANTINE_PATH.exists():
+        for rec in json.loads(QUARANTINE_PATH.read_text()):
+            if rec.get("doc_url"):
+                merged[rec["doc_url"]] = rec
+    for rec in quarantine:
+        merged[rec["doc_url"]] = rec
+    QUARANTINE_PATH.write_text(
+        json.dumps(sorted(merged.values(), key=lambda r: str(r.get("meeting_date"))), indent=2)
+    )
     logger.info("staged %d document(s); manifest: %s", len(entries), MANIFEST_PATH)
     if quarantine:
         logger.warning(

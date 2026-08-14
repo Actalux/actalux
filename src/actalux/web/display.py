@@ -165,6 +165,11 @@ def display_title(doc: Mapping[str, Any]) -> str:
     raw = (doc.get("meeting_title") or "").strip()
     dtype = doc.get("document_type") or "other"
     label = _TYPE_LABELS.get(dtype, "Record")
+    # A link-only stub points at an official record we could not parse into
+    # searchable text (issue #1); the label keeps the promise honest — the
+    # entry exists so the source is reachable, not to imply searchable content.
+    if doc.get("link_only"):
+        label = f"{label} (link only — not searchable)"
 
     if dtype in _DATED_TYPES:
         d = _coerce_date(doc.get("meeting_date"))

@@ -425,6 +425,68 @@ def _find_existing_document(
     return find_document_by_source(client, filename, portal, entity_id)
 
 
+def _ingest_link_only(
+    client: Any,
+    entry: dict[str, Any],
+    meeting_date: date,
+    date_source: str,
+    entity_id: int | None,
+) -> dict[str, Any]:
+    """Ingest a link-only stub: a document row pointing at an official record we
+    could not parse into searchable text (issue #1). No chunks are ever built, so
+    the stub can appear in meeting bundles and browse without ever appearing in
+    content search.
+
+    Deliberately NOT routed through ``_ingest_with_dedup``: its chunkless-repair
+    path exists to fix documents that *should* have chunks, and its content-hash
+    dedup assumes the content is the identity. A stub's identity is its
+    source_ref alone, and the upgrade path — a later crawl parsing the packet
+    successfully — arrives through the normal ingest, whose source_ref dedup sees
+    this row, treats the real text as changed content, and supersedes the stub
+    with a real version. Downgrades never happen here: an existing non-stub for
+    the same source_ref wins and the stub entry is skipped.
+    """
+    source_ref = normalize_source_ref(entry.get("source_url", ""))
+    if not source_ref:
+        logger.warning("  SKIP link-only entry without source_url: %s", entry.get("source_file"))
+        return {"status": "skipped", "chunks": 0}
+    existing = (
+        client.table("documents")
+        .select("id,link_only")
+        .eq("source_ref", source_ref)
+        .is_("replaces_id", "null")
+        .limit(1)
+        .execute()
+        .data
+    )
+    if existing:
+        if not existing[0].get("link_only"):
+            logger.info("  SKIP stub (real document exists): %s", source_ref)
+        else:
+            update_document_checked(client, existing[0]["id"])
+            logger.info("  SKIP stub (already present): %s", source_ref)
+        return {"status": "skipped", "chunks": 0}
+    doc = Document(
+        meeting_date=meeting_date,
+        meeting_title=entry.get("meeting_title", ""),
+        document_type=entry.get("document_type", "agenda"),
+        source_url=entry.get("source_url", ""),
+        source_file=entry.get("source_file", ""),
+        content="",
+        # Synthetic, per-ref hash: an empty-content hash shared by every stub
+        # would cross-match them in the content-hash dedup tier.
+        content_hash=content_hash(f"linkonly:{source_ref}"),
+        source_portal=entry.get("source_portal", ""),
+        source_ref=source_ref,
+        date_source=date_source,
+        entity_id=entity_id,
+        link_only=True,
+    )
+    doc_id = insert_document(client, doc)
+    logger.info("  NEW link-only stub %d: %s", doc_id, entry.get("meeting_title", source_ref))
+    return {"status": "new", "chunks": 0}
+
+
 def _ingest_with_dedup(
     client: Any,
     path: Path,
@@ -476,6 +538,12 @@ def _ingest_with_dedup(
             # chunks (a prior ingest died after the doc row but before its chunks —
             # the free-tier-timeout failure mode) would otherwise be skipped forever.
             # Repair it in place by (re)building its chunks instead.
+            if existing.get("link_only"):
+                # A stub is chunkless by design; "repairing" it would publish
+                # unparsed garbage into search. The upgrade to a real document
+                # happens via changed content, never via repair.
+                update_document_checked(client, existing["id"])
+                return {"status": "skipped", "chunks": 0}
             if not document_has_chunks(client, existing["id"]):
                 # Scan before rebuilding, not just on the insert paths. Chunks are
                 # what search serves and what a citation links to, so building them
@@ -846,6 +914,13 @@ def ingest_from_manifest(manifest_path: Path, entity_path: str = DEFAULT_ENTITY_
         meeting_title = entry.get("meeting_title", infer_meeting_title(source_file))
 
         try:
+            if entry.get("link_only"):
+                result = _ingest_link_only(
+                    client, entry, meeting_date, manifest_date_source, entity_id
+                )
+                total_skipped += 1 if result["status"] == "skipped" else 0
+                total_new += 1 if result["status"] == "new" else 0
+                continue
             result = _ingest_with_dedup(
                 client=client,
                 path=file_path,
