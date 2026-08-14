@@ -1,0 +1,51 @@
+name: crawl-agendas
+
+# Nightly BoE agenda crawl from the Diligent MEETINGS service — the surface the
+# weekly document-library crawl (ingest.yml) never touches. Until this existed
+# the archive held zero true BoE meeting agendas, so every meeting's record was
+# transcript-only the morning after: the newsletter drafted with one hand tied
+# and the podcast refused outright. Nightly because agendas matter most in the
+# window between posting and the meeting, which a weekly crawl straddles badly.
+#
+# Required repository secrets: SUPABASE_URL / SUPABASE_KEY / SUPABASE_SERVICE_KEY,
+# OPENROUTER_API_KEY (document summaries during ingest).
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "40 8 * * *" # ~3:40 AM US Central, alongside the other nightly crawls
+
+permissions:
+  contents: read
+
+concurrency:
+  group: crawl-agendas
+  cancel-in-progress: false
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ACTALUX_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      ACTALUX_SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      ACTALUX_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up uv + Python 3.11
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+          enable-cache: true
+      - name: Install dependencies
+        run: uv sync --no-dev
+      - name: Crawl meeting agendas
+        run: uv run python scripts/crawl_diligent_meetings.py --days-back 30 --days-ahead 30
+      - name: Ingest
+        run: uv run python scripts/ingest.py --manifest data/documents/diligent_meetings_manifest.json
+      # A meeting document filed under an unvouched-for date makes the meetings
+      # endpoint assert a meeting that may not have happened; caught in the run
+      # that introduces it, same as the other ingest workflows.
+      - name: Check meeting dates
+        run: uv run python scripts/check_meeting_dates.py

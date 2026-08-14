@@ -142,3 +142,38 @@ def test_linked_manifest_omits_a_date_when_the_packet_has_none(tmp_path, monkeyp
     assert manifest[0]["linked_from"] == packet.name
     assert "meeting_date" not in manifest[0]
     assert "date_source" not in manifest[0]
+
+
+def test_linked_manifest_never_packet_dates_minutes(tmp_path, monkeypatch):
+    # Draft minutes are linked from the packet of the meeting that APPROVES
+    # them, so a packet date for minutes is one meeting late, every time — the
+    # first packet-dating pass filed four drafts under the wrong meetings.
+    packet = tmp_path / "January 21, 2026 BOE Meeting Minutes.pdf"
+    _packet_linking(packet, GUID)
+    monkeypatch.setattr(dd, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(dd, "LINKED_INDEX_PATH", tmp_path / "index.json")
+    monkeypatch.setattr(dd, "load_linked_index", lambda: {})
+    monkeypatch.setattr(
+        dd, "download_document", lambda client, guid: ("Odd Minutes - DRAFT.pdf", b"%PDF-1.4 ")
+    )
+    manifest: list[dict[str, str]] = []
+    dd.follow_embedded_links(client=None, scan_paths=[packet], seen_guids=set(), manifest=manifest)
+    assert "meeting_date" not in manifest[0]  # undated beats one-meeting-late
+
+
+def test_linked_manifest_child_filename_beats_packet_date(tmp_path, monkeypatch):
+    # A child whose own filename parses keeps that identity; the packet date is
+    # only a fallback for genuinely undated attachments.
+    packet = tmp_path / "January 21, 2026 BOE Meeting Minutes.pdf"
+    _packet_linking(packet, GUID)
+    monkeypatch.setattr(dd, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(dd, "LINKED_INDEX_PATH", tmp_path / "index.json")
+    monkeypatch.setattr(dd, "load_linked_index", lambda: {})
+    monkeypatch.setattr(
+        dd,
+        "download_document",
+        lambda client, guid: ("12.10.2025 Exec Summary.pdf", b"%PDF-1.4 "),
+    )
+    manifest: list[dict[str, str]] = []
+    dd.follow_embedded_links(client=None, scan_paths=[packet], seen_guids=set(), manifest=manifest)
+    assert "meeting_date" not in manifest[0]  # ingest derives 2025-12-10 from the filename

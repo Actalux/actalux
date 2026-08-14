@@ -200,13 +200,20 @@ def follow_embedded_links(
                 "document_type": infer_doc_type(out_path.name, ""),
                 "linked_from": parent_path.name,
             }
-            # The packet's own filename dates the meeting, and every attachment it
-            # links belongs to that meeting. Supplying it here is what keeps an
-            # undated attachment from reaching ingest with no date at all.
-            parent_date = parse_meeting_date(parent_path.name)
-            if parent_date:
-                entry["meeting_date"] = parent_date.isoformat()
-                entry["date_source"] = "packet"
+            # The packet dates its attachments — but only as a fallback, and never
+            # for minutes. A child whose own filename parses keeps that date: the
+            # first packet-dating pass overrode four draft-minutes filenames that
+            # parsed perfectly, and minutes are the systematic trap — a draft is
+            # linked from the packet of the meeting that APPROVES it, so its packet
+            # date is one meeting late, every time. An unparseable minutes filename
+            # stays undated (ingest records 'undetermined') rather than wrong.
+            own_date = parse_meeting_date(out_path.name)
+            is_minutes = "minutes" in out_path.name.lower()
+            if own_date is None and not is_minutes:
+                parent_date = parse_meeting_date(parent_path.name)
+                if parent_date:
+                    entry["meeting_date"] = parent_date.isoformat()
+                    entry["date_source"] = "packet"
             manifest.append(entry)
             next_frontier.append(out_path)
         frontier = next_frontier

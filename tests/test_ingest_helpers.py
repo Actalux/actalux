@@ -815,3 +815,24 @@ class TestLinkOnlyStubs:
 
         src = inspect.getsource(ingest._ingest_with_dedup)  # module imported at top
         assert src.index('existing.get("link_only")') < src.index("document_has_chunks")
+
+
+class TestDiligentMeetingRef:
+    def test_meeting_id_survives_normalization(self) -> None:
+        # The identity lives in the query string, exactly like YouTube's video
+        # id. Dropping it collapsed two same-day meetings (business + retreat)
+        # into one ref, and the second agenda superseded the first.
+        a = normalize_source_ref(
+            "https://claytonschools.community.diligentoneplatform.com"
+            "/Portal/MeetingInformation.aspx?Id=1373"
+        )
+        b = normalize_source_ref(
+            "https://claytonschools.community.diligentoneplatform.com"
+            "/Portal/MeetingInformation.aspx?Id=1375"
+        )
+        assert a != b
+        assert a.endswith("MeetingInformation.aspx?Id=1373")
+
+    def test_other_query_params_still_dropped(self) -> None:
+        got = normalize_source_ref("https://example.test/some/page?utm_source=x")
+        assert got == "https://example.test/some/page"
