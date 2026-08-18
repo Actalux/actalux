@@ -57,7 +57,9 @@ from __future__ import annotations
 import logging
 import re
 
+from actalux.ingest.votes_parser import VOTE_WORD_NORM as _VOTE_WORD
 from actalux.ingest.votes_parser import ParsedVote
+from actalux.ingest.votes_parser import tally_votes as _tally
 
 logger = logging.getLogger(__name__)
 
@@ -108,20 +110,8 @@ _MOTION_RESULT_RE = re.compile(
 )
 
 # --- Result (R2): a bare roll call (no "The motion" lead-in) -----------------
-# A vote word a roll-call segment can end on.
-_VOTE_WORD = {
-    "aye": "aye",
-    "ayes": "aye",
-    "yes": "aye",
-    "nay": "no",
-    "nays": "no",
-    "no": "no",
-    "abstain": "abstain",
-    "abstained": "abstain",
-    "abstention": "abstain",
-    "present": "present",
-    "absent": "absent",
-}
+# A vote word a roll-call segment can end on (imported as _VOTE_WORD above — the same
+# normalized set votes_parser.py's roll call / header parsing uses).
 # Detects where a roll call begins ("Alderman Garnholz - Aye"). Used to find a bare
 # (R2) roll call; in an R1 roll-call vote the "The motion passed on a roll call
 # vote:" lead-in sits before the first member, so R1 is detected first.
@@ -290,14 +280,6 @@ def _sentence_end(text: str, start: int) -> int:
             continue
         return j + 1
     return n
-
-
-def _tally(members: list[dict[str, str]]) -> tuple[int, int, int]:
-    """Count aye / no / abstain across a roll call (present/absent excluded)."""
-    yes = sum(1 for m in members if m["vote"] == "aye")
-    no = sum(1 for m in members if m["vote"] == "no")
-    abstain = sum(1 for m in members if m["vote"] == "abstain")
-    return yes, no, abstain
 
 
 def _parse_rollcall(text: str) -> list[dict[str, str]] | None:

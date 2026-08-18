@@ -98,8 +98,9 @@ _RESULT_NORM = {
 }
 
 # Per-member / header vote word -> normalized vote. absent/present are recorded in
-# the member list but never counted in a tally (not a yes/no/abstain).
-_VOTE_NORM = {
+# the member list but never counted in a tally (not a yes/no/abstain). Shared with
+# votes_parser_civicplus.py, whose roll-call vote words normalize to the same set.
+VOTE_WORD_NORM = {
     "aye": "aye",
     "ayes": "aye",
     "yes": "aye",
@@ -236,9 +237,9 @@ def _members_from_suffix(text: str) -> list[dict[str, str]] | None:
     for part in parts:
         name, sep, vote = part.rpartition("-")
         word = vote.strip().lower()
-        if not sep or not name.strip() or word not in _VOTE_NORM:
+        if not sep or not name.strip() or word not in VOTE_WORD_NORM:
             return None
-        members.append({"name": name.strip(), "vote": _VOTE_NORM[word]})
+        members.append({"name": name.strip(), "vote": VOTE_WORD_NORM[word]})
     return members
 
 
@@ -266,7 +267,7 @@ def _members_from_headers(lines: list[str]) -> list[dict[str, str]] | None:
         # (no leading vote word) won't match and accrues to the current header.
         if header:
             flush()
-            current = _VOTE_NORM[header.group(1).lower()]
+            current = VOTE_WORD_NORM[header.group(1).lower()]
             rest = header.group(2).strip()
             if rest:
                 pending.append(rest)
@@ -276,8 +277,13 @@ def _members_from_headers(lines: list[str]) -> list[dict[str, str]] | None:
     return members or None
 
 
-def _tally(members: list[dict[str, str]]) -> tuple[int, int, int]:
-    """Count yes / no / abstain across a roll call (absent/present excluded)."""
+def tally_votes(members: list[dict[str, str]]) -> tuple[int, int, int]:
+    """Count yes / no / abstain across a roll call (absent/present excluded).
+
+    Shared with ``votes_parser_civicplus.py``: both parsers build ``members`` as
+    ``{"name": ..., "vote": <VOTE_WORD_NORM value>}``, so this counts identically
+    over either parser's roll call.
+    """
     yes = sum(1 for m in members if m["vote"] == "aye")
     no = sum(1 for m in members if m["vote"] == "no")
     abstain = sum(1 for m in members if m["vote"] == "abstain")
@@ -409,7 +415,7 @@ def _counts(
     source, that source is used. Never infers a number.
     """
     _, rn_yes, rn_no, rn_abs = res
-    mt = _tally(members) if members else None
+    mt = tally_votes(members) if members else None
     if rn_yes is not None:
         if mt is None:
             return rn_yes, rn_no, rn_abs
@@ -449,7 +455,7 @@ def _resolve_result(
         return res[0], "stated", _counts(res, members), result_idx
     end_idx = between[-1][0] if between else -1
     if members:
-        yes, no, abstain = _tally(members)
+        yes, no, abstain = tally_votes(members)
         if yes > no:
             return "passed", "derived", (yes, no, abstain), end_idx
         if no > yes:
