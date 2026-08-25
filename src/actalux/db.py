@@ -383,20 +383,22 @@ def get_document_chunks(
     return query.execute().data or []
 
 
-def get_meeting_documents(
+def _meeting_documents(
     client: Client,
     entity_id: int,
     meeting_date: str,
     document_types: list[str],
+    columns: str,
 ) -> list[dict[str, Any]]:
     """Current documents for one body on one meeting date, of the given types.
 
-    Backs the JSON API's single-meeting bundle. Ordered by document_type so the
-    bundle is stable (agendas, minutes, resolutions, transcripts grouped).
+    Shared query shape for :func:`get_meeting_documents` and :func:`get_meeting_records`,
+    which differ only in which columns they need. Ordered by document_type so the
+    result is stable (agendas, minutes, resolutions, transcripts grouped).
     """
     result = (
         client.table("documents")
-        .select(_API_DOC_COLUMNS)
+        .select(columns)
         .is_("replaces_id", "null")
         .eq("entity_id", entity_id)
         .eq("meeting_date", meeting_date)
@@ -405,6 +407,17 @@ def get_meeting_documents(
         .execute()
     )
     return result.data or []
+
+
+def get_meeting_documents(
+    client: Client,
+    entity_id: int,
+    meeting_date: str,
+    document_types: list[str],
+) -> list[dict[str, Any]]:
+    """Lightweight documents for one body on one meeting date. Backs the JSON API's
+    single-meeting bundle."""
+    return _meeting_documents(client, entity_id, meeting_date, document_types, _API_DOC_COLUMNS)
 
 
 def get_meeting_records(
@@ -417,19 +430,9 @@ def get_meeting_records(
 
     Backs the web meeting page, which renders the transcript and minutes text
     inline, so it needs ``content`` (unlike ``get_meeting_documents``, which serves
-    the lightweight JSON bundle). Current versions only; ordered by document_type.
+    the lightweight JSON bundle).
     """
-    result = (
-        client.table("documents")
-        .select("*")
-        .is_("replaces_id", "null")
-        .eq("entity_id", entity_id)
-        .eq("meeting_date", meeting_date)
-        .in_("document_type", document_types)
-        .order("document_type")
-        .execute()
-    )
-    return result.data or []
+    return _meeting_documents(client, entity_id, meeting_date, document_types, "*")
 
 
 def list_recent_meeting_documents(
