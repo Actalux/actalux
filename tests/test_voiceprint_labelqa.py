@@ -8,23 +8,11 @@ from actalux.diarization.labelqa import (
     coherent_subset,
     collapse_pairs,
     collapse_suspects,
-    mean_cosine_to_others,
 )
 
 A = (1.0, 0.0, 0.0)
 B = (0.0, 1.0, 0.0)
 C = (0.0, 0.0, 1.0)
-
-
-def test_mean_cosine_to_others():
-    means = mean_cosine_to_others([A, A, B])
-    assert means[0] == pytest.approx(0.5)
-    assert means[1] == pytest.approx(0.5)
-    assert means[2] == pytest.approx(0.0)
-
-
-def test_singleton_has_no_corroboration():
-    assert mean_cosine_to_others([A]) == [0.0]
 
 
 def test_collapse_detects_one_voice_many_names():
@@ -73,7 +61,7 @@ def test_coherent_subset_grows_from_medoid_and_discards_outliers():
 
 def test_coherent_subset_survives_scattered_majority():
     # The Hummell shape reduced to hand vectors: two coherent anchors (A) + THREE mutually-
-    # orthogonal scatter vectors. mean_cosine_to_others is highest for an A (it has one perfect
+    # orthogonal scatter vectors. mean cosine to the others is highest for an A (it has one perfect
     # match), so the medoid is an A and the core is exactly the two A's — the scattered majority is
     # discarded rather than dragging the coherent pair below the floor.
     import numpy as np

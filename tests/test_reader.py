@@ -7,7 +7,6 @@ from actalux.diarization.reader import (
     build_reader_transcript,
     clusters_in_window,
     resolve_speakers,
-    speakers_in_window,
 )
 
 
@@ -164,15 +163,6 @@ def test_clusters_in_window_overlap_and_order():
 def test_clusters_in_window_dedups_recurring_speaker():
     # SPEAKER_00 speaks twice (0-10 and 20-30); a window spanning both lists it once.
     assert clusters_in_window(_turns(), 0.0, 30.0) == ["SPEAKER_00", "SPEAKER_01"]
-
-
-def test_speakers_in_window_attaches_gated_identity_or_none():
-    identities = resolve_speakers(_identity_rows())
-    spans = speakers_in_window(_turns(), identities, 5.0, 15.0)
-    assert spans == [
-        {"cluster_label": "SPEAKER_00", "speaker": identities["SPEAKER_00"]},
-        {"cluster_label": "SPEAKER_01", "speaker": None},  # not gated -> anonymous
-    ]
 
 
 def test_build_meeting_speakers_shape():

@@ -13,7 +13,6 @@ from actalux.web.text_snippets import (
     marked_paragraphs,
     paragraphize_prose,
     reflow_transcript,
-    split_for_highlight,
     split_sentences,
     strip_transcript_timestamps,
 )
@@ -135,28 +134,6 @@ class TestExtractiveSnippet:
 
     def test_empty_content(self) -> None:
         assert extractive_snippet("", "budget") == ""
-
-
-class TestSplitForHighlight:
-    def test_isolates_key_sentence(self) -> None:
-        content = "Opening remarks were made. The budget was approved. Then they left."
-        before, key, after = split_for_highlight(content, "budget")
-        assert key == "The budget was approved."
-        assert before == "Opening remarks were made."
-        assert after == "Then they left."
-
-    def test_no_match_returns_whole_as_key(self) -> None:
-        content = "Nothing relevant. Still nothing."
-        before, key, after = split_for_highlight(content, "budget")
-        assert before == ""
-        assert key == "Nothing relevant. Still nothing."
-        assert after == ""
-
-    def test_empty_content(self) -> None:
-        assert split_for_highlight("", "budget") == ("", "", "")
-
-
-# ── Transcript cleanup helpers ────────────────────────────────────────────────
 
 
 class TestStripTranscriptTimestamps:

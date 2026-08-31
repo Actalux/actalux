@@ -415,23 +415,3 @@ def lead_sentence(content: str, query: str = "", max_chars: int = 240) -> str:
     if len(sentence) > max_chars:
         sentence = sentence[:max_chars].rsplit(" ", 1)[0].rstrip(",;:—– ") + "…"
     return sentence
-
-
-def split_for_highlight(content: str, query: str) -> tuple[str, str, str]:
-    """Split a cited chunk into (before, key_sentence, after) for the reader pane.
-
-    The key sentence is the most query-relevant one; the caller wraps only it in
-    the cited-passage highlight. When no query term matches (e.g. a citation
-    opened without a search), the whole chunk is the key so the highlight still
-    marks the cited unit.
-    """
-    sentences = split_sentences(content)
-    if not sentences:
-        return ("", content or "", "")
-    terms = extract_query_terms(query)
-    best = best_sentence_index(sentences, terms)
-    if best == -1:
-        return ("", " ".join(sentences), "")
-    before = " ".join(sentences[:best])
-    after = " ".join(sentences[best + 1 :])
-    return (before, sentences[best], after)

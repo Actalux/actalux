@@ -58,23 +58,6 @@ def clusters_in_window(turns: list[dict[str, Any]], start_s: float, end_s: float
     return seen
 
 
-def speakers_in_window(
-    turns: list[dict[str, Any]],
-    identities: dict[str, dict[str, Any]],
-    start_s: float,
-    end_s: float,
-) -> list[dict[str, Any]]:
-    """The speakers heard in ``[start_s, end_s)``: each cluster + its gated identity (or None).
-
-    The reader's per-chunk overlay ("[Mayor Harris] … [unidentified] …"): a cluster
-    with no public identity stays anonymous rather than being dropped.
-    """
-    return [
-        {"cluster_label": c, "speaker": identities.get(c)}
-        for c in clusters_in_window(turns, start_s, end_s)
-    ]
-
-
 def _turn_text(words: list[dict[str, Any]]) -> str:
     """Join a turn's words into readable prose (verbatim — whitespace only, never edited).
 
