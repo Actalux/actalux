@@ -8,23 +8,11 @@ from actalux.diarization.labelqa import (
     coherent_subset,
     collapse_pairs,
     collapse_suspects,
-    mean_cosine_to_others,
 )
 
 A = (1.0, 0.0, 0.0)
 B = (0.0, 1.0, 0.0)
 C = (0.0, 0.0, 1.0)
-
-
-def test_mean_cosine_to_others():
-    means = mean_cosine_to_others([A, A, B])
-    assert means[0] == pytest.approx(0.5)
-    assert means[1] == pytest.approx(0.5)
-    assert means[2] == pytest.approx(0.0)
-
-
-def test_singleton_has_no_corroboration():
-    assert mean_cosine_to_others([A]) == [0.0]
 
 
 def test_collapse_detects_one_voice_many_names():

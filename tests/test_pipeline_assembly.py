@@ -13,7 +13,6 @@ from actalux.transcription.pipeline import (
     assemble_speaker_layer,
     media_asset_row,
     persist_speaker_layer,
-    transcribe_and_attribute,
 )
 
 DIAR_MODEL = "pyannote/speaker-diarization-3.1"
@@ -156,14 +155,6 @@ class _StubDiarizer:
         return_embeddings: bool = False,
     ) -> SpeakerTimeline:
         return self._timeline
-
-
-def test_transcribe_and_attribute_orchestrates_backends():
-    layer = transcribe_and_attribute(
-        "audio.mp3", _StubTranscriber(_transcript()), _StubDiarizer(_timeline()), _rules()
-    )
-    assert layer.canonical_text == "Mr Yorg moved I second"
-    assert [t.cluster_label for t in layer.turns] == ["SPEAKER_00", "SPEAKER_01"]
 
 
 def test_speaker_layer_dict_roundtrip():

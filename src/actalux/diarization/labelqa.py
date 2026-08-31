@@ -24,18 +24,6 @@ import numpy as np
 from actalux.diarization.vectors import l2_normalize_rows
 
 
-def mean_cosine_to_others(vectors: list[tuple[float, ...]]) -> list[float]:
-    """Per-sample mean cosine to the other samples (a self-consistency score)."""
-    n = len(vectors)
-    if n == 0:
-        return []
-    if n == 1:
-        return [0.0]  # a singleton has no corroboration
-    vecs = l2_normalize_rows(np.asarray(vectors, dtype=np.float64))
-    sim = vecs @ vecs.T
-    return [float((sim[i].sum() - 1.0) / (n - 1)) for i in range(n)]
-
-
 def coherent_subset(
     vectors: list[tuple[float, ...]],
     *,

@@ -25,9 +25,9 @@ from supabase import Client
 
 from actalux.db import insert_rows_resilient
 from actalux.diarization.align import AttributedTurn, attribute_words
-from actalux.diarization.backend import DiarizationBackend, SpeakerTimeline
+from actalux.diarization.backend import SpeakerTimeline
 from actalux.glossary.canonicalize import Canonicalization, CorrectionRule, canonicalize_text
-from actalux.transcription.backend import TranscriptionBackend, Word, WordTranscript
+from actalux.transcription.backend import Word, WordTranscript
 
 # A document's attribution layer; cleared wholesale before a re-transcribe re-inserts.
 _LAYER_TABLES = (
@@ -160,23 +160,6 @@ def media_asset_row(
         "duration_seconds": duration_seconds,
         "content_hash": content_hash,
     }
-
-
-def transcribe_and_attribute(
-    audio_uri: str,
-    transcriber: TranscriptionBackend,
-    diarizer: DiarizationBackend,
-    rules: list[CorrectionRule],
-) -> SpeakerLayer:
-    """Run the GPU backends over one audio source and assemble its speaker layer.
-
-    The orchestration seam over the injected backends — pure aside from the backend
-    calls themselves, so tests pass fakes and never touch a GPU. Transcription and
-    diarization run on the *same* audio so their timelines align.
-    """
-    raw = transcriber.transcribe(audio_uri)
-    timeline = diarizer.run(audio_uri)
-    return assemble_speaker_layer(raw, timeline, rules)
 
 
 def persist_speaker_layer(
