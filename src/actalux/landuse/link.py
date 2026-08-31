@@ -86,6 +86,8 @@ class Appearance:
     conditions_text: str | None
     video_timestamp: str | None
     source_quote: str
+    code_section: str | None = None
+    relief_raw: str | None = None
     chunk_id: int | None = None
     vote_id: int | None = None
     parties: tuple = ()

@@ -56,12 +56,18 @@ approve, approve_with_conditions, deny, or none_stated.
 - "conditions" are the enumerated conditions attached to an approval, verbatim.
 - "parties" are the people/firms named with a role: applicant, owner, tenant, \
 architect, attorney, other. Use the name exactly as written.
+- "code_section" is the cited code/ordinance section for a variance or appeal \
+("Section 405.330.A.5"), copied exactly, or null.
+- "relief" is the quantified relief requested, copied exactly ("A 200 \
+square-foot variance from the maximum living area for an Accessory Dwelling \
+Unit of 1,000 square-feet"), or null.
 
 JSON shape:
 {"action": "...", "action_quote": "...",
  "staff_recommendation": "...", "staff_quote": "... or null",
  "conditions": ["..."] or [],
- "parties": [{"role": "...", "name": "...", "quote": "..."}]}
+ "parties": [{"role": "...", "name": "...", "quote": "..."}],
+ "code_section": "... or null", "relief": "... or null"}
 """
 
 
@@ -81,6 +87,10 @@ class ExtractedItem:
     staff_quote: str | None
     conditions_text: str | None
     parties: tuple[Party, ...]
+    # Variance-specific, verbatim (G1): the cited code section and the quantified
+    # relief. The values ARE their own quotes — verified directly against the body.
+    code_section: str | None = None
+    relief_raw: str | None = None
     # Field names whose quotes failed verbatim verification — surfaced to QA,
     # never silently dropped.
     rejected: tuple[str, ...] = field(default=())
@@ -168,6 +178,15 @@ def extract_item(body: str, llm: LlmFn) -> ExtractedItem:
         else:
             rejected.append("party")
 
+    def verbatim_or_none(name: str) -> str | None:
+        value = data.get(name)
+        if not isinstance(value, str) or not value:
+            return None
+        if not quote_in(value, body):
+            rejected.append(name)
+            return None
+        return value
+
     return ExtractedItem(
         action=action,
         action_quote=action_quote,
@@ -175,6 +194,8 @@ def extract_item(body: str, llm: LlmFn) -> ExtractedItem:
         staff_quote=staff_quote,
         conditions_text="\n".join(conditions) if conditions else None,
         parties=tuple(parties),
+        code_section=verbatim_or_none("code_section"),
+        relief_raw=verbatim_or_none("relief"),
         rejected=tuple(rejected),
     )
 

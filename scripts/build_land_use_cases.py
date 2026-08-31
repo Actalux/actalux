@@ -11,11 +11,12 @@ patching per document. That is cheap at this corpus size and removes a whole
 class of drift; per-document incremental rebuild can come with the nightly
 hook once the dataset is trusted.
 
-Zoom-era minutes (2020-21, table-layout text with no prose structure) are
-counted and listed in the QA report as unprocessed, not silently skipped —
-they are the LLM segmenter's job in a follow-up. Vote linkage (vote_id) is
-also a follow-up: motions live in the votes table but matching them to items
-needs the item's chunk span, which the QA report sizes first.
+Documents neither regex grammar parses — BoA prose minutes and the Zoom-era
+table layouts — route to the LLM segmenter (G1), whose item spans are admitted
+only when each item's opening quote locates verbatim in the document. Vote
+linkage (vote_id) remains a follow-up (G4): motions live in the votes table but
+matching them to items needs the item's chunk span, which the QA report sizes
+first.
 
 Run (prefix with `doppler run --project mac --config dev --`):
   uv run python scripts/build_land_use_cases.py                 # dry run + QA report
@@ -40,6 +41,7 @@ from actalux.db import fetch_all_rows, get_client  # noqa: E402
 from actalux.landuse.extract import ExtractError, extract_item, make_openrouter_llm  # noqa: E402
 from actalux.landuse.link import Appearance, LinkedCase, link_appearances  # noqa: E402
 from actalux.landuse.segment import entitlement_items, segment_items  # noqa: E402
+from actalux.landuse.segment_llm import llm_segment_items  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -79,23 +81,44 @@ def gather_appearances(client, llm, entity_ids: dict[str, int], limit: int | Non
                 or ""
             )
             items = entitlement_items(content)
+            segmenter = "regex"
             qa["docs"] += 1
             if not items:
-                # Two very different situations: a meeting that was all ARB work
-                # (segmentation worked, nothing in scope — routine) versus a
-                # document neither grammar could parse (Zoom-era tables, unknown
-                # formats — a coverage gap). The first full run conflated them
-                # and reported 135 "unsegmented" docs when most were ARB-only.
+                # A meeting that was all ARB work (segmentation fine, nothing in
+                # scope) is routine; a document neither grammar parses goes to the
+                # LLM segmenter (G1) — BoA prose and the Zoom-era tables — whose
+                # spans are admitted only when the item's opening locates verbatim.
                 if segment_items(content):
                     qa["docs_no_entitlements"] += 1
-                else:
+                    continue
+                segmenter = "llm"
+                try:
+                    llm_items, unlocated = llm_segment_items(content, llm)
+                except ExtractError as exc:
                     qa["docs_unparsed"] += 1
                     unsegmented.append(
-                        {"document_id": doc["id"], "meeting_date": doc["meeting_date"]}
+                        {
+                            "document_id": doc["id"],
+                            "meeting_date": doc["meeting_date"],
+                            "error": str(exc),
+                        }
                     )
-                continue
+                    continue
+                for q in unlocated:
+                    extract_failures.append({"document_id": doc["id"], "unlocated_opening": q})
+                items = [it for it in llm_items if it.application_type != "arb"]
+                if not items:
+                    if llm_items:
+                        qa["docs_no_entitlements"] += 1
+                    else:
+                        qa["docs_unparsed"] += 1
+                        unsegmented.append(
+                            {"document_id": doc["id"], "meeting_date": doc["meeting_date"]}
+                        )
+                    continue
             for it in items:
                 qa["items"] += 1
+                qa[f"items_{segmenter}"] += 1
                 try:
                     ext = extract_item(it.body, llm)
                 except ExtractError as exc:
@@ -120,6 +143,8 @@ def gather_appearances(client, llm, entity_ids: dict[str, int], limit: int | Non
                         # The item's verbatim opening is the event's citation
                         # anchor; narrative quotes live per-field in extraction.
                         source_quote=it.body[:300],
+                        code_section=ext.code_section,
+                        relief_raw=ext.relief_raw,
                         parties=ext.parties,
                     )
                 )
@@ -162,6 +187,8 @@ def write_cases(client, cases: list[LinkedCase], place_by_entity: dict[int, int]
                 "conditions_text": app.conditions_text,
                 "video_timestamp": app.video_timestamp,
                 "source_quote": app.source_quote,
+                "code_section": app.code_section,
+                "relief_raw": app.relief_raw,
             }
             for app in case.appearances
         ]
@@ -219,6 +246,7 @@ def main() -> int:
         qa["docs_no_entitlements"],
         qa["docs_unparsed"],
     )
+    logger.info("items by segmenter: regex=%d llm=%d", qa["items_regex"], qa["items_llm"])
     logger.info("items=%d extract_errors=%d", qa["items"], qa["extract_errors"])
     logger.info("rejected fields (hallucination pressure): %s", dict(rejected) or "none")
     logger.info("cases=%d by type: %s", len(cases), dict(by_type))
