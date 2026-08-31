@@ -61,7 +61,7 @@ def test_coherent_subset_grows_from_medoid_and_discards_outliers():
 
 def test_coherent_subset_survives_scattered_majority():
     # The Hummell shape reduced to hand vectors: two coherent anchors (A) + THREE mutually-
-    # orthogonal scatter vectors. mean_cosine_to_others is highest for an A (it has one perfect
+    # orthogonal scatter vectors. mean cosine to the others is highest for an A (it has one perfect
     # match), so the medoid is an A and the core is exactly the two A's — the scattered majority is
     # discarded rather than dragging the coherent pair below the floor.
     import numpy as np
