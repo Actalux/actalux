@@ -45,6 +45,7 @@ from typing import Any
 from openai import OpenAI
 
 from actalux.identity.resolve import IdentityProposal, ResolverTurn, RosterMember
+from actalux.search.summarize import _completion_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -216,26 +217,6 @@ def _windows(n_turns: int) -> list[tuple[int, int]]:
     return spans
 
 
-def _completion_kwargs(model: str, messages: list[dict[str, str]]) -> dict[str, Any]:
-    """Chat-completion kwargs, normalizing token param + temperature across model families.
-
-    Mirrors the summarize provider idiom: OpenAI GPT-5 / o-series are reasoning models that
-    take ``max_completion_tokens`` and reject a non-default ``temperature``; every other model
-    (gpt-4o-mini, Claude/Gemini via OpenRouter) takes ``max_tokens`` and honors ``temperature=0``
-    for the determinism this labeling task wants. The ``provider/`` prefix is stripped first.
-    """
-    bare = model.split("/")[-1].lower()
-    is_openai_reasoning = bare.startswith(("gpt-5", "o1", "o3", "o4"))
-    kwargs: dict[str, Any] = {"model": model, "messages": messages}
-    if is_openai_reasoning:
-        kwargs["max_completion_tokens"] = _MAX_COMPLETION_TOKENS
-        kwargs["reasoning_effort"] = "low"
-    else:
-        kwargs["max_tokens"] = _MAX_COMPLETION_TOKENS
-        kwargs["temperature"] = 0
-    return kwargs
-
-
 def _call_llm(
     user_message: str,
     api_key: str,
@@ -257,7 +238,11 @@ def _call_llm(
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_message},
         ]
-        response = client.chat.completions.create(**_completion_kwargs(model, messages))
+        response = client.chat.completions.create(
+            **_completion_kwargs(
+                model, messages, _MAX_COMPLETION_TOKENS, reasoning_effort="low", temperature=0
+            )
+        )
         if usage_out is not None and (usage := getattr(response, "usage", None)) is not None:
             usage_out["prompt_tokens"] = usage_out.get("prompt_tokens", 0) + (
                 getattr(usage, "prompt_tokens", 0) or 0

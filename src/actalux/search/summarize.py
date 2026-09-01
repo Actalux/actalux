@@ -180,15 +180,17 @@ def _completion_kwargs(
     messages: list[dict[str, str]],
     max_tokens: int,
     reasoning_effort: str = "minimal",
+    temperature: float | None = None,
 ) -> dict[str, Any]:
     """Build chat-completion kwargs, normalizing across model families.
 
     OpenAI GPT-5 / o-series are reasoning models: they take `max_completion_tokens`
     plus `reasoning_effort` (without minimal effort they spend the whole budget on
-    hidden reasoning and return empty content on short tasks). Every other model --
-    gpt-4o-mini, and Claude/Gemini reached via OpenRouter -- takes plain
-    `max_tokens` and rejects `reasoning_effort`. The "provider/" prefix
-    (OpenRouter's "openai/gpt-5-mini") is stripped before the family check.
+    hidden reasoning and return empty content on short tasks) and reject a
+    non-default `temperature`. Every other model -- gpt-4o-mini, and Claude/Gemini
+    reached via OpenRouter -- takes plain `max_tokens` and honors `temperature`.
+    The "provider/" prefix (OpenRouter's "openai/gpt-5-mini") is stripped before
+    the family check.
     """
     is_openai_reasoning = model.split("/")[-1].lower().startswith(("gpt-5", "o1", "o3", "o4"))
     kwargs: dict[str, Any] = {"model": model, "messages": messages}
@@ -197,6 +199,8 @@ def _completion_kwargs(
         kwargs["reasoning_effort"] = reasoning_effort
     else:
         kwargs["max_tokens"] = max_tokens
+        if temperature is not None:
+            kwargs["temperature"] = temperature
     return kwargs
 
 

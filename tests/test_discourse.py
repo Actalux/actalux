@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from actalux.identity.discourse import (
+    _MAX_COMPLETION_TOKENS,
     SIGNAL_CHAIR,
     SIGNAL_GRATITUDE,
     SIGNAL_QUESTION,
@@ -321,13 +322,18 @@ class TestParseClaims:
 
 
 class TestCompletionKwargs:
+    def _kwargs(self, model: str) -> dict:
+        return _completion_kwargs(
+            model, [], _MAX_COMPLETION_TOKENS, reasoning_effort="low", temperature=0
+        )
+
     def test_reasoning_model_uses_completion_tokens_no_temperature(self) -> None:
-        k = _completion_kwargs("openai/gpt-5-mini", [])
+        k = self._kwargs("openai/gpt-5-mini")
         assert "max_completion_tokens" in k and "reasoning_effort" in k
         assert "temperature" not in k and "max_tokens" not in k
 
     def test_plain_model_uses_max_tokens_and_temperature_zero(self) -> None:
-        k = _completion_kwargs("openai/gpt-4o-mini", [])
+        k = self._kwargs("openai/gpt-4o-mini")
         assert k["max_tokens"] > 0 and k["temperature"] == 0
         assert "max_completion_tokens" not in k
 
