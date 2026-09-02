@@ -42,22 +42,6 @@ def resolve_speakers(identity_rows: list[dict[str, Any]]) -> dict[str, dict[str,
     return resolved
 
 
-def clusters_in_window(turns: list[dict[str, Any]], start_s: float, end_s: float) -> list[str]:
-    """Distinct cluster labels whose turn overlaps ``[start_s, end_s)``, first-appearance order.
-
-    The per-chunk speaker set: intersect a chunk's time window with the turn timeline.
-    ``turns`` are time-ordered ``diarization_turns`` rows.
-    """
-    if start_s >= end_s:  # a zero-width (or inverted) window contains no speaker
-        return []
-    seen: list[str] = []
-    for t in turns:
-        if t["start_seconds"] < end_s and start_s < t["end_seconds"]:
-            if t["cluster_label"] not in seen:
-                seen.append(t["cluster_label"])
-    return seen
-
-
 def _turn_text(words: list[dict[str, Any]]) -> str:
     """Join a turn's words into readable prose (verbatim — whitespace only, never edited).
 
