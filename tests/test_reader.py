@@ -5,7 +5,6 @@ from __future__ import annotations
 from actalux.diarization.reader import (
     build_meeting_speakers,
     build_reader_transcript,
-    clusters_in_window,
     resolve_speakers,
 )
 
@@ -146,23 +145,6 @@ def test_resolve_speakers_drops_ungated_even_with_a_subject():
         }
     ]
     assert resolve_speakers(rows) == {}
-
-
-def test_clusters_in_window_zero_width_returns_empty():
-    assert clusters_in_window(_turns(), 5.0, 5.0) == []
-
-
-def test_clusters_in_window_overlap_and_order():
-    turns = _turns()
-    assert clusters_in_window(turns, 1.0, 9.0) == ["SPEAKER_00"]
-    assert clusters_in_window(turns, 5.0, 25.0) == ["SPEAKER_00", "SPEAKER_01"]
-    # touching boundaries don't count (half-open window): exactly [10,20) is SPEAKER_01
-    assert clusters_in_window(turns, 10.0, 20.0) == ["SPEAKER_01"]
-
-
-def test_clusters_in_window_dedups_recurring_speaker():
-    # SPEAKER_00 speaks twice (0-10 and 20-30); a window spanning both lists it once.
-    assert clusters_in_window(_turns(), 0.0, 30.0) == ["SPEAKER_00", "SPEAKER_01"]
 
 
 def test_build_meeting_speakers_shape():
