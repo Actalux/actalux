@@ -104,3 +104,37 @@ class TestClassify:
 
     def test_unknown_type_surfaces_as_other_not_dropped(self) -> None:
         assert classify("SOMETHING NOVEL", None) == "other"
+
+
+class TestG2VocabExtension:
+    """G2 mappings, each pinned to the corpus evidence that justified it."""
+
+    def test_plat_and_boundary_adjustment_are_subdivision(self) -> None:
+        # doc 1255: "Plan Commission - Boundary Adjustment" is "review of a
+        # Boundary Adjustment plat" in its own body.
+        assert classify("Plat application", "Boundary adjustment") == "subdivision"
+        assert classify("Plan Commission", "Boundary Adjustment") == "subdivision"
+        assert classify("PLAN COMMISSION REVIEW", "PLAT") == "subdivision"
+
+    def test_sit_plan_typo_is_site_plan(self) -> None:
+        assert classify("Sit Plan Review", "New Single-Family Home") == "site_plan"
+
+    def test_wrapped_arb_residence_fragments_classify_arb(self) -> None:
+        # docs 1398/1399/1403: bodies are ARB new-house/porch reviews whose
+        # leading type wrapped off the captured header.
+        assert classify("RESIDENCE", None) == "arb"
+        assert classify("FAMILY RESIDENCE", None) == "arb"
+        assert classify("SINGLE FAMILY RESIDENCE", None) == "arb"
+        assert classify("DRIVEWAY REPLACEMENT", "SINGLE FAMILY RESIDENCE") == "arb"
+
+    def test_residence_in_subtype_never_drops_an_entitlement(self) -> None:
+        # The arb-residence pattern is anchored to the string start: a variance
+        # or CUP concerning a residence keeps its type.
+        assert classify("VARIANCE", "ADDITION TO SINGLE FAMILY RESIDENCE") == "variance"
+        assert classify("Conditional Use Permit", "residence conversion") == "conditional_use"
+
+    def test_unmatched_still_other_vocabulary_grows_by_evidence_only(self) -> None:
+        # PUD and PC coverage-relief items stay `other` deliberately: the locked
+        # vocabulary has no type for them, and inventing one is an operator call.
+        assert classify("Planned Unit Development", "New Mixed-Use") == "other"
+        assert classify("Plan Commission", "Impervious Coverage") == "other"

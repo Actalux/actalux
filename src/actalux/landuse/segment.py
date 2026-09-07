@@ -52,9 +52,7 @@ _TYPE_MAP: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"variance", re.I), "variance"),
     (re.compile(r"re-?zon|zoning\s+map", re.I), "rezoning"),
     (
-        re.compile(
-            r"subdivision|lot\s+split|consolidation\s+plat|resubdivision|record\s+plat", re.I
-        ),
+        re.compile(r"subdivision|lot\s+split|resubdivision|\bplat\b|boundary\s+adjustment", re.I),
         "subdivision",
     ),
     (
@@ -64,13 +62,27 @@ _TYPE_MAP: list[tuple[re.Pattern[str], str]] = [
         ),
         "text_amendment",
     ),
-    (re.compile(r"site\s+plan", re.I), "site_plan"),
+    # "Sit Plan Review" is a real typo in the corpus (G2 measurement), not a class.
+    (re.compile(r"site?\s+plan", re.I), "site_plan"),
     # ARB-only work: out of v1 scope by operator decision. Both spellings occur
     # in the corpus: "Architectural Review" (2017, 2026) and "ARCHITECTURE
     # REVIEW" (2022-era uppercase variant, doc 1319).
     (
         re.compile(
             r"architectur(?:al|e)\s+review|signage|sign\b|exterior\s+alteration|awning|fence|landscap",
+            re.I,
+        ),
+        "arb",
+    ),
+    # Legacy ARB headers whose leading type wrapped away leave fragments like
+    # "RESIDENCE - 8120 STRATFORD"; their bodies are new-house / porch / driveway
+    # reviews (G2 measurement, docs 1398/1399/1403). Anchored to the string
+    # start so a variance or CUP whose SUBTYPE mentions a residence never
+    # matches — those hit their own patterns above first anyway.
+    (
+        re.compile(
+            r"^(?:single[\s-]+)?(?:family\s+)?residence\b"
+            r"|driveway\s+replacement|deck\s+and\s+pergola",
             re.I,
         ),
         "arb",
