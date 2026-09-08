@@ -38,7 +38,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from actalux.config import load_config  # noqa: E402
 from actalux.db import fetch_all_rows, get_client  # noqa: E402
-from actalux.landuse.extract import ExtractError, extract_item, make_openrouter_llm  # noqa: E402
+from actalux.landuse.extract import (  # noqa: E402
+    ExtractError,
+    extract_item,
+    make_openrouter_llm,
+    quote_in,
+)
 from actalux.landuse.link import Appearance, LinkedCase, link_appearances  # noqa: E402
 from actalux.landuse.segment import entitlement_items, segment_items  # noqa: E402
 from actalux.landuse.segment_llm import llm_segment_items  # noqa: E402
@@ -47,6 +52,19 @@ logger = logging.getLogger(__name__)
 
 LAND_USE_BODIES = ("plan-commission", "board-of-adjustment")
 REVIEW_PATH = Path("data/landuse_review.jsonl")
+
+
+def match_vote(item_body: str, doc_votes: list[dict]) -> tuple[int | None, bool]:
+    """The vote whose motion text sits verbatim inside the item's body (G4).
+
+    Returns ``(vote_id, ambiguous)``. One candidate links; several return
+    ``(None, True)`` for the review file; none returns ``(None, False)``. No
+    fuzzy matching — a wrong vote attached to a case is worse than no vote.
+    """
+    candidates = [v for v in doc_votes if v.get("motion") and quote_in(v["motion"], item_body)]
+    if len(candidates) == 1:
+        return candidates[0]["id"], False
+    return None, len(candidates) > 1
 
 
 def gather_appearances(client, llm, entity_ids: dict[str, int], limit: int | None) -> tuple:
@@ -71,6 +89,15 @@ def gather_appearances(client, llm, entity_ids: dict[str, int], limit: int | Non
         if limit:
             docs = docs[:limit]
         logger.info("%s: %d minutes documents", slug, len(docs))
+        votes_by_doc: dict[int, list[dict]] = {}
+        for v in fetch_all_rows(
+            lambda: (
+                client.table("votes")
+                .select("id,document_id,motion")
+                .in_("document_id", [d["id"] for d in docs])
+            )
+        ):
+            votes_by_doc.setdefault(v["document_id"], []).append(v)
         for doc in docs:
             content = (
                 client.table("documents")
@@ -128,6 +155,18 @@ def gather_appearances(client, llm, entity_ids: dict[str, int], limit: int | Non
                     )
                     continue
                 rejected_fields.update(ext.rejected)
+                vote_id, ambiguous = match_vote(it.body, votes_by_doc.get(doc["id"], []))
+                if vote_id:
+                    qa["events_with_vote"] += 1
+                elif ambiguous:
+                    qa["vote_ambiguous"] += 1
+                    extract_failures.append(
+                        {
+                            "document_id": doc["id"],
+                            "address": it.address_raw,
+                            "error": "multiple votes match item body",
+                        }
+                    )
                 appearances.append(
                     Appearance(
                         document_id=doc["id"],
@@ -145,6 +184,7 @@ def gather_appearances(client, llm, entity_ids: dict[str, int], limit: int | Non
                         source_quote=it.body[:300],
                         code_section=ext.code_section,
                         relief_raw=ext.relief_raw,
+                        vote_id=vote_id,
                         parties=ext.parties,
                     )
                 )
@@ -189,6 +229,7 @@ def write_cases(client, cases: list[LinkedCase], place_by_entity: dict[int, int]
                 "source_quote": app.source_quote,
                 "code_section": app.code_section,
                 "relief_raw": app.relief_raw,
+                "vote_id": app.vote_id,
             }
             for app in case.appearances
         ]
@@ -247,6 +288,11 @@ def main() -> int:
         qa["docs_unparsed"],
     )
     logger.info("items by segmenter: regex=%d llm=%d", qa["items_regex"], qa["items_llm"])
+    logger.info(
+        "vote linkage: %d events linked, %d ambiguous (review)",
+        qa["events_with_vote"],
+        qa["vote_ambiguous"],
+    )
     logger.info("items=%d extract_errors=%d", qa["items"], qa["extract_errors"])
     logger.info("rejected fields (hallucination pressure): %s", dict(rejected) or "none")
     logger.info("cases=%d by type: %s", len(cases), dict(by_type))

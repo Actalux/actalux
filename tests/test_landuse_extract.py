@@ -81,14 +81,38 @@ class TestVerification:
         assert out.conditions_text is None
         assert any(r.startswith("conditions[") for r in out.rejected)
 
-    def test_party_with_bad_role_or_quote_rejected(self) -> None:
+    def test_party_with_unverified_quote_rejected(self) -> None:
         payload = dict(
             GOOD,
-            parties=[{"role": "developer", "name": "X", "quote": "Lauren Talley, Applicant"}],
+            parties=[{"role": "applicant", "name": "X", "quote": "a quote not in the body"}],
         )
         out = extract_item(BODY, _llm_returning(payload))
         assert out.parties == ()
         assert "party" in out.rejected
+
+    def test_specific_roles_normalize_instead_of_rejecting(self) -> None:
+        # G3 sample: 24/30 rejections were real parties under roles more
+        # specific than the enum. The quote gate still decides storage.
+        payload = dict(
+            GOOD,
+            parties=[
+                {"role": "project architect", "name": "Y", "quote": "Lauren Talley, Applicant"},
+                {"role": "civil engineer", "name": "Z", "quote": "Lauren Talley, Applicant"},
+            ],
+        )
+        out = extract_item(BODY, _llm_returning(payload))
+        assert [(p.role, p.name_raw) for p in out.parties] == [("architect", "Y"), ("other", "Z")]
+        assert "party" not in out.rejected
+
+    def test_staff_reports_are_skipped_not_stored(self) -> None:
+        # City staff are the government side of the case, not a party to it.
+        payload = dict(
+            GOOD,
+            parties=[{"role": "staff", "name": "S. Istenes", "quote": "Lauren Talley, Applicant"}],
+        )
+        out = extract_item(BODY, _llm_returning(payload))
+        assert out.parties == ()
+        assert "party" not in out.rejected  # by design, not a failure
 
     def test_null_fields_are_absent_not_rejected(self) -> None:
         payload = {"action": None, "staff_recommendation": None, "conditions": [], "parties": []}

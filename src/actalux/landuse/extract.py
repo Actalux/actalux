@@ -41,6 +41,38 @@ ACTIONS = frozenset(
 STAFF_RECS = frozenset({"approve", "approve_with_conditions", "deny", "none_stated"})
 PARTY_ROLES = frozenset({"applicant", "owner", "tenant", "architect", "attorney", "other"})
 
+# The G3 rejection sample (30 sampled, 2026-09-01) found 24/30 were the LLM
+# reporting a REAL party under a more specific role than the enum — "project
+# architect", "civil engineer", "developer" — with a verbatim-verifiable quote.
+# Normalizing the role recovers those parties without weakening the quote gate,
+# which stays the arbiter of whether the party is stored at all. City staff are
+# deliberately not parties (they are the government side of the case, already
+# captured in staff_recommendation), so staff-role reports are skipped, not
+# stored under "other".
+_STAFF_ROLES = frozenset({"staff", "city staff", "planner", "city planner", "director"})
+_ROLE_NORM = {
+    "project architect": "architect",
+    "lead architect": "architect",
+    "design architect": "architect",
+    "architect of record": "architect",
+    "landscape architect": "architect",
+    "homeowner": "owner",
+    "home owner": "owner",
+    "property owner": "owner",
+}
+
+
+def normalize_role(role) -> str | None:
+    """Map an LLM-reported role onto the enum; None means skip (staff), and any
+    unrecognized-but-named role becomes "other" — the quote gate still decides
+    whether the party is stored."""
+    r = (role or "").strip().lower() if isinstance(role, str) else ""
+    if not r or r in _STAFF_ROLES:
+        return None
+    if r in PARTY_ROLES:
+        return r
+    return _ROLE_NORM.get(r, "other")
+
 SYSTEM_PROMPT = """\
 You extract structured facts from municipal meeting minutes. You are given the \
 verbatim text of ONE business item. Answer in strict JSON only, no markdown.
@@ -55,7 +87,8 @@ approved_with_conditions, denied, recommended (to another body), or withdrawn.
 approve, approve_with_conditions, deny, or none_stated.
 - "conditions" are the enumerated conditions attached to an approval, verbatim.
 - "parties" are the people/firms named with a role: applicant, owner, tenant, \
-architect, attorney, other. Use the name exactly as written.
+architect, attorney, other. Use the name exactly as written, and copy each \
+party's quote character-for-character from the item text.
 - "code_section" is the cited code/ordinance section for a variance or appeal \
 ("Section 405.330.A.5"), copied exactly, or null.
 - "relief" is the quantified relief requested, copied exactly ("A 200 \
@@ -172,8 +205,11 @@ def extract_item(body: str, llm: LlmFn) -> ExtractedItem:
     for p in data.get("parties") or []:
         if not isinstance(p, dict):
             continue
-        role, name, quote = p.get("role"), p.get("name"), p.get("quote")
-        if role in PARTY_ROLES and isinstance(name, str) and name and quote_in(quote or "", body):
+        role = normalize_role(p.get("role"))
+        name, quote = p.get("name"), p.get("quote")
+        if role is None:
+            continue  # staff report or empty role — by design, not a rejection
+        if isinstance(name, str) and name and quote_in(quote or "", body):
             parties.append(Party(role=role, name_raw=name))
         else:
             rejected.append("party")
