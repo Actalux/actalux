@@ -25,7 +25,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from actalux.diarization.vectors import l2_normalize_rows
+from actalux.diarization.vectors import l2_normalize_rows, medoid_cosines
 
 
 @dataclass(frozen=True)
@@ -82,14 +82,8 @@ def pool_turn_embeddings(
     vecs = l2_normalize_rows(np.asarray(vectors, dtype=np.float64))
     durs = np.asarray(durations, dtype=np.float64)
 
-    # Pairwise cosine (rows are normalized). Medoid = highest mean similarity to others.
-    sim = vecs @ vecs.T
-    if n == 1:
-        mean_to_others = np.array([1.0])  # a singleton is its own (weak) center
-    else:
-        mean_to_others = (sim.sum(axis=1) - 1.0) / (n - 1)
-    medoid = int(np.argmax(mean_to_others))
-    cos_to_medoid = sim[medoid]
+    # Medoid = highest mean cosine similarity to the rest (the cluster's center).
+    _medoid, cos_to_medoid = medoid_cosines(vecs)
 
     # Trim the bottom fraction by cosine-to-medoid (the contaminated tail).
     #

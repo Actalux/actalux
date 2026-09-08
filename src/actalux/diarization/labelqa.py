@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from actalux.diarization.vectors import l2_normalize_rows
+from actalux.diarization.vectors import l2_normalize_rows, medoid_cosines
 
 
 def coherent_subset(
@@ -58,13 +58,7 @@ def coherent_subset(
     if n == 0:
         return []
     vecs = l2_normalize_rows(np.asarray(vectors, dtype=np.float64))
-    sim = vecs @ vecs.T
-    if n == 1:
-        mean_to_others = np.array([1.0])
-    else:
-        mean_to_others = (sim.sum(axis=1) - 1.0) / (n - 1)
-    medoid = int(np.argmax(mean_to_others))
-    cos_to_medoid = sim[medoid]
+    medoid, cos_to_medoid = medoid_cosines(vecs)
 
     asnorm = (
         cohort_vectors is not None and z_floor is not None and len(cohort_vectors) >= min_cohort
