@@ -14,9 +14,10 @@ hook once the dataset is trusted.
 Documents neither regex grammar parses — BoA prose minutes and the Zoom-era
 table layouts — route to the LLM segmenter (G1), whose item spans are admitted
 only when each item's opening quote locates verbatim in the document. Vote
-linkage (vote_id) remains a follow-up (G4): motions live in the votes table but
-matching them to items needs the item's chunk span, which the QA report sizes
-first.
+linkage (G4) is positional: votes parse in document order, so the k-th
+occurrence of a repeated motion belongs to the k-th vote carrying it, and an
+item links to the last vote positioned inside its span (actalux.landuse.
+votes_link).
 
 Run (prefix with `doppler run --project mac --config dev --`):
   uv run python scripts/build_land_use_cases.py                 # dry run + QA report
@@ -30,6 +31,7 @@ import argparse
 import json
 import logging
 import sys
+import time
 from collections import Counter
 from datetime import date
 from pathlib import Path
@@ -170,33 +172,53 @@ def gather_appearances(client, llm, entity_ids: dict[str, int], limit: int | Non
     return appearances, qa, unsegmented, extract_failures, rejected_fields
 
 
+def _retrying(execute, attempts: int = 4):
+    """Run one PostgREST call, retrying transient network failures with backoff.
+
+    The rebuild makes ~800 sequential requests; a single dropped connection used
+    to kill the run mid-write and leave the tables partial (2026-09-08,
+    httpcore.ReadTimeout right after the QA report). Errors that persist through
+    the retries still raise — this absorbs blips, not bugs.
+    """
+    for i in range(attempts):
+        try:
+            return execute()
+        except Exception:
+            if i == attempts - 1:
+                raise
+            time.sleep(2 ** (i + 1))
+
+
 def write_cases(client, cases: list[LinkedCase], place_by_entity: dict[int, int]) -> None:
     """Rebuild the three tables from the linked cases (delete-then-insert)."""
-    client.table("land_use_case_parties").delete().gte("id", 0).execute()
-    client.table("land_use_case_events").delete().gte("id", 0).execute()
-    client.table("land_use_cases").delete().gte("id", 0).execute()
+    _retrying(lambda: client.table("land_use_case_parties").delete().gte("id", 0).execute())
+    _retrying(lambda: client.table("land_use_case_events").delete().gte("id", 0).execute())
+    _retrying(lambda: client.table("land_use_cases").delete().gte("id", 0).execute())
     for case in cases:
-        row = (
-            client.table("land_use_cases")
-            .insert(
-                {
-                    "place_id": place_by_entity[case.entity_id],
-                    "entity_id": case.entity_id,
-                    "address_raw": case.address_raw,
-                    "address_norm": case.address_norm,
-                    "application_type": case.application_type,
-                    "subtype_raw": case.subtype_raw,
-                    "status": case.status(),
-                    "decision_role": case.decision_role(),
-                    "staff_recommendation": case.staff_recommendation(),
-                    "outcome_matches_staff": case.outcome_matches_staff(),
-                    "first_seen": str(case.first_seen),
-                    "resolved_date": (str(case.resolved_date()) if case.resolved_date() else None),
-                }
+        row = _retrying(
+            lambda case=case: (
+                client.table("land_use_cases")
+                .insert(
+                    {
+                        "place_id": place_by_entity[case.entity_id],
+                        "entity_id": case.entity_id,
+                        "address_raw": case.address_raw,
+                        "address_norm": case.address_norm,
+                        "application_type": case.application_type,
+                        "subtype_raw": case.subtype_raw,
+                        "status": case.status(),
+                        "decision_role": case.decision_role(),
+                        "staff_recommendation": case.staff_recommendation(),
+                        "outcome_matches_staff": case.outcome_matches_staff(),
+                        "first_seen": str(case.first_seen),
+                        "resolved_date": (
+                            str(case.resolved_date()) if case.resolved_date() else None
+                        ),
+                    }
+                )
+                .execute()
             )
-            .execute()
-            .data[0]
-        )
+        ).data[0]
         events = [
             {
                 "case_id": row["id"],
@@ -212,7 +234,9 @@ def write_cases(client, cases: list[LinkedCase], place_by_entity: dict[int, int]
             }
             for app in case.appearances
         ]
-        client.table("land_use_case_events").insert(events).execute()
+        _retrying(
+            lambda events=events: client.table("land_use_case_events").insert(events).execute()
+        )
         seen: set[tuple[str, str]] = set()
         parties = []
         for app in case.appearances:
@@ -221,7 +245,11 @@ def write_cases(client, cases: list[LinkedCase], place_by_entity: dict[int, int]
                     seen.add((p.role, p.name_raw))
                     parties.append({"case_id": row["id"], "role": p.role, "name_raw": p.name_raw})
         if parties:
-            client.table("land_use_case_parties").insert(parties).execute()
+            _retrying(
+                lambda parties=parties: (
+                    client.table("land_use_case_parties").insert(parties).execute()
+                )
+            )
 
 
 def main() -> int:
