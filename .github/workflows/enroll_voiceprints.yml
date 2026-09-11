@@ -18,6 +18,14 @@ name: enroll-voiceprints
 on:
   workflow_dispatch:
     inputs:
+      state:
+        description: "Place state slug (e.g. mo)"
+        required: true
+        default: "mo"
+      place:
+        description: "Place slug (e.g. clayton)"
+        required: true
+        default: "clayton"
       min_seconds:
         description: "Minimum speech seconds to enroll a sample"
         required: false
@@ -94,12 +102,14 @@ jobs:
 
       - name: Enroll voiceprints (download audio + embed on Modal + upsert gallery)
         env:
+          STATE: ${{ inputs.state }}
+          PLACE: ${{ inputs.place }}
           MIN_SECONDS: ${{ inputs.min_seconds }}
           CONFIRMED_ONLY: ${{ inputs.confirmed_only }}
           REEMBED: ${{ inputs.reembed }}
           LIMIT: ${{ inputs.limit }}
         run: |
-          ARGS="--apply --proxy socks5h://127.0.0.1:40000"
+          ARGS="--state $STATE --place $PLACE --apply --proxy socks5h://127.0.0.1:40000"
           [ -n "$MIN_SECONDS" ] && ARGS="$ARGS --min-seconds $MIN_SECONDS"
           [ "$CONFIRMED_ONLY" = "true" ] && ARGS="$ARGS --confirmed-only"
           [ "$REEMBED" = "true" ] && ARGS="$ARGS --reembed"
