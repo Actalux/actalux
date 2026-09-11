@@ -1724,9 +1724,7 @@ def facilities_plan(request: Request, view: EntityView = Depends(resolve_entity)
     # as crawled), and the construction/budget slice of the Sunshine-Law
     # production (curated by exact filename in facilities_plan_data; the
     # election-communications records deliberately stay out of this section).
-    prop_o_updates = list_documents(
-        client, entity_id, source_url_like=fpd.PROP_O_UPDATES_URL_LIKE
-    )
+    prop_o_updates = list_documents(client, entity_id, source_url_like=fpd.PROP_O_UPDATES_URL_LIKE)
     prop_o_records = list_documents(
         client, entity_id, source_files=list(fpd.PROP_O_SUNSHINE_FILES), limit=100
     )

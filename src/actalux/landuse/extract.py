@@ -73,6 +73,7 @@ def normalize_role(role) -> str | None:
         return r
     return _ROLE_NORM.get(r, "other")
 
+
 SYSTEM_PROMPT = """\
 You extract structured facts from municipal meeting minutes. You are given the \
 verbatim text of ONE business item. Answer in strict JSON only, no markdown.
