@@ -247,6 +247,40 @@
   </ul>
 </section>
 
+{# K. Prop O: the construction program's records — the district's own
+   construction-update posts plus the construction/budget records obtained
+   under the Missouri Sunshine Law. Communications/election records stay out
+   of this section by design. No completeness claim. #}
+{% if prop_o_updates or prop_o_groups %}
+<section class="fp-section">
+  <div class="section-label">Prop O facility improvements — records</div>
+  <p class="hint">In April 2026 district voters approved Proposition O, a bond issue funding
+  facility improvements. Records we have gathered on the construction program: the district's
+  construction updates, and contracts, invoices, and payments obtained under the Missouri
+  Sunshine Law.</p>
+
+  {% if prop_o_updates %}
+  <div class="section-label" style="margin-top: 12px;">Construction updates</div>
+  {% for d in prop_o_updates %}
+  <a class="result-item" href="/document/{{ d.id }}" style="display: block; border-bottom: 1px solid var(--rule); margin-bottom: 0;">
+    <span class="kind">{{ d.meeting_date }}</span>
+    <div class="snippet"><strong>{{ d | display_title }}</strong></div>
+  </a>
+  {% endfor %}
+  {% endif %}
+
+  {% for label, docs in prop_o_groups %}
+  <div class="section-label" style="margin-top: 12px;">{{ label }}</div>
+  {% for d in docs %}
+  <a class="result-item" href="/document/{{ d.id }}" style="display: block; border-bottom: 1px solid var(--rule); margin-bottom: 0;">
+    <span class="kind">{{ d.meeting_date }}</span>
+    <div class="snippet"><strong>{{ d | display_title }}</strong></div>
+  </a>
+  {% endfor %}
+  {% endfor %}
+</section>
+{% endif %}
+
 {# J. Primary-source documents — clean cards, no completeness claim. #}
 {% if documents %}
 <section class="fp-section">

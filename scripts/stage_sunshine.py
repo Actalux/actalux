@@ -27,6 +27,7 @@ import argparse
 import json
 import logging
 import shutil
+import subprocess
 from pathlib import Path
 
 from actalux.ingest import pii_guard
@@ -295,6 +296,17 @@ INCLUDE: list[tuple[str, str, str, str, str, str]] = [
         "content",
         "BLDD Architects facilities-planning contract",
     ),
+    # AIA B133 architect agreement for the Prop O construction program. Scanned
+    # (no text layer) — staged copy is OCR'd, see OCR_FILES. Date from the OCR'd
+    # body: "AGREEMENT made as of the 25th day of July in the year 2025".
+    (
+        _P2,
+        "Paragon Architecture Perkins Will Contract 2025.pdf",
+        "contract",
+        "2025-07-25",
+        "content",
+        "Paragon Architecture / Perkins&Will architect agreement (AIA B133)",
+    ),
     # --- Communications-vendor spending ---
     (
         _P1,
@@ -416,6 +428,31 @@ INCLUDE: list[tuple[str, str, str, str, str, str]] = [
 ]
 
 
+# Scanned originals with no text layer: the staged COPY gets a text layer via
+# ocrmypdf (the bundle original is never modified). Everything downstream —
+# parse, chunk, PII scan, ingest — then reads the OCR text like any other PDF.
+OCR_FILES = frozenset({"Paragon Architecture Perkins Will Contract 2025.pdf"})
+
+
+def _ocr_in_place(path: Path) -> None:
+    """Add a text layer to a staged scanned PDF, trying ocrmypdf then uvx ocrmypdf.
+
+    (The Homebrew ocrmypdf on this machine is missing its XML module; uvx runs a
+    self-contained install. Tesseract must be present either way.)
+    """
+    for cmd in (["ocrmypdf"], ["uvx", "ocrmypdf"]):
+        try:
+            subprocess.run(
+                [*cmd, "--quiet", "--skip-text", str(path), str(path)],
+                check=True,
+                capture_output=True,
+            )
+            return
+        except (FileNotFoundError, subprocess.CalledProcessError) as exc:
+            last = exc
+    raise SystemExit(f"OCR failed for {path.name}: {last}")
+
+
 def stage(src_root: Path, out_dir: Path) -> list[dict[str, str]]:
     """Copy each included file into out_dir and return manifest entries."""
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -427,6 +464,9 @@ def stage(src_root: Path, out_dir: Path) -> list[dict[str, str]]:
             missing.append(str(src))
             continue
         shutil.copy2(src, out_dir / filename)
+        if filename in OCR_FILES:
+            logger.info("OCR (staged copy only): %s", filename)
+            _ocr_in_place(out_dir / filename)
         manifest.append(
             {
                 "source_file": filename,
