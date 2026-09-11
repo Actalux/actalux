@@ -83,6 +83,18 @@ worse than no vote.
 **Acceptance:** ≥ 70% of decisive PC events carry a vote_id; zero links where
 the motion text is not verbatim-present in the item body.
 
+**Outcome (2026-09-08):** precision holds (positional pairing, 15/15 sampled
+links verified, every one of the corpus's 698 parsed votes positioned) but
+coverage landed at **48% of decisive PC events**, not 70%. The binding
+constraint is vote-parser recall, not linkage: the minutes record more motions
+than the strict-format vote parsers extracted, and a vote row that does not
+exist cannot be linked. Raising this number means extending votes_parser
+recall (a separate, body-wide project with its own citation gates) — not
+loosening the linker, which stays exact. Also learned: motion-in-body text
+matching alone is unusable here — doc 1250 decides three different items with
+byte-identical motion sentences, which is why linkage is positional (k-th
+occurrence of a repeated motion belongs to the k-th vote in parse order).
+
 ## G5 — nightly maintenance hook
 
 Once G1–G2 land, wire `build_land_use_cases.py --apply` into `crawl_minutes.yml`
