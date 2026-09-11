@@ -481,7 +481,7 @@ class TestFacilitiesPlanTopic:
     @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
     @patch(
         "actalux.web.app.list_documents",
-        side_effect=[[_FAKE_VOLUME], [_FAKE_PRESENTATION]],
+        side_effect=[[_FAKE_VOLUME], [_FAKE_PRESENTATION], [], []],
     )
     @patch("actalux.web.app.resolve_source_anchor", return_value=1919)
     def test_facilities_plan_renders_structured_briefing(
@@ -529,7 +529,9 @@ class TestFacilitiesPlanTopic:
 
     @patch("actalux.web.app._get_db")
     @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
-    @patch("actalux.web.app.list_documents", side_effect=[[_FAKE_VOLUME], [_FAKE_PRESENTATION]])
+    @patch(
+        "actalux.web.app.list_documents", side_effect=[[_FAKE_VOLUME], [_FAKE_PRESENTATION], [], []]
+    )
     @patch("actalux.web.app.resolve_source_anchor", return_value=1919)
     def test_facilities_plan_bond_approved_with_certified_citation(
         self, mock_anchor, mock_list, mock_ent, mock_db
@@ -560,7 +562,57 @@ class TestFacilitiesPlanTopic:
 
     @patch("actalux.web.app._get_db")
     @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
-    @patch("actalux.web.app.list_documents", side_effect=[[_FAKE_VOLUME], [_FAKE_VOLUME]])
+    @patch(
+        "actalux.web.app.list_documents",
+        side_effect=[
+            [],  # volumes
+            [],  # presentations
+            [  # Prop O construction-update posts (origin-URL selected)
+                {
+                    "id": 91,
+                    "meeting_title": "Board Update - Sept. 2",
+                    "document_type": "communication",
+                    "meeting_date": "2026-09-03",
+                    "summary": None,
+                }
+            ],
+            [  # Prop O sunshine records (curated by source_file)
+                {
+                    "id": 92,
+                    "meeting_title": "Paragon/Perkins&Will architect agreement",
+                    "document_type": "contract",
+                    "meeting_date": "2025-07-25",
+                    "summary": None,
+                },
+                {
+                    "id": 93,
+                    "meeting_title": "Paragon Architecture invoice 25-965-01",
+                    "document_type": "invoice",
+                    "meeting_date": "2025-08-22",
+                    "summary": None,
+                },
+            ],
+        ],
+    )
+    @patch("actalux.web.app.resolve_source_anchor", return_value=1919)
+    def test_facilities_plan_prop_o_section_groups_records(
+        self, mock_anchor, mock_list, mock_ent, mock_db
+    ) -> None:
+        r = client.get("/mo/clayton/schools/facilities-plan")
+        assert r.status_code == 200
+        assert "Prop O facility improvements" in r.text
+        # Updates and records render in their groups, linked to the documents.
+        assert "Construction updates" in r.text
+        assert "Board Update - Sept. 2" in r.text
+        assert "Architect agreements" in r.text
+        assert "Invoices" in r.text
+        assert 'href="/document/92"' in r.text
+        # Neutral, no-completeness framing per the content policy.
+        assert "Records we have gathered" in r.text
+
+    @patch("actalux.web.app._get_db")
+    @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
+    @patch("actalux.web.app.list_documents", side_effect=[[_FAKE_VOLUME], [_FAKE_VOLUME], [], []])
     @patch("actalux.web.app.resolve_source_anchor", return_value=1919)
     def test_facilities_plan_dedupes_curated_documents(
         self, mock_anchor, mock_list, mock_ent, mock_db
@@ -572,7 +624,9 @@ class TestFacilitiesPlanTopic:
 
     @patch("actalux.web.app._get_db")
     @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
-    @patch("actalux.web.app.list_documents", side_effect=[[_FAKE_VOLUME], [_FAKE_PRESENTATION]])
+    @patch(
+        "actalux.web.app.list_documents", side_effect=[[_FAKE_VOLUME], [_FAKE_PRESENTATION], [], []]
+    )
     @patch("actalux.web.app.resolve_source_anchor", return_value=None)
     def test_facilities_plan_renders_when_anchor_unresolved(
         self, mock_anchor, mock_list, mock_ent, mock_db

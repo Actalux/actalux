@@ -342,3 +342,65 @@ TIMELINE = (
         CitedChunk(8710),  # St. Louis County certified results (doc 504)
     ),
 )
+
+
+# --- Prop O records (construction and budget only) --------------------------
+#
+# The construction/budget slice of the Sunshine-Law production, curated by
+# exact source_file (the stable document identity across re-ingest). The same
+# production also contains election-communications spending records (Susan
+# Downing, Modern Litho, Donovan Group, Excellence K-12) — those stay in the
+# archive and out of this section by operator decision (2026-09-11): this
+# section is the construction program and its money, not the campaign.
+PROP_O_SUNSHINE_FILES: tuple[str, ...] = (
+    # Architect agreements
+    "BLDDcontract-signed.pdf",
+    "Paragon Architecture Perkins Will Contract 2025.pdf",
+    # Design-fee invoices (Paragon Architecture, capital projects fund)
+    "25-965-01 Invoice 2025-08-22.pdf",
+    "25-965-02 Invoice 2025-09-30.pdf",
+    "25-965-03 Invoice 2025-10-30.pdf",
+    "25-965-04 Invoice 2025-11-18.pdf",
+    "25-965-05 Invoice 2026-02-28.pdf",
+    "25-966-01 Invoice 2025-11-18.pdf",
+    "25-966-02 Invoice 2025-12-04.pdf",
+    "25-966-03 Invoice 2026-01-16.pdf",
+    "25-967-01 Invoice 2025-11-18.pdf",
+    "25-967-02 Invoice 2026-01-28.pdf",
+    "25-968-01 Invoice 2025-11-18.pdf",
+    "25-968-02 Invoice 2026-01-16.pdf",
+    "25-968-03 Invoice 2026-01-26.pdf",
+    "25-969-01 Invoice 2025-11-18.pdf",
+    "25-969-02 Invoice 2026-01-16.pdf",
+    "25-969-03 Invoice 2026-01-26.pdf",
+    "25-981-01 Invoice 2025-11-18.pdf",
+    "25-981-02 Invoice 2025-12-04.pdf",
+    # BLDD Architects invoices ("Clatyon" is the vendor's own typo, kept verbatim)
+    "257EF01.400 Clatyon 11-25-2025 Inv 6431.pdf",
+    "257EF01.400 Clayton 1-31-2026 Inv 6517.pdf",
+    "257EF01.400 Clayton 10-31-2025 Inv 6321.pdf",
+    "257EF01.400 Clayton 12-31-2025 Inv 6485.pdf",
+    "257EF01.400 Clayton 9-30-2025 Inv 6298.pdf",
+    # Payments to the architecture firms
+    "BLDD Check238580, 11.7.25.pdf",
+    "BLDD Check238726, 12.5.25.pdf",
+    "BLDD Check239103, 2.6.26.pdf",
+    "Paragon Architecture Check238601, 11.7.25.pdf",
+    "Paragon Architecture Check238765, 12.5.25.pdf",
+    "Paragon Architecture Check239093, 1.30.26.pdf",
+    # The facilities plan presentation to the Board (Feb 18, 2026)
+    "2026-02-18-Clayton Board of Education Meeting.pdf",
+)
+
+# Display order and labels for the Prop O record groups (keyed by document_type).
+PROP_O_GROUPS: tuple[tuple[str, str], ...] = (
+    ("contract", "Architect agreements"),
+    ("invoice", "Invoices"),
+    ("check", "Payments"),
+    ("presentation", "Plan presentation"),
+)
+
+# The district's own construction-update posts (the facility-improvements news
+# stream) are selected by origin URL, not curated here — new posts flow in as
+# the comms crawler picks them up.
+PROP_O_UPDATES_URL_LIKE = "%facility-improvements%"

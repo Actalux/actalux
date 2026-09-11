@@ -3,9 +3,11 @@
 
 The district publishes press releases, board/budget news, superintendent and
 board messages, and its "Inside Clayton" newsletter as native HTML posts in one
-stream at https://www.claytonschools.net/about-us/district-news. There is no RSS
-or JSON feed, but the listing page server-renders every current post link, and
-each post page exposes a clean headline, publication date, and body.
+stream at https://www.claytonschools.net/about-us/district-news, and publishes
+facilities-project news (board construction updates, schematic designs) in a
+separate stream under /about-us/facility-improvements. There is no RSS or JSON
+feed, but each listing page server-renders every current post link, and each
+post page exposes a clean headline, publication date, and body.
 
 This downloads each post as a minimal HTML file (headline + body paragraphs) into
 data/documents/ and writes a manifest for the standard ingester:
@@ -44,7 +46,15 @@ from bs4 import BeautifulSoup
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-LISTING_URL = "https://www.claytonschools.net/about-us/district-news"
+# Two post streams, same CMS widget. district-news is the general stream; the
+# facility-improvements section runs its OWN news feed (board construction
+# updates, schematic designs) that only occasionally cross-posts to
+# district-news — the Prop O results announcement was the only crossover, which
+# is how the section stayed invisible until 2026-09-11.
+LISTING_URLS = (
+    "https://www.claytonschools.net/about-us/district-news",
+    "https://www.claytonschools.net/about-us/facility-improvements/facility-improvements-news-page",
+)
 OUTPUT_DIR = Path("data/documents")
 MANIFEST_PATH = OUTPUT_DIR / "comms_manifest.json"
 SOURCE_PORTAL = "claytonschools"
@@ -69,12 +79,14 @@ def _fetch(client: httpx.Client, url: str, *, delay: bool) -> httpx.Response | N
 
 
 def discover_post_urls(client: httpx.Client) -> list[str]:
-    """Return the post URLs linked from the district-news listing, in page order."""
-    resp = _fetch(client, LISTING_URL, delay=False)
-    if resp is None:
-        return []
-    soup = BeautifulSoup(resp.text, "lxml")
-    urls = [urljoin(LISTING_URL, a["href"]) for a in soup.select("a.fsPostLink[href]")]
+    """Post URLs from every listing, in page order (cross-posts de-duped)."""
+    urls: list[str] = []
+    for i, listing in enumerate(LISTING_URLS):
+        resp = _fetch(client, listing, delay=i > 0)
+        if resp is None:
+            continue
+        soup = BeautifulSoup(resp.text, "lxml")
+        urls += [urljoin(listing, a["href"]) for a in soup.select("a.fsPostLink[href]")]
     return list(dict.fromkeys(urls))  # de-dupe, preserve order
 
 

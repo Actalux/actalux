@@ -295,13 +295,19 @@ def list_documents(
     *,
     document_type: str | None = None,
     source_file_like: str | None = None,
+    source_files: list[str] | None = None,
+    source_url_like: str | None = None,
     limit: int = 500,
 ) -> list[dict[str, Any]]:
     """List current documents for browse-by-type, newest meeting first.
 
     Filters are ANDed; ``source_file_like`` is an ILIKE pattern (used for
     curriculum maps, which share ``document_type='other'`` and are identified
-    by filename instead). Superseded versions (``replaces_id`` set) are excluded.
+    by filename instead); ``source_files`` is an exact IN-list (used for curated
+    document sets, where filenames are the stable identity across re-ingest);
+    ``source_url_like`` matches the document's origin URL (used for site
+    sections, e.g. the facility-improvements news stream). Superseded versions
+    (``replaces_id`` set) are excluded.
     """
     query = (
         client.table("documents")
@@ -314,6 +320,10 @@ def list_documents(
         query = query.eq("document_type", document_type)
     if source_file_like is not None:
         query = query.ilike("source_file", source_file_like)
+    if source_files is not None:
+        query = query.in_("source_file", source_files)
+    if source_url_like is not None:
+        query = query.ilike("source_url", source_url_like)
     result = query.order("meeting_date", desc=True).limit(limit).execute()
     return result.data or []
 

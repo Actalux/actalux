@@ -1719,6 +1719,24 @@ def facilities_plan(request: Request, view: EntityView = Depends(resolve_entity)
     seen = {d["id"] for d in volumes}
     documents = volumes + [d for d in presentations if d["id"] not in seen]
 
+    # Prop O: the construction program's records. Two sources — the district's
+    # own construction-update posts (selected by origin URL so new posts flow in
+    # as crawled), and the construction/budget slice of the Sunshine-Law
+    # production (curated by exact filename in facilities_plan_data; the
+    # election-communications records deliberately stay out of this section).
+    prop_o_updates = list_documents(
+        client, entity_id, source_url_like=fpd.PROP_O_UPDATES_URL_LIKE
+    )
+    prop_o_records = list_documents(
+        client, entity_id, source_files=list(fpd.PROP_O_SUNSHINE_FILES), limit=100
+    )
+    by_type: dict[str, list[dict]] = {}
+    for d in prop_o_records:
+        by_type.setdefault(d["document_type"], []).append(d)
+    prop_o_groups = [
+        (label, by_type[doc_type]) for doc_type, label in fpd.PROP_O_GROUPS if doc_type in by_type
+    ]
+
     return templates.TemplateResponse(
         request,
         "facilities_plan.html",
@@ -1726,6 +1744,8 @@ def facilities_plan(request: Request, view: EntityView = Depends(resolve_entity)
             view,
             active="topic-facilities",
             documents=documents,
+            prop_o_updates=prop_o_updates,
+            prop_o_groups=prop_o_groups,
             **_facilities_plan_context(client),
         ),
     )
