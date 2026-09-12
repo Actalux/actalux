@@ -9,8 +9,9 @@ implied by whichever caller happens to be covered.
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
-from actalux.diarization.vectors import l2_normalize_rows
+from actalux.diarization.vectors import l2_normalize_rows, medoid_cosines
 
 
 class TestL2NormalizeRows:
@@ -52,3 +53,22 @@ class TestL2NormalizeRows:
     def test_single_row_and_empty_input(self) -> None:
         assert np.allclose(l2_normalize_rows(np.array([[5.0]])), [[1.0]])
         assert l2_normalize_rows(np.zeros((0, 4))).shape == (0, 4)
+
+
+class TestMedoidCosines:
+    """The medoid helper shared by pooling and labelqa (one implementation, two callers)."""
+
+    def test_medoid_is_the_row_closest_to_the_rest(self) -> None:
+        # Two near-identical rows and one orthogonal outlier: the medoid must be
+        # one of the pair, and every cosine reported is the medoid's own row.
+        vecs = l2_normalize_rows(np.array([[1.0, 0.0], [0.98, 0.2], [0.0, 1.0]]))
+        medoid, cos = medoid_cosines(vecs)
+        assert medoid in (0, 1)
+        assert cos.shape == (3,)
+        assert cos[medoid] == pytest.approx(1.0)
+        assert cos[2] < cos[1 - medoid]
+
+    def test_singleton_anchors_on_itself(self) -> None:
+        medoid, cos = medoid_cosines(l2_normalize_rows(np.array([[3.0, 4.0]])))
+        assert medoid == 0
+        assert cos.tolist() == pytest.approx([1.0])
