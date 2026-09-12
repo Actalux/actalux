@@ -609,6 +609,12 @@ class TestFacilitiesPlanTopic:
         assert 'href="/document/92"' in r.text
         # Neutral, no-completeness framing per the content policy.
         assert "Records we have gathered" in r.text
+        # Program-budget figures render verbatim, each with a citation link.
+        assert "Program budget, as stated in the record" in r.text
+        assert "$114 million" in r.text
+        assert "$17–20 million, soft costs included" in r.text
+        # The missing number is stated as missing, never invented.
+        assert "No guaranteed maximum price has been set" in r.text
 
     @patch("actalux.web.app._get_db")
     @patch("actalux.web.app.get_entity_by_path", return_value=_FAKE_ENTITY)
