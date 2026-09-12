@@ -252,10 +252,28 @@ def write_cases(client, cases: list[LinkedCase], place_by_entity: dict[int, int]
             )
 
 
+def unparsed_exceeds(unparsed: int, limit: int | None) -> bool:
+    """The nightly tripwire: True when the unparsed-document count is over the limit.
+
+    Checked before any write, so a run that trips it leaves the previous dataset
+    in place — the same catch-it-in-the-run-that-introduces-it philosophy as
+    check_meeting_dates.py. ``None`` disables the check (manual runs).
+    """
+    return limit is not None and unparsed > limit
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true", help="write to the DB (default: dry run)")
     parser.add_argument("--limit", type=int, help="first N minutes docs per body")
+    parser.add_argument(
+        "--max-unparsed",
+        type=int,
+        help=(
+            "fail (exit 1, nothing written) if more than N documents parse to no "
+            "items — the nightly tripwire against a segmentation regression"
+        ),
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -330,6 +348,15 @@ def main() -> int:
             f.write(json.dumps({"reason": "extract error", **x}) + "\n")
     logger.info("review file: %s", REVIEW_PATH)
 
+    if unparsed_exceeds(qa["docs_unparsed"], args.max_unparsed):
+        logger.error(
+            "unparsed=%d exceeds --max-unparsed %d: a segmentation regression, or new "
+            "minutes in a format neither grammar nor the LLM segmenter handles. "
+            "Nothing written; the previous dataset stands.",
+            qa["docs_unparsed"],
+            args.max_unparsed,
+        )
+        return 1
     if not args.apply:
         logger.info("Dry run. Re-run with --apply to write.")
         return 0

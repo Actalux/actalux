@@ -55,7 +55,7 @@ concurrency:
 jobs:
   crawl:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
     env:
       ACTALUX_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       ACTALUX_SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
@@ -134,11 +134,15 @@ jobs:
           [ "$MINUTES_ONLY" = "true" ] && ARGS="$ARGS --minutes-only"
           uv run --with playwright python scripts/crawl_civicplus.py $ARGS
 
+      # The ingest log is kept so the land-use rebuild below can tell whether
+      # anything actually changed (most days are dedup no-ops).
       - name: Ingest documents
         if: ${{ github.event_name == 'schedule' || inputs.ingest }}
         run: |
+          set -o pipefail
           if [ -f data/documents/civicplus_manifest.json ]; then
-            uv run python scripts/ingest.py --manifest data/documents/civicplus_manifest.json --body "$BODY"
+            uv run python scripts/ingest.py --manifest data/documents/civicplus_manifest.json --body "$BODY" \
+              2>&1 | tee data/ingest.log
           else
             echo "::warning::no documents crawled; nothing to ingest"
           fi
@@ -170,6 +174,29 @@ jobs:
           else
             echo "::notice::no documents ingested; skipping member-vote projection"
           fi
+
+      # The stealth land-use case dataset is a full rebuild (linking is global —
+      # a case spans meetings), so it runs only when this crawl changed a
+      # land-use body's minutes: council crawls never touch it, and a dedup
+      # no-op day skips the ~40 minutes of LLM extraction. --max-unparsed is the
+      # tripwire: a rebuild that parses more documents to nothing than the
+      # post-G1 baseline fails before writing, leaving the previous dataset in
+      # place. Design: docs/architecture/land-use-cases-gap-closing.md (G5).
+      - name: Rebuild land-use case dataset
+        if: ${{ (github.event_name == 'schedule' || inputs.ingest) && env.BODY != 'council' }}
+        run: |
+          if [ ! -f data/ingest.log ]; then
+            echo "::notice::nothing ingested; land-use dataset unchanged"
+            exit 0
+          fi
+          CHANGED=$(grep -oE "[0-9]+ new, [0-9]+ updated" data/ingest.log | \
+            awk '{ n += $1 + $3 } END { print n + 0 }')
+          if [ "$CHANGED" = "0" ]; then
+            echo "::notice::no new or updated minutes for $BODY; land-use dataset unchanged"
+            exit 0
+          fi
+          echo "$CHANGED document(s) changed for $BODY; rebuilding the land-use dataset"
+          uv run python scripts/build_land_use_cases.py --apply --max-unparsed 7
 
       - name: Generate document summaries
         if: ${{ github.event_name == 'schedule' || inputs.ingest }}
