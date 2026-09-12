@@ -105,6 +105,16 @@ rises above its post-G1 baseline (same tripwire philosophy as
 Full-rebuild stays acceptable at this corpus size; incremental rebuild is not
 worth its drift risk yet.
 
+**Outcome (2026-09-12):** wired into `crawl_minutes.yml` after the member-vote
+projection, on the plan-commission and board-of-adjustment crons only (a council
+crawl never touches land-use minutes), and only when that crawl's ingest log
+reports ≥1 new or updated document — a dedup no-op day skips the ~40-minute LLM
+rebuild. Tripwire: `--max-unparsed 7` (the post-G1 baseline; latest run 6). The
+check runs **before** any write, so a tripped run leaves the previous dataset
+standing. The rebuild's PostgREST writes retry transient failures (added after a
+2026-09-08 ReadTimeout left the tables half-written), which is what makes an
+unattended run trustworthy.
+
 ## Order and dependencies
 
 G1 → G2 (BoA items must exist before their types can be tuned) → G5 (hook only
