@@ -1659,6 +1659,7 @@ def _facilities_plan_context(client: Client) -> dict[str, Any]:
     # pair each with its durable reference so the template links every figure and
     # step to the exact passage it was read from, stable across re-ingest.
     funding_facts = [(f, cite_ref(f.source)) for f in fpd.FUNDING_FACTS]
+    prop_o_budget_facts = [(f, cite_ref(f.source)) for f in fpd.PROP_O_BUDGET_FACTS]
     timeline = [(m, cite_ref(m.source)) for m in fpd.TIMELINE]
 
     return {
@@ -1671,6 +1672,7 @@ def _facilities_plan_context(client: Client) -> dict[str, Any]:
         # numeric chunk id); the template's src() macro links and hashes it as-is.
         "delivery_chunk_id": cite_ref(fpd.DELIVERY_SOURCE),
         "consultant_chunk_id": cite_ref(fpd.CONSULTANT_SOURCE),
+        "prop_o_budget_facts": prop_o_budget_facts,
         "site_count": fpd.SITE_COUNT,
         "grand_total": fpd.GRAND_TOTAL,
         "tiers": fpd.TIERS,

@@ -259,6 +259,18 @@
   construction updates, and contracts, invoices, and payments obtained under the Missouri
   Sunshine Law.</p>
 
+  {% if prop_o_budget_facts %}
+  <div class="section-label" style="margin-top: 12px;">Program budget, as stated in the record</div>
+  <ul class="fp-facts">
+    {% for f, chunk_id in prop_o_budget_facts %}
+    <li><span class="fact-label">{{ f.label }}</span><span>{{ f.value }}
+      {{ src(chunk_id) }}</span></li>
+    {% endfor %}
+  </ul>
+  <p class="hint">No guaranteed maximum price has been set as of September 2026 — the board
+  was told it will be established after competitive bids.</p>
+  {% endif %}
+
   {% if prop_o_updates %}
   <div class="section-label" style="margin-top: 12px;">Construction updates</div>
   {% for d in prop_o_updates %}

@@ -162,7 +162,7 @@ OPTIONS_SOURCE = Source(83, "Does not include acquisition and renovation of swin
 class FundingFact:
     label: str
     value: str
-    source: Source
+    source: Source | CitedChunk
 
 
 # The bonding-capacity line is the plan's Feb 2025 PROJECTION, not the funding
@@ -404,3 +404,41 @@ PROP_O_GROUPS: tuple[tuple[str, str], ...] = (
 # stream) are selected by origin URL, not curated here — new posts flow in as
 # the comms crawler picks them up.
 PROP_O_UPDATES_URL_LIKE = "%facility-improvements%"
+
+
+# Program-budget figures for the Prop O section, each verbatim from a public
+# record. The bond-funded figures come from the Feb 18, 2026 facilities deck
+# (doc 661, anchor-cited); the budget-funded range and the FY27 capital figure
+# straddle a chunk-overlap boundary in their sources, so they cite the chunk
+# directly (CitedChunk, stable citation_id verified: 85f124c6 / 9d1b46f9 /
+# 3db5d6e2), the same way the bond resolution facts do. The GMP is deliberately
+# absent: as of Sept 2026 no guaranteed maximum price exists yet — the board
+# was told it will be set after competitive bids (9/2/26 meeting).
+PROP_O_BUDGET_FACTS: tuple[FundingFact, ...] = (
+    FundingFact(
+        "Phase One bond-funded projects — schematic-design estimate",
+        "$114 million",
+        Source(661, "Total Program Budget SD Estimate $114 million"),
+    ),
+    FundingFact(
+        "Phase One expected range",
+        "$110–135 million (bonding capacity: $135 million)",
+        Source(661, "Expected Range $110-135 million SD Estimate"),
+    ),
+    FundingFact(
+        "Budget-funded projects (CHS performing arts, ball fields, Wydown, "
+        "Bridge Campus) — expected range",
+        "$17–20 million, soft costs included",
+        CitedChunk(77655),
+    ),
+    FundingFact(
+        "FY27 budget, first-phase capital improvements",
+        "≈$8 million",
+        CitedChunk(9037),
+    ),
+    FundingFact(
+        "Phase 1 scope (bond-funded)",
+        "Glenridge Elementary, Clayton High School academic wing, Gay Field",
+        CitedChunk(78444),
+    ),
+)
