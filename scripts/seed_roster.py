@@ -89,24 +89,46 @@ def _alias_rows(subject_id: int, canonical_name: str, raw_aliases: list[str]) ->
 
 
 def _subject_metadata(member: dict) -> dict:
-    """Display/audit metadata stored on the subject (role/ward/source)."""
-    return {
+    """Display/audit metadata stored on the subject (role/ward/source).
+
+    A member with non-contiguous service carries the per-window bases under
+    ``terms`` instead of the single-window ``term_*_basis`` pair.
+    """
+    meta = {
         "role": member.get("role"),
         "ward": member.get("ward"),
         "term_start_basis": member.get("term_start_basis"),
         "term_end_basis": member.get("term_end_basis"),
         "source": member.get("source"),
     }
+    if member.get("terms"):
+        meta["terms"] = member["terms"]
+    return meta
 
 
-def _membership_row(member: dict, entity_id: int) -> dict:
-    """One body-membership for a subject (the per-body role + term window)."""
-    return {
-        "entity_id": entity_id,
-        "role": member.get("role"),
-        "start_date": member.get("term_start"),
-        "end_date": member.get("term_end"),
-    }
+def _membership_rows(member: dict, entity_id: int) -> list[dict]:
+    """Body-membership windows for a subject (the per-body role + term windows).
+
+    Most members serve one continuous stretch and give ``term_start``/``term_end``.
+    Service can be interrupted, though — a member term-limited out who is later
+    re-elected — and one window spanning the break would wrongly cover the years
+    they were not seated, which is exactly what the resolver's tenure check exists
+    to prevent. Such a member gives a ``terms`` list instead, one entry per window,
+    and each becomes its own row. ``RosterSubject.seated_on`` already accepts a
+    date covered by ANY window, so several rows need no resolver change.
+    """
+    terms = member.get("terms")
+    if not terms:
+        terms = [{"start": member.get("term_start"), "end": member.get("term_end")}]
+    return [
+        {
+            "entity_id": entity_id,
+            "role": term.get("role") or member.get("role"),
+            "start_date": term.get("start"),
+            "end_date": term.get("end"),
+        }
+        for term in terms
+    ]
 
 
 def build_people(bodies: dict, entity_by_body: dict, place_id: int) -> dict[str, dict]:
@@ -177,7 +199,7 @@ def build_people(bodies: dict, entity_by_body: dict, place_id: int) -> dict[str,
                     },
                     "entity_id": entity_id,
                     "body_slug": body_slug,
-                    "membership": _membership_row(member, entity_id),
+                    "memberships": _membership_rows(member, entity_id),
                     "aliases": person["aliases"],  # shared union; copied to each board
                 }
             )
@@ -234,14 +256,16 @@ def _apply_person(client, plan: dict) -> tuple[int, int, int]:
         )
         subject_id = subject_row.data[0]["id"]
 
-        # Demote before replacing the membership so a partial failure (delete ok, insert
+        # Demote before replacing the memberships so a partial failure (delete ok, insert
         # fails) leaves a recoverable state, not a publishable membership-less subject.
         client.table("subjects").update({"publishable": False}).eq("id", subject_id).execute()
 
-        # Replace this subject's membership (one body per per-board subject).
+        # Replace this subject's membership windows. Usually one, but a member whose
+        # service was interrupted (term-limited out, later re-elected) carries one row
+        # per window so the gap stays uncovered.
         client.table("memberships").delete().eq("subject_id", subject_id).execute()
         client.table("memberships").insert(
-            [{"subject_id": subject_id, **sp["membership"]}]
+            [{"subject_id": subject_id, **m} for m in sp["memberships"]]
         ).execute()
 
         # Replace aliases (so a removed alias in the file is removed in the DB).
@@ -253,7 +277,7 @@ def _apply_person(client, plan: dict) -> tuple[int, int, int]:
         # Now that a membership exists, the trigger permits publishable.
         client.table("subjects").update({"publishable": True}).eq("id", subject_id).execute()
         n_subjects += 1
-        n_memberships += 1
+        n_memberships += len(sp["memberships"])
         n_aliases += len(aliases)
 
     # Now that >=1 publishable subject exists, the person may publish.
@@ -318,7 +342,10 @@ def main() -> int:
             s, m, a = _apply_person(client, plan)
         else:
             s = len(plan["subjects"])
-            m = sum(1 for _ in plan["subjects"])
+            # Count the actual windows, not one per subject: a member with interrupted
+            # service writes several, and a dry run that under-reports what --apply
+            # will write is worse than no dry run.
+            m = sum(len(sp["memberships"]) for sp in plan["subjects"])
             a = sum(
                 len(_alias_rows(0, sp["subject"]["canonical_name"], sorted(sp["aliases"])))
                 for sp in plan["subjects"]
