@@ -76,7 +76,7 @@ land_use_case_parties (
 ```
 
 `application_type` vocab: `conditional_use | site_plan | variance | subdivision |
-rezoning | text_amendment | other`. The v1 ingest filter keeps only these; ARB
+rezoning | text_amendment | planned_unit_development | other`. The v1 ingest filter keeps only these; ARB
 rows are never created rather than created-then-hidden.
 
 ## Pipeline

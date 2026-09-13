@@ -59,6 +59,23 @@ by evidence, never by plausibility.
 classified cases change type (regression assert in the test suite, same
 zero-change discipline as the filename-parser extension).
 
+**Outcome (2026-09-01 → 09-12):** the measured `other` population was three
+things — plat/boundary-adjustment items (→ subdivision), legacy ARB residence
+fragments (→ arb, correctly dropped), and two clusters the locked vocabulary had
+no type for: **Planned Unit Developments** and **Plan Commission coverage relief**
+(impervious coverage, alternative compliance). The first two mapped by evidence
+(PR #38: `other` 147 → 95). The last two waited on an operator decision, given
+2026-09-12: PUDs get their own type, `planned_unit_development` (migrate_052;
+advisory — doc 1304's motion is "recommend approval to the Board of Alderman"),
+and coverage relief folds into `site_plan` (docs 1284/1293: PC-decided
+site-development review). Map order matters and is pinned: PUD sits after
+rezoning so "REZONING & PLANNED UNIT DEVELOPMENT" keeps its type, and coverage
+sits after the ARB entries so the ARB's own alternative-compliance items stay
+ARB work — both were caught by the full-corpus zero-regression check. Residual
+`other` after this: conceptual reviews (no decision), public-comment headers the
+legacy grammar mis-segments, and wrapped "Plan Commission – Major [Subdivision
+Plat]" headers — a segmenter capture issue, not a vocabulary one.
+
 ## G3 — party extraction recall (370 rejections)
 
 **Diagnose before changing anything:** sample 30 rejections and classify —
