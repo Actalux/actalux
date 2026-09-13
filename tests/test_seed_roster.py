@@ -48,7 +48,9 @@ def test_single_body_member_one_subject() -> None:
     assert sp["subject"]["slug"] == "liza-streett"  # single board -> clean slug
     assert sp["subject"]["place_id"] == 1
     assert sp["subject"]["entity_id"] == 4
-    assert sp["membership"]["entity_id"] == 4
+    assert sp["memberships"] == [
+        {"entity_id": 4, "role": "Board member", "start_date": None, "end_date": None}
+    ]
     assert "liza streett" in _norms(sp)
 
 
@@ -78,8 +80,8 @@ def test_cross_body_member_one_person_per_board_subjects() -> None:
     # each subject carries its own board's role on both the subject + the membership
     assert by_eid[2]["subject"]["metadata"]["role"] == "Councilmember"
     assert by_eid[3]["subject"]["metadata"]["role"] == "Commissioner"
-    assert by_eid[2]["membership"]["role"] == "Councilmember"
-    assert by_eid[3]["membership"]["role"] == "Commissioner"
+    assert by_eid[2]["memberships"][0]["role"] == "Councilmember"
+    assert by_eid[3]["memberships"][0]["role"] == "Commissioner"
     # the unioned aliases (surname + full name) are copied onto BOTH per-board subjects
     assert {"buse", "susan buse"} <= _norms(by_eid[2])
     assert {"buse", "susan buse"} <= _norms(by_eid[3])
@@ -114,3 +116,76 @@ def test_same_slug_different_name_hard_fails() -> None:
     ebb = {"council": {"id": 2}, "plan-commission": {"id": 3}}
     with pytest.raises(SystemExit, match="two names"):
         build_people(bodies, ebb, place_id=1)
+
+
+class TestInterruptedService:
+    """A member whose service was interrupted needs one window per stretch.
+
+    Michelle Harris sat on the Clayton council through April 2015, was term-limited
+    out, and returned via the April 2017 election. A single window spanning both
+    would cover the two years she was not seated, which is exactly what the
+    resolver's tenure check exists to prevent — so the roster carries a `terms`
+    list and the seeder writes one membership row per entry.
+    """
+
+    _HARRIS = {
+        "canonical_name": "Michelle Harris",
+        "aliases": ["Harris"],
+        "role": "Mayor",
+        "terms": [
+            {"start": None, "end": "2015-04-28", "role": "Alderman"},
+            {"start": "2017-05-09", "end": "2025-04-22", "role": "Mayor"},
+        ],
+    }
+
+    def _plan(self):
+        plans = build_people({"council": [self._HARRIS]}, {"council": {"id": 2}}, place_id=1)
+        return plans["michelle-harris"]["subjects"][0]
+
+    def test_each_window_becomes_its_own_membership(self) -> None:
+        rows = self._plan()["memberships"]
+        assert [(r["start_date"], r["end_date"]) for r in rows] == [
+            (None, "2015-04-28"),
+            ("2017-05-09", "2025-04-22"),
+        ]
+
+    def test_per_window_role_wins_over_the_member_role(self) -> None:
+        # She sat as Alderman in the first stretch and Mayor in the second.
+        assert [r["role"] for r in self._plan()["memberships"]] == ["Alderman", "Mayor"]
+
+    def test_single_window_members_are_unaffected(self) -> None:
+        member = {
+            "canonical_name": "Susan Buse",
+            "aliases": ["Buse"],
+            "role": "Councilmember",
+            "term_start": "2019-08-13",
+            "term_end": None,
+        }
+        plans = build_people({"council": [member]}, {"council": {"id": 2}}, place_id=1)
+        rows = plans["susan-buse"]["subjects"][0]["memberships"]
+        assert rows == [
+            {"entity_id": 2, "role": "Councilmember", "start_date": "2019-08-13", "end_date": None}
+        ]
+
+    def test_the_gap_is_not_covered(self) -> None:
+        # The point of the split: a 2016 date falls in neither window.
+        from datetime import date
+
+        from actalux.graph.resolve import Membership, RosterSubject
+
+        rows = self._plan()["memberships"]
+        subject = RosterSubject(
+            subject_id=3,
+            aliases=frozenset({"harris"}),
+            memberships=tuple(
+                Membership(
+                    entity_id=r["entity_id"],
+                    start_date=date.fromisoformat(r["start_date"]) if r["start_date"] else None,
+                    end_date=date.fromisoformat(r["end_date"]) if r["end_date"] else None,
+                )
+                for r in rows
+            ),
+        )
+        assert subject.seated_on(2, date(2015, 1, 13))  # first stretch (open start)
+        assert subject.seated_on(2, date(2019, 5, 14))  # second stretch
+        assert not subject.seated_on(2, date(2016, 6, 1))  # the gap

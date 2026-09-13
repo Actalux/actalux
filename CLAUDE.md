@@ -10,6 +10,7 @@ Clayton is the first jurisdiction, not the only one. **Everything must be built 
 - **Per-place config, not constants.** Town-specific inputs (rosters, corrections, portal IDs, channels) live in per-place files like `scripts/roster/<state>_<place>.json`, keyed and loaded by place — never inlined.
 - **Watch for cross-jurisdiction collisions.** The same string can be correct in one town and a mangling in another (e.g. a name-correction `merrimack → Meramec` valid in Clayton must not apply to a town that has a real "Merrimack"). Scope every lookup to its place.
 - When a change *can't* be made jurisdiction-agnostic, stop and surface the tradeoff rather than hardcoding.
+- **Read `docs/JURISDICTION_PITFALLS.md` before onboarding a new town, and add to it whenever a jurisdiction-shaped assumption turns out to be false.** It is the running list of mistakes the Clayton data actually made — wrong term dates, title renames, dedup collapses, row-count ceilings — each of which has the same shape in the next town. Fixing the bug is not enough; record it there.
 
 ## Architectural decisions default to scalability (cardinal rule)
 

@@ -1,5 +1,5 @@
 {
-  "_README": "Curated roster — ground truth for resolving vote-roll names to subjects (connections-graph Phase 1). Source of truth: this file. Apply with scripts/seed_roster.py (idempotent upsert). Rosters CHANGE (April elections); edit here and re-run the seeder. Each member: canonical_name (display), aliases (raw forms seen in roll calls — the seeder normalizes them; council is last-name-only so the surname is the load-bearing alias), term window with basis (cited = a verbatim minutes date; observed = derived from roll-call appearance only; null = unknown/open), and source (citation trail, stored in subjects.metadata). All entries are public officials -> publishable.",
+  "_README": "Curated roster — ground truth for resolving vote-roll names to subjects (connections-graph Phase 1). Source of truth: this file. Apply with scripts/seed_roster.py (idempotent upsert). Rosters CHANGE (April elections); edit here and re-run the seeder. Each member: canonical_name (display), aliases (raw forms seen in roll calls — the seeder normalizes them; council is last-name-only so the surname is the load-bearing alias), term window with basis (cited = a verbatim minutes date; observed = derived from roll-call appearance only; null = unknown/open), and source (citation trail, stored in subjects.metadata). All entries are public officials -> publishable. A member whose service was INTERRUPTED (term-limited out, later re-elected) gives a `terms` list — one {start, start_basis, end, end_basis, role} per window — instead of the single term_start/term_end pair; one window spanning the break would wrongly cover the years they were not seated. Two traps when sourcing a bound: a swearing-in date marks a TERM boundary, not the start of service (a member re-elected is sworn again), and being NAMED in a motion (an appointment) is not the same as VOTING on one.",
   "place": "mo/clayton",
   "bodies": {
     "council": [
@@ -26,9 +26,11 @@
         "aliases": ["Harris"],
         "role": "Mayor",
         "ward": 1,
-        "term_start": "2015-02-10", "term_start_basis": "observed",
-        "term_end": "2025-04-22", "term_end_basis": "cited",
-        "source": "doc 1512 (full name); doc 1016 (sworn Mayor 2019-04-23); doc 799 (last day Apr 2025). Roles: Alderman (Ward 1, soft) -> Mayor. Ward 1 not in a clean roster line."
+        "terms": [
+          {"start": null, "start_basis": null, "end": "2015-04-28", "end_basis": "observed", "role": "Alderman"},
+          {"start": "2017-05-09", "start_basis": "observed", "end": "2025-04-22", "end_basis": "cited", "role": "Mayor"}
+        ],
+        "source": "TWO non-contiguous terms. First: present at the earliest archived meeting (2015-01-13, as Mayor Pro Tempore), last vote 2015-04-28; doc 1510 (2015-03-24) records a colleague thanking her as term limits ended that term, so her start predates the corpus and is left open. Second: elected April 2017 (results certified doc 1055, 2017-04-25), first vote 2017-05-09; sworn Mayor 2019-04-23 (doc 1016); last day Apr 2025 (doc 799). No council votes 2015-05..2017-04 — a single window would wrongly cover the gap. Ward 1 not in a clean roster line."
       },
       {
         "canonical_name": "Richard Lintz",
@@ -44,9 +46,9 @@
         "aliases": ["Buse"],
         "role": "Councilmember",
         "ward": 2,
-        "term_start": "2020-06-23", "term_start_basis": "cited",
+        "term_start": "2019-08-13", "term_start_basis": "cited",
         "term_end": null, "term_end_basis": null,
-        "source": "doc 998 (sworn 2020-06-23); doc 1085 (current, Ward 2). Alderwoman -> Councilmember (body rename ~Nov 2025)."
+        "source": "doc 1009 (Aug 6 2019 special election certified; Susan Bradley Buse declared Ward II Alderman for the unexpired term ending April 2020); doc 1190 (agenda: 'Swearing in of Alderman Susan Bradley Buse, Ward 2', 2019-08-13); doc 998 (re-elected Jun 2 2020, sworn 2020-06-23 — a SECOND term, not the start of service); doc 1085 (current, Ward 2). Titles over time: Alderman -> Alderwoman (~Jul 2025) -> Councilmember (body rename ~Nov 2025)."
       },
       {
         "canonical_name": "Joanne Boulton",
@@ -127,8 +129,8 @@
         "role": "Alderman",
         "ward": 2,
         "term_start": "2015-01-13", "term_start_basis": "observed",
-        "term_end": "2017-04-18", "term_end_basis": "observed",
-        "source": "doc 1512 (full name); doc 1501 (Ward 2); doc 1483 (Mayor Pro Tempore). 'Garhnolz' = OCR variant (3 roll-call occurrences)."
+        "term_end": "2017-04-25", "term_end_basis": "observed",
+        "source": "doc 1512 (full name); doc 1501 (Ward 2); doc 1483 (Mayor Pro Tempore). Last roll-call vote 2017-04-25 (doc 1055), the meeting certifying the April 2017 election in which Michelle Harris took the Ward II seat. Later mentions (2017-10-10, 2019, 2021) are board/commission appointments naming her, not council votes by her. 'Garhnolz' = OCR variant (3 roll-call occurrences)."
       },
       {
         "canonical_name": "Kami Waldman",
