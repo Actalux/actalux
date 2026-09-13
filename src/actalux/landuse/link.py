@@ -27,7 +27,9 @@ LINK_WINDOW = timedelta(days=365)
 
 # PC recommends these to the City Council (advisory role); everything else the
 # hearing body decides itself. The BoA is final on all its business.
-ADVISORY_TYPES = frozenset({"conditional_use", "rezoning", "text_amendment"})
+ADVISORY_TYPES = frozenset(
+    {"conditional_use", "rezoning", "text_amendment", "planned_unit_development"}
+)
 
 DECISIVE_ACTIONS = frozenset(
     {"approved", "approved_with_conditions", "denied", "recommended", "withdrawn"}

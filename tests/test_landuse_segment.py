@@ -133,8 +133,34 @@ class TestG2VocabExtension:
         assert classify("VARIANCE", "ADDITION TO SINGLE FAMILY RESIDENCE") == "variance"
         assert classify("Conditional Use Permit", "residence conversion") == "conditional_use"
 
-    def test_unmatched_still_other_vocabulary_grows_by_evidence_only(self) -> None:
-        # PUD and PC coverage-relief items stay `other` deliberately: the locked
-        # vocabulary has no type for them, and inventing one is an operator call.
-        assert classify("Planned Unit Development", "New Mixed-Use") == "other"
-        assert classify("Plan Commission", "Impervious Coverage") == "other"
+    def test_pud_is_its_own_advisory_type(self) -> None:
+        # Operator decision 2026-09-12: PUDs get a type (they were the largest
+        # `other` cluster). doc 1304's motion is "recommend approval to the Board
+        # of Alderman" — advisory, like a CUP.
+        assert classify("Planned Unit Development", "New Mixed-Use") == "planned_unit_development"
+        assert classify("Planned Unit", None) == "planned_unit_development"
+        assert classify("18 South Central Avenue", "Planned Unit Development – New Mixed") == (
+            "planned_unit_development"
+        )
+
+    def test_coverage_relief_folds_into_site_plan(self) -> None:
+        # docs 1284/1293: pervious pavers to meet impervious-coverage limits,
+        # additional rear-yard coverage — PC-decided site-development review.
+        assert classify("Plan Commission", "Impervious Coverage") == "site_plan"
+        assert classify("Plan Commission", "Alternative Compliance") == "site_plan"
+        assert classify("Plan Commission", "Additional Coverage") == "site_plan"
+
+    def test_wrapped_major_header_stays_other(self) -> None:
+        # "Plan Commission – Major" is a header wrapped mid-phrase ("Major
+        # Subdivision Plat", doc 1313); the fragment alone is not evidence.
+        assert classify("Plan Commission", "Major") == "other"
+
+
+class TestG2OrderGuards:
+    """Map order pinned by the two transitions the corpus check flagged."""
+
+    def test_rezoning_and_pud_header_keeps_rezoning(self) -> None:
+        assert classify("REZONING & PLANNED UNIT DEVELOPMENT", None) == "rezoning"
+
+    def test_arb_alternative_compliance_stays_arb(self) -> None:
+        assert classify("Architectural Review Board", "Alternative Compliance") == "arb"
