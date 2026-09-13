@@ -51,6 +51,12 @@ _TYPE_MAP: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"conditional\s+use|CUP\b", re.I), "conditional_use"),
     (re.compile(r"variance", re.I), "variance"),
     (re.compile(r"re-?zon|zoning\s+map", re.I), "rezoning"),
+    # Operator decision 2026-09-12 after the G2 measurement: PUDs were the largest
+    # `other` cluster and had no type. PC recommends them to council (doc 1304:
+    # "motion to recommend approval to the Board of Alderman"), so advisory. Listed
+    # after rezoning so "REZONING & PLANNED UNIT DEVELOPMENT" (doc 1766) keeps the
+    # type it already had; a pure PUD header takes the new one.
+    (re.compile(r"planned\s+unit|\bPUD\b", re.I), "planned_unit_development"),
     (
         re.compile(r"subdivision|lot\s+split|resubdivision|\bplat\b|boundary\s+adjustment", re.I),
         "subdivision",
@@ -86,6 +92,14 @@ _TYPE_MAP: list[tuple[re.Pattern[str], str]] = [
             re.I,
         ),
         "arb",
+    ),
+    # Impervious-coverage / alternative-compliance relief the PC decides itself
+    # (docs 1284, 1293) — folded into site_plan by operator decision 2026-09-12
+    # rather than given a type of its own. Listed after the ARB entries so the
+    # ARB's own alternative-compliance items (doc 1290) stay ARB work.
+    (
+        re.compile(r"impervious\s+coverage|additional\s+coverage|alternative\s+compliance", re.I),
+        "site_plan",
     ),
 ]
 
