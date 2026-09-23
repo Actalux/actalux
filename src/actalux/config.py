@@ -7,6 +7,17 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 
 
+def _model(env_var: str, default: str) -> str:
+    """A model ID from the environment, falling back to the default in code.
+
+    Every model the app calls is configuration: swap one by setting its variable
+    (Doppler for local and CI runs, Fly secrets for the web host) — no code
+    change or release. The default is the model the corresponding eval last
+    validated, so an unset variable means "the measured choice".
+    """
+    return os.environ.get(env_var) or default
+
+
 @dataclass(frozen=True)
 class ApiTier:
     """Per-tier limits for an issued API key.
@@ -71,12 +82,36 @@ class Config:
         )
     )
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    summary_model: str = "openai/gpt-5-mini"
+    # The public answer model (/ask, search summaries). Changing it changes what
+    # citizens read, so validate first with scripts/eval_answers.py.
+    summary_model: str = field(
+        default_factory=lambda: _model("ACTALUX_SUMMARY_MODEL", "openai/gpt-5-mini")
+    )
+    # Offline jobs get their own settings so one can move without moving the
+    # public answer model. Each falls back to the summary model's variable, then
+    # to the same default, so an unconfigured deploy behaves exactly as before.
+    doc_summary_model: str = field(
+        default_factory=lambda: _model(
+            "ACTALUX_DOC_SUMMARY_MODEL", _model("ACTALUX_SUMMARY_MODEL", "openai/gpt-5-mini")
+        )
+    )
+    landuse_model: str = field(
+        default_factory=lambda: _model(
+            "ACTALUX_LANDUSE_MODEL", _model("ACTALUX_SUMMARY_MODEL", "openai/gpt-5-mini")
+        )
+    )
+    discourse_model: str = field(
+        default_factory=lambda: _model(
+            "ACTALUX_DISCOURSE_MODEL", _model("ACTALUX_SUMMARY_MODEL", "openai/gpt-5-mini")
+        )
+    )
     # Follow-ups are condensed into a standalone retrieval query — a mechanical
     # rewrite, not a reasoning task — so a fast non-reasoning model keeps that
     # extra LLM hop off the answer's critical path (the reasoning summary model
     # added ~1.4s per follow-up; see task #19 latency measurement).
-    condense_model: str = "openai/gpt-4o-mini"
+    condense_model: str = field(
+        default_factory=lambda: _model("ACTALUX_CONDENSE_MODEL", "openai/gpt-4o-mini")
+    )
     # Query expansion: also retrieve LLM-generated alternate phrasings of the
     # query and fuse the candidate pools, so a question whose wording differs
     # from the records ("did the bond measure pass" vs "Proposition O") still
@@ -87,7 +122,9 @@ class Config:
         default_factory=lambda: os.environ.get("ACTALUX_QUERY_EXPANSION", "off")
     )
     # Cheap non-reasoning model for the expansion hop (same class as condense).
-    expansion_model: str = "openai/gpt-4o-mini"
+    expansion_model: str = field(
+        default_factory=lambda: _model("ACTALUX_EXPANSION_MODEL", "openai/gpt-4o-mini")
+    )
     # Number of alternate phrasings retrieved alongside the original query.
     expansion_count: int = 3
     # ZeroEntropy hosted reranker. Key gates the API call; zerank-1-small is the
@@ -126,6 +163,10 @@ class Config:
     # RRF candidates reranked before truncating to search_max_results. Reranking
     # a deeper pool is what lets the cross-encoder lift a buried-but-relevant hit.
     rerank_pool_size: int = 50
+    # Deliberately NOT an environment setting: every stored chunk vector was
+    # produced by this model, so a different query-time model would search a
+    # vector space it does not share — silently wrong results, not an error.
+    # Changing it means re-embedding the whole corpus in one planned migration.
     embedding_model: str = "BAAI/bge-small-en-v1.5"
     embedding_dim: int = 384
     # Board-meeting transcription (Whisper). Audio is transcribed via Groq's
@@ -138,7 +179,9 @@ class Config:
             os.environ.get("ACTALUX_GROQ") or os.environ.get("GROQ_ACTALUX_API_KEY", "")
         )
     )
-    transcribe_model: str = "whisper-large-v3"
+    transcribe_model: str = field(
+        default_factory=lambda: _model("ACTALUX_TRANSCRIBE_MODEL", "whisper-large-v3")
+    )
     transcribe_base_url: str = "https://api.groq.com/openai/v1"
     chunk_target_words: int = 200
     chunk_overlap_sentences: int = 2
