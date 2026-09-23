@@ -10,7 +10,7 @@ voices. Report-only, like everything upstream: ratification happens in chat / vi
 guarded attribution tools, never here.
 
 Run:
-    doppler run --project mac --config dev -- uv run python scripts/render_evidence_sheet.py \
+    doppler run --project actalux --config dev -- uv run python scripts/render_evidence_sheet.py \
         --state mo --place clayton --body council \
         --report identified.json --out-html sheet.html --out-summary summary.md
 """

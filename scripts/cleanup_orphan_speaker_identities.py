@@ -11,7 +11,7 @@ identities are never deleted. The confidence-protection trigger (migrate_035) gu
 UPDATEs only, so deleting a confirmed orphan is allowed by design ("to un-confirm,
 delete the row").
 
-Run (prefix with `doppler run --project mac --config dev --`):
+Run (prefix with `doppler run --project actalux --config dev --`):
     uv run python scripts/cleanup_orphan_speaker_identities.py            # dry run
     uv run python scripts/cleanup_orphan_speaker_identities.py --apply    # delete
 """

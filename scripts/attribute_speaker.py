@@ -22,7 +22,7 @@ official's roster term is suspicious but the roster window may itself be observe
 
 Dry-run by default. Usage (one attribution per invocation, deliberately):
 
-    doppler run --project mac --config dev -- uv run python scripts/attribute_speaker.py \
+    doppler run --project actalux --config dev -- uv run python scripts/attribute_speaker.py \
         --state mo --place clayton --body schools \
         --doc 2145 --cluster SPEAKER_13 --name "Kim Hurst" --apply
 """

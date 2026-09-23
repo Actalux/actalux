@@ -17,7 +17,7 @@ ingest are recorded outside the repo (operator memory), not here.
 Usage:
     uv run python scripts/stage_sunshine.py --src "/path/to/bundle"
     # then, after reviewing the printed report:
-    doppler run --project mac --config dev -- \
+    doppler run --project actalux --config dev -- \
         uv run python scripts/ingest.py --manifest data/documents/sunshine/sunshine_manifest.json
 """
 

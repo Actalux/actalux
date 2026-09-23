@@ -4,7 +4,7 @@ Phase A establishes the RRF-only baseline. The judge is paid for once and
 cached (eval/judgments.json); re-runs reuse grades. Spot-check a sample of
 grades before trusting the aggregate.
 
-Run (all under: doppler run --project mac --config dev -- uv run python ...):
+Run (all under: doppler run --project actalux --config dev -- uv run python ...):
   scripts/eval_retrieval.py --no-judge --limit 3   # plumbing only, no LLM spend
   scripts/eval_retrieval.py --limit 3              # small judged sample to eyeball
   scripts/eval_retrieval.py                        # full baseline
@@ -102,7 +102,7 @@ def main() -> None:
         "--api-rerank",
         action="store_true",
         help="add the ZeroEntropy hosted-API reranker arm (zerank-1-small) "
-        "alongside the RRF baseline; needs ZEROENTROPY_API_KEY",
+        "alongside the RRF baseline; needs ACTALUX_ZE",
     )
     parser.add_argument(
         "--api-providers",
@@ -155,7 +155,7 @@ def main() -> None:
 
     if args.api_rerank:
         if not cfg.zeroentropy_api_key:
-            parser.error("ZEROENTROPY_API_KEY not set; needed for --api-rerank.")
+            parser.error("ACTALUX_ZE not set; needed for --api-rerank.")
         ze_key, ze_model = cfg.zeroentropy_api_key, cfg.rerank_model
         arms[rerank.API_ARM_NAME] = lambda query, pool, k=ze_key, m=ze_model: (
             rerank.rerank_pool_api(query, pool, k, m)

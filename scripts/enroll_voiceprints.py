@@ -20,7 +20,7 @@ Dry-run by default; ``--apply`` downloads audio, embeds on Modal, and upserts.
 
 Usage:
     # dry-run
-    doppler run --project mac --config dev -- \\
+    doppler run --project actalux --config dev -- \\
       uv run python scripts/enroll_voiceprints.py --state mo --place clayton
 
     # apply (needs the diarization group for the Modal client, and the app deployed)

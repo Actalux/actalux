@@ -19,7 +19,7 @@ The script downloads those PDFs to ``data/documents/`` and writes a manifest tha
 through the cleared browser session (a raw ``ctx.request`` fetch 403s).
 
 Usage:
-  doppler run --project mac --config dev -- \
+  doppler run --project actalux --config dev -- \
     uv run --with playwright python scripts/crawl_civicplus.py --body council --limit 3
 """
 

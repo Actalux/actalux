@@ -8,9 +8,9 @@ Idempotent: skips documents that already have a non-empty summary.
 Pass --force to regenerate everything.
 
 Run via doppler so OPENROUTER_ACTALUX_KEY and Supabase creds are present:
-  doppler run --project mac --config dev -- \\
+  doppler run --project actalux --config dev -- \\
       uv run python scripts/backfill_doc_summaries.py
-  doppler run --project mac --config dev -- \\
+  doppler run --project actalux --config dev -- \\
       uv run python scripts/backfill_doc_summaries.py --force --limit 5
 """
 

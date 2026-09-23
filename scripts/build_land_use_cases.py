@@ -19,7 +19,7 @@ occurrence of a repeated motion belongs to the k-th vote carrying it, and an
 item links to the last vote positioned inside its span (actalux.landuse.
 votes_link).
 
-Run (prefix with `doppler run --project mac --config dev --`):
+Run (prefix with `doppler run --project actalux --config dev --`):
   uv run python scripts/build_land_use_cases.py                 # dry run + QA report
   uv run python scripts/build_land_use_cases.py --limit 10      # first N docs per body
   uv run python scripts/build_land_use_cases.py --apply         # write the dataset

@@ -17,7 +17,7 @@ full run prunes edges left on superseded documents (§4.5). Cheap enough to run
 nightly after vote re-extraction; reads gate on
 ``projection_complete = true AND documents.replaces_id IS NULL``.
 
-Run (prefix with `doppler run --project mac --config dev --`):
+Run (prefix with `doppler run --project actalux --config dev --`):
   uv run python scripts/project_member_votes.py            # dry run, all bodies
   uv run python scripts/project_member_votes.py --doc 826  # dry run, one document
   uv run python scripts/project_member_votes.py --apply    # write all bodies

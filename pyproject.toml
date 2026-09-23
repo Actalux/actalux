@@ -22,7 +22,6 @@ dependencies = [
     "rapidfuzz>=3.0",
     "pillow>=12.3.0",
     "pytesseract>=0.3.13",
-    "typesafe-sdk==0.7.0",
 ]
 
 [project.optional-dependencies]

@@ -17,9 +17,9 @@ synthetic rows. The DB read at runtime uses the anon key (ACTALUX_SUPABASE_URL /
 ACTALUX_SUPABASE_KEY); this script never writes.
 
 Usage (dry — read only, no doppler mutation):
-  doppler run --project mac --config dev -- \\
+  doppler run --project actalux --config dev -- \\
     uv run python scripts/audit_corpus.py
-  doppler run --project mac --config dev -- \\
+  doppler run --project actalux --config dev -- \\
     uv run python scripts/audit_corpus.py --json
 """
 
@@ -534,7 +534,7 @@ def main() -> int:
     if not url or not key:
         print(
             "Missing ACTALUX_SUPABASE_URL or ACTALUX_SUPABASE_KEY.\n"
-            "Run via: doppler run --project mac --config dev -- "
+            "Run via: doppler run --project actalux --config dev -- "
             "uv run python scripts/audit_corpus.py",
             file=sys.stderr,
         )

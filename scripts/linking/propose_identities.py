@@ -19,7 +19,7 @@ The scoring method + threshold come from the body's stored operating point (migr
 ``--threshold`` remains as an explicit asnorm override for experiments.
 
 Run (dry-run):
-    doppler run --project mac --config dev -- \\
+    doppler run --project actalux --config dev -- \\
       uv run python scripts/linking/propose_identities.py \\
       --state mo --place clayton --body schools
 """

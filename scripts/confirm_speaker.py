@@ -23,7 +23,7 @@ This tool ONLY ever touches rows that already hypothesize an official; it never 
 row, never stores an embedding, and never records a citizen identity.
 
 Usage:
-    doppler run --project mac --config dev -- uv run python scripts/confirm_speaker.py \\
+    doppler run --project actalux --config dev -- uv run python scripts/confirm_speaker.py \\
         --state mo --place clayton [--body council] [--limit 40]
 
 Spreadsheet round-trip (for large queues): ``--export-csv FILE`` writes the queue with a blank

@@ -7,7 +7,7 @@ confirm or reject them. Reads with the service key — these rows are hidden fro
 public by RLS, so this is intentionally a local operator tool, not a web surface.
 
 Run:
-  doppler run --project mac --config dev -- \
+  doppler run --project actalux --config dev -- \
     uv run python scripts/review_identities.py --body council
 """
 

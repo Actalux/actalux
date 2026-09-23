@@ -34,7 +34,7 @@ shell history or on a command line:
 
 ```bash
 doppler secrets download --no-file --format env \
-  --project mac --config dev | \
+  --project actalux --config dev | \
 grep -E '^(ACTALUX_SUPABASE_URL|ACTALUX_SUPABASE_KEY|OPENAI_API_KEY|ZEROENTROPY_API_KEY)=' | \
 fly secrets import
 ```

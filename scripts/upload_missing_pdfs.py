@@ -9,7 +9,7 @@ finds every current PDF-backed document whose storage object is missing and
 Additive and idempotent: it only uploads objects that are absent (HEAD != 200);
 it never deletes or rewrites DB rows. Dry-run by default.
 
-Run (prefix with `doppler run --project mac --config dev --`):
+Run (prefix with `doppler run --project actalux --config dev --`):
   uv run python scripts/upload_missing_pdfs.py            # dry run: list what's missing
   uv run python scripts/upload_missing_pdfs.py --apply    # upload the missing PDFs
 """

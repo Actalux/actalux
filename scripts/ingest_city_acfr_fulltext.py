@@ -10,7 +10,7 @@ report = ``clayton_acfr_FYxxxx.pdf``); budget figures keep citing the digest.
 
 Run fetch_city_acfr.py first (the PDFs + manifest must be on disk).
 
-  doppler run --project mac --config dev -- uv run python scripts/ingest_city_acfr_fulltext.py
+  doppler run --project actalux --config dev -- uv run python scripts/ingest_city_acfr_fulltext.py
 """
 
 from __future__ import annotations

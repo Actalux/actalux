@@ -85,7 +85,8 @@ City government (mo/clayton/council, mo/clayton/plan-commission, …):
 - Supabase (PostgreSQL + pgvector) — project "Actalux Clayton"
 - bge-small-en-v1.5 (384-dim embeddings, local inference)
 - Claude Sonnet for citation-backed summaries (anthropic SDK pinned to 0.93.0)
-- Secrets in Doppler (project: mac, config: dev)
+- Secrets in Doppler (project: **actalux**, config: dev). Actalux uses ONLY its own keys — never the
+  generic names (`OPENROUTER_API_KEY` etc.) from shared projects, which belong to other accounts.
 
 ## Architecture
 
@@ -134,8 +135,8 @@ Dedup is by `source_file` (filename only, portal-agnostic). When content changes
 
 Crawlers write manifest JSON files to `data/documents/`. Ingestion reads them:
 ```bash
-doppler run --project mac --config dev -- uv run python scripts/ingest.py data/documents/
-doppler run --project mac --config dev -- uv run python scripts/ingest.py --manifest data/documents/diligent_manifest.json
+doppler run --project actalux --config dev -- uv run python scripts/ingest.py data/documents/
+doppler run --project actalux --config dev -- uv run python scripts/ingest.py --manifest data/documents/diligent_manifest.json
 ```
 
 All commands require `doppler run` for env vars.

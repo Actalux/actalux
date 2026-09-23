@@ -9,7 +9,7 @@ script never touches). The public URL for an uploaded file is derived on demand
 via ``actalux.web.storage.stored_file_url``; there is no DB write here.
 
 Usage:
-    doppler run --project mac --config dev -- uv run python scripts/upload_to_storage.py
+    doppler run --project actalux --config dev -- uv run python scripts/upload_to_storage.py
 
 Requires ACTALUX_SUPABASE_URL and ACTALUX_SUPABASE_SERVICE_KEY in the
 environment (the service key is needed for storage writes).

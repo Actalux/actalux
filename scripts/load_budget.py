@@ -28,8 +28,8 @@ and dimensions listed above. budget_line_items is shared with the city budget
 and DESE finance loaders, whose rows this must never touch.
 
 Run:
-  doppler run --project mac --config dev -- uv run python scripts/load_budget.py --dry-run
-  doppler run --project mac --config dev -- uv run python scripts/load_budget.py
+  doppler run --project actalux --config dev -- uv run python scripts/load_budget.py --dry-run
+  doppler run --project actalux --config dev -- uv run python scripts/load_budget.py
 """
 
 from __future__ import annotations

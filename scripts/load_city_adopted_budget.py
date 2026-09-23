@@ -19,7 +19,7 @@ total; expenditure-by-department line items reconcile to the printed total
 Every figure cites the verbatim digest row it was read from.
 
 Run (after the FY2026 budget PDF is fetched to data/city_budget/), via
-``doppler run --project mac --config dev -- uv run python``:
+``doppler run --project actalux --config dev -- uv run python``:
   scripts/load_city_adopted_budget.py --dry-run
   scripts/load_city_adopted_budget.py
 """

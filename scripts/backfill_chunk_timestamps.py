@@ -15,9 +15,9 @@ sidecar present are skipped — their offsets were already persisted when they w
 first transcribed.
 
 Usage:
-    doppler run --project mac --config dev -- \
+    doppler run --project actalux --config dev -- \
         uv run python scripts/backfill_chunk_timestamps.py --dry-run
-    doppler run --project mac --config dev -- \
+    doppler run --project actalux --config dev -- \
         uv run python scripts/backfill_chunk_timestamps.py
 """
 

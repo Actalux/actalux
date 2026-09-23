@@ -23,8 +23,8 @@ candidates; rows that already hold a real origin are left alone. Idempotent.
 Dry-run by default (prints a diff); ``--apply`` writes via the service key.
 
 Usage:
-  doppler run --project mac --config dev -- uv run python scripts/restore_source_urls.py
-  doppler run --project mac --config dev -- uv run python scripts/restore_source_urls.py --apply
+  doppler run --project actalux --config dev -- uv run python scripts/restore_source_urls.py
+  doppler run --project actalux --config dev -- uv run python scripts/restore_source_urls.py --apply
 """
 
 from __future__ import annotations
@@ -280,7 +280,7 @@ def main() -> int:
         key = os.environ[key_var]
     except KeyError as exc:
         raise SystemExit(
-            f"Missing {exc}; run under doppler run --project mac --config dev -- ..."
+            f"Missing {exc}; run under doppler run --project actalux --config dev -- ..."
         ) from exc
 
     client = get_client(url, key)

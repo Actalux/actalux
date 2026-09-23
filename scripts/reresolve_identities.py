@@ -8,7 +8,7 @@ one body), call resolve_document(), which reconciles speaker_identities (confirm
 are never touched; stale auto rows are retracted).
 
 Usage:
-    doppler run --project mac --config dev -- uv run python scripts/reresolve_identities.py \
+    doppler run --project actalux --config dev -- uv run python scripts/reresolve_identities.py \
         --state mo --place clayton --apply
 """
 

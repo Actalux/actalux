@@ -10,7 +10,7 @@ defect.
 
 Provide inert placeholders so the suite is hermetic. ``setdefault`` never
 overrides a value already in the environment, so running under
-``doppler run --project mac --config dev`` uses the real credentials unchanged.
+``doppler run --project actalux --config dev`` uses the real credentials unchanged.
 The placeholder URL/key are never dialed — the tests that build a ``Config`` mock
 the database layer.
 """

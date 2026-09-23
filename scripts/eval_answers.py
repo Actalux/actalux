@@ -7,7 +7,7 @@ directness (each 0-3), plus the hard citation stats. Reranker is on whenever a
 ZeroEntropy key is present, matching production. Answers + grades cache per
 (query_id, model), so A/B-ing summary models (--model) reuses prior work.
 
-Run (under: doppler run --project mac --config dev -- uv run python ...):
+Run (under: doppler run --project actalux --config dev -- uv run python ...):
   scripts/eval_answers.py --limit 3                 # small judged sample
   scripts/eval_answers.py                            # full set, current model
   scripts/eval_answers.py --model openai/gpt-5       # A/B a different model

@@ -79,7 +79,7 @@ Iterate Phase 3–4 until recall clears a useful bar at the precision cardinal, 
   which lever is the real unlock and what human input (labels) it needs.
 
 === OPS ===
-- Doppler: DB creds = --project mac; Modal/HF = --project actalux. Never print secret values.
+- Doppler: all creds (DB, Modal/HF, model keys) = --project actalux. Never print secret values.
 - Commits: conventional, author Actalux (auto via includeIf), NO AI attribution anywhere, branch
   off master + FF-merge, show message + get approval before committing.
 - Report progress as you go; surface the go/no-go, don't promote to cleared yourself.

@@ -2,7 +2,7 @@
 """One-off: backfill content_hash and source_portal for existing documents.
 
 Usage:
-    doppler run --project mac --config dev -- uv run python scripts/backfill_provenance.py
+    doppler run --project actalux --config dev -- uv run python scripts/backfill_provenance.py
 """
 
 from __future__ import annotations

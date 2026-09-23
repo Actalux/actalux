@@ -151,7 +151,7 @@ def main() -> None:
 
     cfg = load_config()
     if not cfg.openrouter_api_key:
-        raise ActaluxError("OPENROUTER_ACTALUX_KEY / OPENROUTER_API_KEY is required")
+        raise ActaluxError("OPENROUTER_ACTALUX_KEY is required")
 
     service = _service_client()
     place = get_place_by_path(service, args.state, args.place)

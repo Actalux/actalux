@@ -34,8 +34,9 @@ rows (document_id=262 AND basis='proposed') and re-inserts them. It never
 touches the audit-actual rows.
 
 Run:
-  doppler run --project mac --config dev -- uv run python scripts/load_adopted_budget.py --dry-run
-  doppler run --project mac --config dev -- uv run python scripts/load_adopted_budget.py --apply
+  doppler run --project actalux --config dev -- \
+      uv run python scripts/load_adopted_budget.py --dry-run
+  doppler run --project actalux --config dev -- uv run python scripts/load_adopted_budget.py --apply
 """
 
 from __future__ import annotations

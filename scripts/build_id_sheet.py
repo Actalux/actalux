@@ -29,7 +29,7 @@ skipped. Writes are idempotent and every decision is logged.
 Nothing here is Clayton-specific: the place/body, roster, and documents are all resolved from
 the request, and the same command builds a sheet for any jurisdiction.
 
-Usage (prefix every invocation with ``doppler run --project mac --config dev --``):
+Usage (prefix every invocation with ``doppler run --project actalux --config dev --``):
     uv run python scripts/build_id_sheet.py --state mo --place clayton --body schools
     uv run python scripts/build_id_sheet.py --apply answers.txt \\
         --manifest data/id_sheets/mo_clayton_schools_<ts>.manifest.json

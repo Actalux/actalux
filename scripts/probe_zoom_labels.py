@@ -18,7 +18,7 @@ scripts; nothing here is Clayton-specific.
 Run under Doppler for the Supabase service key (below-gate identities are
 service-only), e.g.::
 
-    doppler run --project mac --config dev -- \\
+    doppler run --project actalux --config dev -- \\
       uv run python scripts/probe_zoom_labels.py --state mo --place clayton \\
       --body schools --doc-id 2531 --clusters SPEAKER_09
 """

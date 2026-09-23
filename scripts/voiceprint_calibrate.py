@@ -10,7 +10,7 @@ For the full purity/label-gated recalibration with negatives + nested LOMO, see
 ``scripts/recalibrate_voiceprints.py``. Design: plan §5.
 
 Usage:
-    doppler run --project mac --config dev -- \\
+    doppler run --project actalux --config dev -- \\
       uv run python scripts/voiceprint_calibrate.py --precision-bar 0.98
 """
 

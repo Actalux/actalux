@@ -13,7 +13,7 @@ to ingest, so a future re-ingest of an unchanged document reproduces these ids.
 Additive and idempotent: only writes citation_id, never deletes; re-running is a
 no-op for rows that already match. Dry-run by default.
 
-Run (prefix with `doppler run --project mac --config dev --`):
+Run (prefix with `doppler run --project actalux --config dev --`):
   uv run python scripts/backfill_citation_ids.py            # dry run: counts only
   uv run python scripts/backfill_citation_ids.py --apply    # write citation_id
 """

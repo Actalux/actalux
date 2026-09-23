@@ -54,3 +54,18 @@ def test_empty_variable_falls_back_rather_than_blanking(
 ) -> None:
     monkeypatch.setenv("ACTALUX_CONDENSE_MODEL", "")
     assert Config().condense_model == "openai/gpt-4o-mini"
+
+
+def test_only_the_actalux_openrouter_key_is_ever_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A shared Doppler project's generic key belongs to another account; picking
+    # it up silently billed Actalux work to it. It must be ignored outright.
+    monkeypatch.delenv("OPENROUTER_ACTALUX_KEY", raising=False)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "other-account-key")
+    monkeypatch.setenv("VOYAGE_API_KEY", "other-account-key")
+    monkeypatch.setenv("COHERE_API_KEY", "other-account-key")
+    cfg = Config()
+    assert cfg.openrouter_api_key == ""
+    assert cfg.voyage_api_key == ""
+    assert cfg.cohere_api_key == ""
+    monkeypatch.setenv("OPENROUTER_ACTALUX_KEY", "actalux-key")
+    assert Config().openrouter_api_key == "actalux-key"

@@ -6,7 +6,8 @@ passage *says* what the sentence claims: a real quote can sit under a claim its
 context contradicts ("the board approved X" citing a passage where X was tabled).
 This module closes that gap with one calibrated judgment per cited sentence —
 does the cited text support the claim, contradict it, or say nothing about it —
-following TypeSafe's citation-check recipe (docs.typesafe.ai/cookbooks/
+following TypeSafe's citation-check recipe, asked of
+Jev through OpenRouter's Decisions API (docs.typesafe.ai/cookbooks/
 citation_check).
 
 A sentence citing several passages is judged against all of them together,
@@ -118,22 +119,57 @@ def check_answer(answer: str, passages: dict[str, str], judge: JudgeFn) -> list[
     return checked
 
 
-def make_typesafe_judge(api_key: str, model: str) -> JudgeFn:
-    """Production judge: one TypeSafe Choice question per cited claim."""
-    from typesafe_sdk import Choice, TypeSafeClient
+# Transient statuses: rate limit, and server-side overload/unavailability.
+# 529 is OpenRouter's "provider overloaded" — observed on the first audit run,
+# while TypeSafe's docs say its capacity is still being adjusted under demand.
+_RETRY_STATUSES = frozenset({429, 500, 502, 503, 504, 529})
+_MAX_ATTEMPTS = 6
 
-    client = TypeSafeClient(api_key=api_key)
+
+def make_jev_judge(
+    api_key: str,
+    model: str,
+    decisions_url: str,
+    *,
+    transport=None,
+    sleep: Callable[[float], None] | None = None,
+) -> JudgeFn:
+    """Production judge: one Jev Choice question per cited claim, via OpenRouter.
+
+    Jev is served on OpenRouter's Decisions API (not chat completions); it
+    returns the chosen option, per-option probabilities, and a confidence.
+    """
+    import httpx
+
     # The recipe's wording, unchanged: telling the model the claim was derived
     # from the section would presuppose the support being tested.
-    question = Choice(instructions="How does the section relate to the claim?", criteria=RELATIONS)
+    question = {
+        "type": "choice",
+        "instructions": "How does the section relate to the claim?",
+        "criteria": RELATIONS,
+    }
+    client = httpx.Client(
+        timeout=60, headers={"Authorization": f"Bearer {api_key}"}, transport=transport
+    )
+
+    import time
+
+    pause = sleep or time.sleep
 
     def judge(claim: str, section: str) -> Judgment:
-        resp = client.system_one(
-            model=model,
-            state={"claim": claim, "section": section},
-            questions={"relation": question},
-        )
-        answer = resp.choices["relation"]
-        return Judgment(relation=answer.choice, confidence=answer.confidence)
+        body = {
+            "model": model,
+            "state": {"claim": claim, "section": section},
+            "questions": {"relation": question},
+        }
+        for attempt in range(_MAX_ATTEMPTS):
+            resp = client.post(decisions_url, json=body)
+            if resp.status_code not in _RETRY_STATUSES or attempt == _MAX_ATTEMPTS - 1:
+                break
+            retry_after = resp.headers.get("retry-after", "")
+            pause(float(retry_after) if retry_after.isdigit() else 2.0**attempt)
+        resp.raise_for_status()
+        answer = resp.json()["answers"]["relation"]
+        return Judgment(relation=answer["choice"], confidence=answer["confidence"])
 
     return judge

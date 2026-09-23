@@ -16,8 +16,8 @@ Dry-run by default; --apply writes (needs ACTALUX_SUPABASE_SERVICE_KEY).
 Idempotent: rows already free of control characters are skipped.
 
 Usage:
-  doppler run --project mac --config dev -- uv run python scripts/clean_control_chars.py
-  doppler run --project mac --config dev -- uv run python scripts/clean_control_chars.py --apply
+  doppler run --project actalux --config dev -- uv run python scripts/clean_control_chars.py
+  doppler run --project actalux --config dev -- uv run python scripts/clean_control_chars.py --apply
 """
 
 from __future__ import annotations
@@ -94,7 +94,7 @@ def main() -> int:
         key = os.environ[key_var]
     except KeyError as exc:
         raise SystemExit(
-            f"Missing {exc}; run under doppler run --project mac --config dev -- ..."
+            f"Missing {exc}; run under doppler run --project actalux --config dev -- ..."
         ) from exc
 
     client = get_client(url, key)

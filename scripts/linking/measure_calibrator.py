@@ -12,7 +12,7 @@ measurement — the decision-driving numbers come from this script, not a REPL:
 ``set_operating_point.py --calibrator-file``.
 
 Run (CACHE=data/linking_cache):
-    doppler run --project mac --config dev -- \\
+    doppler run --project actalux --config dev -- \\
       uv run python scripts/linking/measure_calibrator.py \\
       --state mo --place clayton --body schools \\
       --target-cache $CACHE/mo_clayton_schools --purity-floor 0.95 \\

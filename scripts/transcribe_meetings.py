@@ -17,7 +17,7 @@ Cloud runs pass --proxy (the WARP SOCKS endpoint); locally (residential IP) it i
 omitted. Re-running is safe: an existing transcript is skipped unless --force.
 
 Usage:
-  doppler run --project mac --config dev -- \
+  doppler run --project actalux --config dev -- \
     uv run python scripts/transcribe_meetings.py --discover --limit 3
 """
 

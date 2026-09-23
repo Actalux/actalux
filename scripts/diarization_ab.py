@@ -22,7 +22,7 @@ Run (DB creds from Doppler ``mac``; Modal tokens injected from ``actalux``). The
 
     MODAL_TOKEN_ID="$(doppler secrets get MODAL_TOKEN_ID --plain --project actalux --config dev)" \
     MODAL_TOKEN_SECRET="$(doppler secrets get MODAL_TOKEN_SECRET --plain --project actalux --config dev)" \
-    doppler run --project mac --config dev -- \
+    doppler run --project actalux --config dev -- \
       uv run --group diarization python scripts/diarization_ab.py \
       --doc-ids 769,665,1898,1519,1780
 """  # noqa: E501

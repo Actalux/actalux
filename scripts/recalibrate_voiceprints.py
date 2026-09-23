@@ -18,7 +18,7 @@ enroll_voiceprints.py / a future matcher trust the gallery. Nothing here publish
 
 Usage:
     # dry-run (no GPU/writes): officials + negatives + meeting counts
-    doppler run --project mac --config dev -- \\
+    doppler run --project actalux --config dev -- \\
       uv run python scripts/recalibrate_voiceprints.py --state mo --place clayton
 
     # apply (GPU embed + nested LOMO + persist candidate)

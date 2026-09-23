@@ -95,7 +95,7 @@ that can't co-reside). The combined report is pure: no models, DB, or LLM.
 
 ## Running
 
-All commands run under `doppler run --project mac --config dev -- uv run python …`
+All commands run under `doppler run --project actalux --config dev -- uv run python …`
 (the combined-report and spot-check commands need no secrets, but the prefix is
 harmless):
 

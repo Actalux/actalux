@@ -9,9 +9,9 @@ video are left with an empty video_id and keep their transcript-text view.
 
 Usage:
     python scripts/crawl_youtube.py            # refresh the manifest first
-    doppler run --project mac --config dev -- \
+    doppler run --project actalux --config dev -- \
         uv run python scripts/backfill_video_ids.py --dry-run
-    doppler run --project mac --config dev -- \
+    doppler run --project actalux --config dev -- \
         uv run python scripts/backfill_video_ids.py
 """
 
