@@ -88,12 +88,15 @@ def gather_appearances(client, llm, entity_ids: dict[str, int], limit: int | Non
         ):
             votes_by_doc.setdefault(v["document_id"], []).append(v)
         for doc in docs:
+            # ~290 sequential reads interleaved with ~450 LLM calls: one dropped
+            # connection here killed a 40-minute run (2026-09-23 ConnectTimeout),
+            # so reads get the same transient-failure retry as the writes.
             content = (
-                client.table("documents")
-                .select("content")
-                .eq("id", doc["id"])
-                .execute()
-                .data[0]["content"]
+                _retrying(
+                    lambda doc=doc: (
+                        client.table("documents").select("content").eq("id", doc["id"]).execute()
+                    )
+                ).data[0]["content"]
                 or ""
             )
             items = entitlement_items(content)
