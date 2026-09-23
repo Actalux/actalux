@@ -123,7 +123,7 @@ def main() -> int:
                 portal=d.get("source_portal") or "",
                 excerpts=excerpts,
                 api_key=cfg.openrouter_api_key,
-                model=cfg.summary_model,
+                model=cfg.doc_summary_model,
                 base_url=cfg.openrouter_base_url,
             )
         except SummaryError as exc:

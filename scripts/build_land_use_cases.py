@@ -283,7 +283,7 @@ def main() -> int:
     if args.apply and not cfg.supabase_service_key:
         raise SystemExit("ACTALUX_SUPABASE_SERVICE_KEY is required to --apply.")
     client = get_client(cfg.supabase_url, cfg.supabase_service_key or cfg.supabase_key)
-    llm = make_openrouter_llm(cfg.openrouter_api_key, cfg.summary_model, cfg.openrouter_base_url)
+    llm = make_openrouter_llm(cfg.openrouter_api_key, cfg.landuse_model, cfg.openrouter_base_url)
 
     ents = {
         e["body_slug"]: e["id"]

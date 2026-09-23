@@ -182,7 +182,7 @@ def main() -> None:
         args.place,
         f"/{args.body}" if args.body else "",
         len(docs),
-        cfg.summary_model,
+        cfg.discourse_model,
         args.apply,
     )
 
@@ -203,7 +203,7 @@ def main() -> None:
             turns,
             members,
             cfg.openrouter_api_key,
-            model=cfg.summary_model,
+            model=cfg.discourse_model,
             base_url=cfg.openrouter_base_url,
             claims_out=claims,
             usage_out=usage,
