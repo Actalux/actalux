@@ -168,6 +168,15 @@ class Config:
     # vector space it does not share — silently wrong results, not an error.
     # Changing it means re-embedding the whole corpus in one planned migration.
     embedding_model: str = "BAAI/bge-small-en-v1.5"
+    # TypeSafe (System One judgments — currently the citation-support audit).
+    # Pinned to a versioned model, not the jev-latest alias, so an audit rerun is
+    # comparable to the last one until the pin is moved deliberately.
+    typesafe_api_key: str = field(
+        default_factory=lambda: os.environ.get("ACTALUX_TYPESAFE_API_KEY", "")
+    )
+    typesafe_model: str = field(
+        default_factory=lambda: _model("ACTALUX_TYPESAFE_MODEL", "jev-1.13.0")
+    )
     embedding_dim: int = 384
     # Board-meeting transcription (Whisper). Audio is transcribed via Groq's
     # OpenAI-compatible API (free tier, whisper-large-v3 — better than whisper-1
