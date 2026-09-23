@@ -25,7 +25,7 @@ different documents and must be left alone.
 Idempotent and reversible-by-inspection: only sets ``replaces_id`` on rows that
 are still current, never deletes anything. Dry-run by default.
 
-Run (prefix with `doppler run --project mac --config dev --`):
+Run (prefix with `doppler run --project actalux --config dev --`):
   uv run python scripts/dedup_html_pdf_twins.py            # dry run
   uv run python scripts/dedup_html_pdf_twins.py --apply    # write replaces_id
 """

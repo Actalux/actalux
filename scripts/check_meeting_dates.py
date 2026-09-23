@@ -13,7 +13,7 @@ imprecise date on one is untidy rather than dangerous. Those are reported and do
 not fail the run, which is what keeps this check quiet enough to be believed
 when it does fire.
 
-Run (prefix with `doppler run --project mac --config dev --`):
+Run (prefix with `doppler run --project actalux --config dev --`):
   uv run python scripts/check_meeting_dates.py
 """
 

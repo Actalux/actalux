@@ -8,7 +8,7 @@ name: crawl-agendas
 # window between posting and the meeting, which a weekly crawl straddles badly.
 #
 # Required repository secrets: SUPABASE_URL / SUPABASE_KEY / SUPABASE_SERVICE_KEY,
-# OPENROUTER_API_KEY (document summaries during ingest).
+# OPENROUTER_ACTALUX_KEY (document summaries during ingest).
 
 on:
   workflow_dispatch:
@@ -30,7 +30,7 @@ jobs:
       ACTALUX_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       ACTALUX_SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
       ACTALUX_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      OPENROUTER_ACTALUX_KEY: ${{ secrets.OPENROUTER_ACTALUX_KEY }}
     steps:
       - uses: actions/checkout@v4
       - name: Set up uv + Python 3.11

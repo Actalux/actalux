@@ -37,7 +37,7 @@ a ``--body`` run touches only that body's subjects.
 
 Dry-run by default. Writing needs the service key (RLS bypass + trigger path).
 
-Run (prefix with `doppler run --project mac --config dev --`):
+Run (prefix with `doppler run --project actalux --config dev --`):
   uv run python scripts/seed_roster.py                       # dry run, all bodies
   uv run python scripts/seed_roster.py --body council        # dry run, one body
   uv run python scripts/seed_roster.py --apply               # write all bodies

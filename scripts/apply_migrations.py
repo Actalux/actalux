@@ -14,10 +14,12 @@ re-applies any migration missing from the ledger, and CI may run it
 unattended.
 
 Usage (always under doppler for ACTALUX_SUPABASE_URL + ACTALUX_SUPABASE_PAT):
-    doppler run --project mac --config dev -- uv run python scripts/apply_migrations.py
-    doppler run --project mac --config dev -- uv run python scripts/apply_migrations.py --dry-run
-    doppler run --project mac --config dev -- uv run python scripts/apply_migrations.py --check
-    doppler run --project mac --config dev -- uv run python scripts/apply_migrations.py --bootstrap
+    doppler run --project actalux --config dev -- uv run python scripts/apply_migrations.py
+    doppler run --project actalux --config dev -- \
+        uv run python scripts/apply_migrations.py --dry-run
+    doppler run --project actalux --config dev -- uv run python scripts/apply_migrations.py --check
+    doppler run --project actalux --config dev -- \
+        uv run python scripts/apply_migrations.py --bootstrap
 
 Modes:
     (default)     Apply every migration not yet in the ledger, then reload PostgREST.
@@ -228,7 +230,7 @@ def main() -> int:
     except KeyError as exc:
         raise SystemExit(
             f"Missing required env var {exc}. Run under: "
-            f"doppler run --project mac --config dev -- ..."
+            f"doppler run --project actalux --config dev -- ..."
         ) from exc
 
     ref = parse_project_ref(supabase_url)

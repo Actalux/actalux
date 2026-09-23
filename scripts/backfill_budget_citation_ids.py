@@ -9,7 +9,7 @@ but cannot be backfilled here -- they need a content re-link, out of scope.
 Additive and idempotent: only sets citation_id; re-running is a no-op for rows
 that already match. Dry-run by default.
 
-Run (prefix with `doppler run --project mac --config dev --`):
+Run (prefix with `doppler run --project actalux --config dev --`):
   uv run python scripts/backfill_budget_citation_ids.py            # dry run
   uv run python scripts/backfill_budget_citation_ids.py --apply    # write citation_id
 """

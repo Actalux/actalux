@@ -28,8 +28,8 @@ City fiscal year ends September 30, so FY2024 spans Oct 1, 2023 - Sep 30, 2024
 and is stored with ``fiscal_year='2023-2024'`` to match the chart's span format.
 
 Run (after fetch_city_acfr.py):
-  doppler run --project mac --config dev -- uv run python scripts/load_city_budget.py --dry-run
-  doppler run --project mac --config dev -- uv run python scripts/load_city_budget.py
+  doppler run --project actalux --config dev -- uv run python scripts/load_city_budget.py --dry-run
+  doppler run --project actalux --config dev -- uv run python scripts/load_city_budget.py
 """
 
 from __future__ import annotations

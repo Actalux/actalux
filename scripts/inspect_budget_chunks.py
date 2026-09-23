@@ -5,8 +5,8 @@ each budget document it prints the chunk that holds "Total expenditures" plus
 its immediate neighbours, so the full function x fund matrix is visible verbatim.
 
 Run (the --chunk-id form dumps one chunk + its neighbours):
-  doppler run --project mac --config dev -- uv run python scripts/inspect_budget_chunks.py
-  doppler run --project mac --config dev -- \
+  doppler run --project actalux --config dev -- uv run python scripts/inspect_budget_chunks.py
+  doppler run --project actalux --config dev -- \
     uv run python scripts/inspect_budget_chunks.py --chunk-id 7690
 """
 

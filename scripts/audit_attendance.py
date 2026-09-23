@@ -3,7 +3,7 @@
 Reports members the roll left unanswered whom the minutes nonetheless seat as present, with both
 sides quoted so every reading is checkable. Read-only: nothing is written to the database.
 
-    doppler run --project mac --config dev -- uv run python scripts/audit_attendance.py \
+    doppler run --project actalux --config dev -- uv run python scripts/audit_attendance.py \
         --state mo --place clayton --body council
 
 Coverage is bounded by what the recording caught: most transcripts begin after the roll was

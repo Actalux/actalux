@@ -167,7 +167,7 @@ half:
   emailed". Requires GitHub Actions secrets ``OPENAI_API_KEY`` (cited summaries),
   ``ACTALUX_SMTP_{HOST,PORT,USER,PASSWORD}``, ``ACTALUX_DRAFT_EMAIL_{FROM,TO}``.
 
-Run locally: ``doppler run --project mac --config dev -- uv run python
+Run locally: ``doppler run --project actalux --config dev -- uv run python
 scripts/draft_substack.py --days 7 --out draft.md`` (add ``--email`` to send).
 
 ### Phase 1 — only if/when we move off weekly-batch

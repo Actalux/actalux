@@ -11,7 +11,7 @@ the fitted weights are frozen with the threshold so propose-time refits cannot d
 Dry-run by default — prints the row it would insert; ``--apply`` executes.
 
 Run:
-    doppler run --project mac --config dev -- \\
+    doppler run --project actalux --config dev -- \\
       uv run python scripts/linking/set_operating_point.py \\
       --state mo --place clayton --body schools \\
       --method calibrated --threshold 3.898 --purity-floor 0.95 \\

@@ -13,7 +13,7 @@ NOT touch subjects, memberships, edges, or any attribution: the per-board person
 split lives in the (rewritten) roster seeder, and edges are rebuilt by the
 projector. Re-runnable: every write is an upsert or an idempotent update.
 
-Run (prefix with `doppler run --project mac --config dev --`):
+Run (prefix with `doppler run --project actalux --config dev --`):
   uv run python scripts/backfill_orgs.py                       # dry run, mo/clayton
   uv run python scripts/backfill_orgs.py --place mo/clayton --apply
 """

@@ -84,8 +84,8 @@ every one citing a source chunk.
 
 ```
 uv run python scripts/fetch_city_acfr.py
-doppler run --project mac --config dev -- uv run python scripts/load_city_budget.py --dry-run
-doppler run --project mac --config dev -- uv run python scripts/load_city_budget.py
+doppler run --project actalux --config dev -- uv run python scripts/load_city_budget.py --dry-run
+doppler run --project actalux --config dev -- uv run python scripts/load_city_budget.py
 ```
 
 The verified figures of record are committed at `scripts/city_budget_figures.json`

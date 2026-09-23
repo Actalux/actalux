@@ -10,7 +10,7 @@ The file is the source of truth: a re-run replaces the place's corrections whole
 (delete-then-insert), so a removed line disappears from the DB. Dry-run by default;
 writing needs the service key.
 
-Run (prefix with `doppler run --project mac --config dev --`):
+Run (prefix with `doppler run --project actalux --config dev --`):
   uv run python scripts/seed_corrections.py                 # dry run
   uv run python scripts/seed_corrections.py --apply         # write
 """

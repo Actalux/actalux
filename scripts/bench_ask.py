@@ -4,7 +4,7 @@ Times the exact production calls (condense -> embed -> assemble_evidence ->
 generate_summary) so we can see which step actually dominates before optimizing,
 rather than guessing. Read-only (search + summary); makes a handful of LLM calls.
 
-    doppler run --project mac --config dev -- uv run python scripts/bench_ask.py
+    doppler run --project actalux --config dev -- uv run python scripts/bench_ask.py
 
 Caveat: run from a dev machine, so the Supabase/ZeroEntropy network hops differ
 from Fly (region ord). The LLM-call timings are location-independent (same API);

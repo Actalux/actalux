@@ -19,9 +19,9 @@ A real version chain (same ``source_ref`` old->new) is left untouched, so the
 script is safe to re-run and never collapses genuine updates.
 
 Usage:
-    doppler run --project mac --config dev -- \
+    doppler run --project actalux --config dev -- \
         uv run python scripts/fix_youtube_source_ref.py --dry-run
-    doppler run --project mac --config dev -- \
+    doppler run --project actalux --config dev -- \
         uv run python scripts/fix_youtube_source_ref.py
 """
 

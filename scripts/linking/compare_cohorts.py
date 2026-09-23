@@ -15,7 +15,7 @@ plug-ins, and the winner is decided by measurement rather than assumption
 Reports the purity/F1 frontier per cohort so the tradeoff is visible, not a single number.
 
 Run (CACHE=data/linking_cache):
-    doppler run --project mac --config dev -- \\
+    doppler run --project actalux --config dev -- \\
       uv run python scripts/linking/compare_cohorts.py \\
       --state mo --place clayton --body schools \\
       --target-cache $CACHE/mo_clayton_schools \\

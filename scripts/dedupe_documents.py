@@ -24,10 +24,10 @@ synthetic rows. The DB read uses the anon key for dry-run; ``--apply`` requires 
 service key (RLS lets only the service key write ``replaces_id``).
 
 Usage (dry — read only, no mutation):
-  doppler run --project mac --config dev -- \\
+  doppler run --project actalux --config dev -- \\
     uv run python scripts/dedupe_documents.py
 Apply (DESTRUCTIVE to version chain — human-reviewed CSV first; not run here):
-  doppler run --project mac --config dev -- \\
+  doppler run --project actalux --config dev -- \\
     uv run python scripts/dedupe_documents.py --apply
 """
 
@@ -405,7 +405,7 @@ def main() -> int:
         key = os.environ[key_var]
     except KeyError as exc:
         raise SystemExit(
-            f"Missing {exc}; run under doppler run --project mac --config dev -- ..."
+            f"Missing {exc}; run under doppler run --project actalux --config dev -- ..."
         ) from exc
 
     from actalux.db import get_client

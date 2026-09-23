@@ -184,7 +184,7 @@ def _completion_kwargs(
 ) -> dict[str, Any]:
     """Build chat-completion kwargs, normalizing across model families.
 
-    OpenAI GPT-5 / o-series are reasoning models: they take `max_completion_tokens`
+    OpenAI GPT-5 / GPT-6 / o-series are reasoning models: they take `max_completion_tokens`
     plus `reasoning_effort` (without minimal effort they spend the whole budget on
     hidden reasoning and return empty content on short tasks) and reject a
     non-default `temperature`. Every other model -- gpt-4o-mini, and Claude/Gemini
@@ -192,7 +192,9 @@ def _completion_kwargs(
     The "provider/" prefix (OpenRouter's "openai/gpt-5-mini") is stripped before
     the family check.
     """
-    is_openai_reasoning = model.split("/")[-1].lower().startswith(("gpt-5", "o1", "o3", "o4"))
+    is_openai_reasoning = (
+        model.split("/")[-1].lower().startswith(("gpt-5", "gpt-6", "o1", "o3", "o4"))
+    )
     kwargs: dict[str, Any] = {"model": model, "messages": messages}
     if is_openai_reasoning:
         kwargs["max_completion_tokens"] = max_tokens

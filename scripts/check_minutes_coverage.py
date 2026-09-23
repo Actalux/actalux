@@ -12,7 +12,7 @@ A "meeting" on a date = the body has an agenda, transcript, or minutes for it; a
 = such a date in the window with no minutes document.
 
 Usage:
-  doppler run --project mac --config dev -- uv run python scripts/check_minutes_coverage.py
+  doppler run --project actalux --config dev -- uv run python scripts/check_minutes_coverage.py
   # In CI, GITHUB_TOKEN + GITHUB_REPOSITORY drive the issue upsert; without them it
   # just prints the report (local dry run).
 """

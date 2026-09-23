@@ -14,7 +14,7 @@ cannot leave a document with no votes). Re-running reproduces the same set.
 This populates the corpus + JSON API only; no live page renders votes, so no
 deploy is required. Dry-run by default.
 
-Run (prefix each with `doppler run --project mac --config dev --`):
+Run (prefix each with `doppler run --project actalux --config dev --`):
   uv run python scripts/extract_votes.py                 # dry run, all minutes
   uv run python scripts/extract_votes.py --doc 438       # dry run, one document
   uv run python scripts/extract_votes.py --apply         # write all minutes

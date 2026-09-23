@@ -22,7 +22,7 @@ Design (docs/architecture/linking-prototype-phase1.md):
   ``purity >= --purity-floor``. **Go** iff AS-norm's across-meeting F1 exceeds cosine's there.
 
 Run:
-    doppler run --project mac --config dev -- \\
+    doppler run --project actalux --config dev -- \\
       uv run python scripts/linking/run_linking_prototype.py \\
       --state mo --place clayton --body schools --cache-dir data/linking_cache
 """

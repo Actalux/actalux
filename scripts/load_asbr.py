@@ -21,7 +21,7 @@ reads — so loading is safe and non-surfacing until a dedicated ASBR view exist
 
 Idempotent per year (see dese_common.load_year). Dry-run by default.
 
-Run (prefix each with `doppler run --project mac --config dev --`):
+Run (prefix each with `doppler run --project actalux --config dev --`):
   uv run python scripts/load_asbr.py --year 2023-2024            # dry run, one year
   uv run python scripts/load_asbr.py --year 2023-2024 --apply    # write one year
   uv run python scripts/load_asbr.py --apply                     # all 12 years

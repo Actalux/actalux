@@ -15,7 +15,7 @@ or change any id. Re-runnable: the write is an idempotent update keyed on
 (state, slug). Every value is verified against an authoritative source and lives
 in the config (CLAUDE.md: never invent geography; per-place config, not constants).
 
-Run (prefix with `doppler run --project mac --config dev --`):
+Run (prefix with `doppler run --project actalux --config dev --`):
   uv run python scripts/backfill_places.py                        # dry run, mo/clayton
   uv run python scripts/backfill_places.py --place mo/clayton --apply
 """

@@ -14,7 +14,7 @@ tables are keyed to it. Splitting transcription (GPU) from persistence keeps eac
 step re-runnable on its own.
 
 Run (DB creds from Doppler mac; needs the service key to write):
-  doppler run --project mac --config dev -- \
+  doppler run --project actalux --config dev -- \
     uv run python scripts/persist_whisperx.py
 """
 

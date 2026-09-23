@@ -12,7 +12,7 @@ verbatim citations come from the original parse and are unaffected. The 55 MB
 original in ``data/documents/`` is left untouched (the source of truth for a
 future full-resolution upload once storage allows it).
 
-Run (prefix with `doppler run --project mac --config dev --`):
+Run (prefix with `doppler run --project actalux --config dev --`):
   uv run python scripts/compress_and_upload_pdf.py <source_file>          # dry run
   uv run python scripts/compress_and_upload_pdf.py <source_file> --apply  # upload
 """

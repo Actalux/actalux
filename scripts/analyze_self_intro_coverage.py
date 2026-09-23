@@ -37,7 +37,7 @@ scan + aggregation + reporting on top.
 Read-only. Nothing is written. Jurisdiction-agnostic: place, bodies, roster, and documents
 are all resolved from ``--state`` / ``--place`` (bodies are discovered, never hardcoded).
 
-Usage (prefix every invocation with ``doppler run --project mac --config dev --``):
+Usage (prefix every invocation with ``doppler run --project actalux --config dev --``):
     uv run python scripts/analyze_self_intro_coverage.py --state mo --place clayton
     uv run python scripts/analyze_self_intro_coverage.py --state mo --place clayton --body council
 """

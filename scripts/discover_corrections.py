@@ -13,7 +13,7 @@ and where the canonical is documented). Nothing is written to the DB unless ``--
 which inserts only the ``high`` bucket with provenance='auto' (distinct from the curated
 'asr' rows, so they are never blind-merged and a curated re-seed leaves them intact).
 
-Run (prefix with `doppler run --project mac --config dev --`):
+Run (prefix with `doppler run --project actalux --config dev --`):
   uv run python scripts/discover_corrections.py --backfill          # all transcripts -> review file
   uv run python scripts/discover_corrections.py --video-id <ID>     # one meeting
   uv run python scripts/discover_corrections.py --backfill --apply  # also write the 'high' bucket

@@ -14,7 +14,7 @@ Usage:
     python scripts/draft_substack.py --since 2026-06-11T09:00:00+00:00 \
         --out draft.md --email
 
-Run under `doppler run --project mac --config dev -- ...` locally so the
+Run under `doppler run --project actalux --config dev -- ...` locally so the
 Supabase/OpenRouter/SMTP env vars are present. In CI the ingest workflow sets them.
 """
 

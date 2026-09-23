@@ -17,7 +17,7 @@ and is cross-checked against the paired PDF before loading.
 Isolation: rows use the namespaced dimension 'indirect_cost', which the live
 budget page never queries. Idempotent per year. Dry-run by default.
 
-Run (prefix each with `doppler run --project mac --config dev --`):
+Run (prefix each with `doppler run --project actalux --config dev --`):
   uv run python scripts/load_indirect_cost.py --year 2024-2025            # dry run
   uv run python scripts/load_indirect_cost.py --year 2024-2025 --apply    # write one year
   uv run python scripts/load_indirect_cost.py --apply                     # all years

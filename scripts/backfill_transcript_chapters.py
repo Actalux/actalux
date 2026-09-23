@@ -11,9 +11,9 @@ Only transcripts whose chunks carry start_seconds can be processed (the offsets
 are what the chapters link to); others are skipped and reported.
 
 Run via doppler so OPENROUTER_ACTALUX_KEY and Supabase creds are present:
-  doppler run --project mac --config dev -- \\
+  doppler run --project actalux --config dev -- \\
       uv run python scripts/backfill_transcript_chapters.py
-  doppler run --project mac --config dev -- \\
+  doppler run --project actalux --config dev -- \\
       uv run python scripts/backfill_transcript_chapters.py --force --limit 3
 """
 

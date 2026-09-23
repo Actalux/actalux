@@ -18,7 +18,7 @@ tax-rate hearing and a regular session — do not qualify, and neither does a pa
 of same-meeting files whose names merely differ, because neither is a draft. Both
 of those exist in the corpus and must be left alone.
 
-Run (prefix with `doppler run --project mac --config dev --`):
+Run (prefix with `doppler run --project actalux --config dev --`):
   uv run python scripts/supersede_draft_minutes.py            # dry run
   uv run python scripts/supersede_draft_minutes.py --apply    # write
 """

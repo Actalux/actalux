@@ -18,7 +18,7 @@ and is cross-checked against the paired PDF before loading.
 Isolation: rows use the namespaced dimension 'perpupil_building', which the live
 budget page never queries. Idempotent per year. Dry-run by default.
 
-Run (prefix each with `doppler run --project mac --config dev --`):
+Run (prefix each with `doppler run --project actalux --config dev --`):
   uv run python scripts/load_perpupil.py --year 2023-2024            # dry run
   uv run python scripts/load_perpupil.py --year 2023-2024 --apply    # write one year
   uv run python scripts/load_perpupil.py --apply                     # all 7 years

@@ -11,9 +11,9 @@ This is a manual/backfill tool. It is deliberately NOT wired into the nightly in
 pipeline. Uses the diarization turns already persisted — no re-transcription.
 
 Usage:
-    doppler run --project mac --config dev -- uv run python scripts/name_participants.py \
+    doppler run --project actalux --config dev -- uv run python scripts/name_participants.py \
         --state mo --place clayton --apply
-    doppler run --project mac --config dev -- uv run python scripts/name_participants.py \
+    doppler run --project actalux --config dev -- uv run python scripts/name_participants.py \
         --state mo --place clayton --body plan-commission --apply
 """
 

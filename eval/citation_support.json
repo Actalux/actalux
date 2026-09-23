@@ -1,0 +1,1148 @@
+{
+  "judge_model": "typesafe/jev-1.13",
+  "rows": [
+    {
+      "query_id": "cur01",
+      "answer_model": "gpt-5-mini",
+      "claim": "Clayton High School offers multiple ninth-grade math placements including Math Essentials, Pre-Algebra, Algebra 1, CP Algebra 1, and Honors Geometry, with alternative placements determined by IEP or Content Acceleration teams and recommendations based on student data and staff review.",
+      "hash_ids": [
+        "#q0d52"
+      ],
+      "verdict": "verified",
+      "confidence": 1,
+      "needs_review": false
+    },
+    {
+      "query_id": "cur01",
+      "answer_model": "gpt-5-mini",
+      "claim": "CP Algebra 1 can be taken as an AMPED two-block course that awards one math credit and one CTE credit while covering all Algebra 1 standards and including a hands\u2011on entrepreneurship project.",
+      "hash_ids": [
+        "#q0d54"
+      ],
+      "verdict": "verified",
+      "confidence": 1,
+      "needs_review": false
+    },
+    {
+      "query_id": "cur01",
+      "answer_model": "gpt-5-mini",
+      "claim": "Students who start in CP Algebra 1 can still reach AP Precalculus AB in senior year, and AP Statistics is recommended for juniors or seniors and is not limited to honors students.",
+      "hash_ids": [
+        "#q0d54"
+      ],
+      "verdict": "verified",
+      "confidence": 1,
+      "needs_review": false
+    },
+    {
+      "query_id": "cur01",
+      "answer_model": "gpt-5-mini",
+      "claim": "The district provides an acceleration path to end in AP Calculus AB by taking CP Geometry and CP Algebra 2 in sophomore year or earning Geometry credit over the summer.",
+      "hash_ids": [
+        "#q0d55"
+      ],
+      "verdict": "verified",
+      "confidence": 1,
+      "needs_review": false
+    },
+    {
+      "query_id": "cur01",
+      "answer_model": "gpt-5-mini",
+      "claim": "The district posts secondary mathematics course progressions and resources on its curriculum/STEM web pages and in the CHS Program of Studies.",
+      "hash_ids": [
+        "#q0d55"
+      ],
+      "verdict": "verified",
+      "confidence": 1,
+      "needs_review": false
+    },
+    {
+      "query_id": "cur02",
+      "answer_model": "gpt-5-mini",
+      "claim": "The district presented and the Board approved a district-written World Languages curriculum during the April 29, 2026 meeting, indicating recent formal adoption of World Languages curriculum materials.",
+      "hash_ids": [
+        "#q1eef"
+      ],
+      "verdict": "verified",
+      "confidence": 0.84,
+      "needs_review": false
+    },
+    {
+      "query_id": "cur02",
+      "answer_model": "gpt-5-mini",
+      "claim": "A district Canva curriculum map shows Spanish courses labeled for middle and high school levels and an \u201c8th Grade Spanish\u201d entry, implying Spanish instruction begins at least by grade 8 in the mapped sequence.",
+      "hash_ids": [
+        "#q0d73"
+      ],
+      "verdict": "verified",
+      "confidence": 0.99,
+      "needs_review": false
+    },
+    {
+      "query_id": "cur02",
+      "answer_model": "gpt-5-mini",
+      "claim": "Board discussion in September 2025 notes the district adopted a new Spanish resource the prior year and completed rewrites of the college prep Spanish sequence (Spanish I\u2013IV) through summer work, showing recent revision and alignment of secondary Spanish courses.",
+      "hash_ids": [
+        "#q061f"
+      ],
+      "verdict": "verified",
+      "confidence": 0.99,
+      "needs_review": false
+    },
+    {
+      "query_id": "cur02",
+      "answer_model": "gpt-5-mini",
+      "claim": "The master plan materials list multiple elementary and middle school sub\u2011committee members including Spanish teachers at Glenridge and Wydown/other schools, indicating Spanish teachers were involved in curriculum and facility planning at the elementary and middle levels.",
+      "hash_ids": [
+        "#q078e"
+      ],
+      "verdict": "missing_passage",
+      "confidence": null,
+      "needs_review": true
+    },
+    {
+      "query_id": "cur03",
+      "answer_model": "gpt-5-mini",
+      "claim": "Documents show NWEA produced MAP-to-Khan Academy correlations that map MAP RIT ranges and sub-goals to Khan Academy practice exercises for Common Core math for Grades 2\u20135 and Grades 6+, intended for use with flexible grouping and targeting students\u2019 zones of proximal development.",
+      "hash_ids": [
+        "#q0d03"
+      ],
+      "verdict": "verified",
+      "confidence": 0.84,
+      "needs_review": false
+    },
+    {
+      "query_id": "cur03",
+      "answer_model": "gpt-5-mini",
+      "claim": "The correlation used 2011 norms to approximate grade levels and then matched those to Common Core State Standards; NWEA plans to update the links twice a year as new exercises are developed.",
+      "hash_ids": [
+        "#q0d03"
+      ],
+      "verdict": "verified",
+      "confidence": 1,
+      "needs_review": false
+    },
+    {
+      "query_id": "cur03",
+      "answer_model": "gpt-5-mini",
+      "claim": "The documents include detailed tables linking specific RIT ranges (for example <160, 161\u2013178, 179\u2013191, 192\u2013202, 203\u2013212, and >231) to topic-level Khan exercises and corresponding CCSS standards across domains such as Geometry, Number and Operations, and Expressions and Equations.",
+      "hash_ids": [
+        "#q0d08"
+      ],
+      "verdict": "verified",
+      "confidence": 0.55,
+      "needs_review": true
+    },
+    {
+      "query_id": "cur03",
+      "answer_model": "gpt-5-mini",
+      "claim": "The materials note these Khan exercises are supplementary, should be one of many data points for instructional decisions, and include Terms of Use and disclaimers about NWEA\u2019s relationship to Khan Academy and liability.",
+      "hash_ids": [
+        "#q0d2f"
+      ],
+      "verdict": "unsupported",
+      "confidence": 0.98,
+      "needs_review": true
+    },
+    {
+      "query_id": "cur03",
+      "answer_model": "gpt-5-mini",
+      "claim": "The documents also give examples of how to deliver exercises to students (paste URLs, present in class, use in conferences).",
+      "hash_ids": [
+        "#q0d1e"
+      ],
+      "verdict": "verified",
+      "confidence": 0.99,
+      "needs_review": false
+    },
+    {
+      "query_id": "cur04",
+      "answer_model": "gpt-5-mini",
+      "claim": "The Long-Range Facilities Master Plan (LRFMP) is a 15-year strategic roadmap for developing, maintaining, and managing Clayton\u2019s school facilities that aligns with the District Strategic Plan and the Profile of a Clayton Graduate.",
+      "hash_ids": [
+        "#q077f"
+      ],
+      "verdict": "missing_passage",
+      "confidence": null,
+      "needs_review": true
+    },
+    {
+      "query_id": "cur04",
+      "answer_model": "gpt-5-mini",
+      "claim": "The plan was produced through a year-long, inclusive process led by Paragon Architecture that included building tours, facility assessments, steering and sub-committee meetings, building-level and district-wide community forums, surveys, and iterative feedback to prioritize needs.",
+      "hash_ids": [
+        "#q0778"
+      ],
+      "verdict": "unsupported",
+      "confidence": 0.41,
+      "needs_review": true
+    },
+    {
+      "query_id": "cur04",
+      "answer_model": "gpt-5-mini",
+      "claim": "It identifies goals to optimize resource allocation, enhance learning environments, and align facility investments with student needs, and it includes detailed deliverables such as HVAC replacement planning, facility appraisals, cost estimations, and design standards across multiple volumes.",
+      "hash_ids": [
+        "#q077f"
+      ],
+      "verdict": "missing_passage",
+      "confidence": null,
+      "needs_review": true
+    },
+    {
+      "query_id": "cur04",
+      "answer_model": "gpt-5-mini",
+      "claim": "Recent work under the plan focuses on modernizing elementary schools and the Family Center (including a feasibility study for renovation vs. new construction), academic enhancements at Clayton High School, and athletic facility upgrades, with order-of-magnitude project cost ranges for potential construction totaling roughly $137M\u2013$178M and a three-new-elementary-schools scenario estimated at about $129M.",
+      "hash_ids": [
+        "#q0778"
+      ],
+      "verdict": "verified",
+      "confidence": 0.45,
+      "needs_review": true
+    },
+    {
+      "query_id": "cur04",
+      "answer_model": "gpt-5-mini",
+      "claim": "The Board has discussed funding capacity and timing, noting current debt that will retire in 2029 and that the district could support up to $90M of bonds without a tax increase, while further feasibility and site acquisition work is required.",
+      "hash_ids": [
+        "#q06f7"
+      ],
+      "verdict": "missing_passage",
+      "confidence": null,
+      "needs_review": true
+    },
+    {
+      "query_id": "cur05",
+      "answer_model": "gpt-5-mini",
+      "claim": "The district\u2019s most recent planning work ties facilities priorities to the Strategic Plan, emphasizing alignment between the Long-Range Facilities Master Plan and the District\u2019s strategic goals and Profile of a Clayton Graduate.",
+      "hash_ids": [
+        "#q077f"
+      ],
+      "verdict": "missing_passage",
+      "confidence": null,
+      "needs_review": true
+    },
+    {
+      "query_id": "cur05",
+      "answer_model": "gpt-5-mini",
+      "claim": "The LRFMP and associated dashboard prioritize optimizing resource allocation, enhancing learning environments, and ensuring alignment with student achievement, inclusivity, and community partnership goals.",
+      "hash_ids": [
+        "#q077f"
+      ],
+      "verdict": "missing_passage",
+      "confidence": null,
+      "needs_review": true
+    },
+    {
+      "query_id": "cur05",
+      "answer_model": "gpt-5-mini",
+      "claim": "Community engagement and survey results identified HVAC/air-quality improvements and expanded specialized, hands-on learning spaces as top district-wide priorities, with building-level focus on modernizing hands-on learning environments.",
+      "hash_ids": [
+        "#q07a0"
+      ],
+      "verdict": "missing_passage",
+      "confidence": null,
+      "needs_review": true
+    },
+    {
+      "query_id": "cur05",
+      "answer_model": "gpt-5-mini",
+      "claim": "The district consistently frames its strategic goals as broad, aspirational priorities (safety and belonging; equitable, personalized learning; social-emotional and physical well\u2011being) with measurable objectives, data dashboards, and an \u201cevergreen\u201d approach to refine actions and align budget and staffing to those priorities.",
+      "hash_ids": [
+        "#q138b"
+      ],
+      "verdict": "verified",
+      "confidence": 1,
+      "needs_review": false
+    },
+    {
+      "query_id": "cur06",
+      "answer_model": "gpt-5-mini",
+      "claim": "The district\u2019s 6\u20138 performing arts curriculum maps show grade-specific offerings: drama and musical theater across 6th\u20138th grades, plus introductory technical theatre and speech & debate at certain levels.",
+      "hash_ids": [
+        "#q0d63"
+      ],
+      "verdict": "verified",
+      "confidence": 0.93,
+      "needs_review": false
+    },
+    {
+      "query_id": "cur06",
+      "answer_model": "gpt-5-mini",
+      "claim": "The music maps list chorus, concert choir, and auditioned chamber choir options and orchestra with chamber orchestra tracks for middle school grades.",
+      "hash_ids": [
+        "#q0d5d"
+      ],
+      "verdict": "unsupported",
+      "confidence": 0.03,
+      "needs_review": true
+    },
+    {
+      "query_id": "cur06",
+      "answer_model": "gpt-5-mini",
+      "claim": "Board discussion notes that musical theatre 1 and 2 and technical theater were reinstated into the school day (rather than only after-school production work), increasing access and aligning the middle- and high-school musical theater programs.",
+      "hash_ids": [
+        "#q0622"
+      ],
+      "verdict": "verified",
+      "confidence": 0.99,
+      "needs_review": false
+    },
+    {
+      "query_id": "cur07",
+      "answer_model": "gpt-5-mini",
+      "claim": "The district frames assessment as integral to teaching and learning, using a backwards-design model where teachers identify learning outcomes, develop assessments, then design instruction, and it explicitly connects assessments to informing instruction and reporting progress toward outcomes.",
+      "hash_ids": [
+        "#q117f"
+      ],
+      "verdict": "verified",
+      "confidence": 1,
+      "needs_review": false
+    },
+    {
+      "query_id": "cur07",
+      "answer_model": "gpt-5-mini",
+      "claim": "The Assessment Plan describes a balanced system of formative and summative assessments (state-required and district-chosen) used to monitor progress, make instructional and programming decisions, determine interventions, and communicate results to parents and stakeholders.",
+      "hash_ids": [
+        "#q117f"
+      ],
+      "verdict": "verified",
+      "confidence": 0.89,
+      "needs_review": false
+    },
+    {
+      "query_id": "cur07",
+      "answer_model": "gpt-5-mini",
+      "claim": "Specific assessments listed include state end-of-grade and end-of-course tests (e.g., Grade-Level Assessments and EOCs), MAP/MAP-A, WIDA, and local screeners like FastBridge, NWEA-MAP, TCBA, and writing and spelling assessments, each with stated populations, purposes, testing windows, and estimated student time.",
+      "hash_ids": [
+        "#q1181"
+      ],
+      "verdict": "verified",
+      "confidence": 0.6,
+      "needs_review": true
+    },
+    {
+      "query_id": "cur07",
+      "answer_model": "gpt-5-mini",
+      "claim": "The plan also indicates assessment uses beyond instruction, including qualification for programs (e.g., gifted placement, Seal of Biliteracy), accountability reporting, and informational reporting to families.",
+      "hash_ids": [
+        "#q1187"
+      ],
+      "verdict": "verified",
+      "confidence": 0.7,
+      "needs_review": true
+    },
+    {
+      "query_id": "cur07",
+      "answer_model": "gpt-5-mini",
+      "claim": "District materials report that assessment data are reviewed regularly to identify trends and guide district goals and instructional planning (e.g., MAP and local assessment results cited in the strategic plan).",
+      "hash_ids": [
+        "#q0773"
+      ],
+      "verdict": "verified",
+      "confidence": 0.99,
+      "needs_review": false
+    },
+    {
+      "query_id": "cur08",
+      "answer_model": "gpt-5-mini",
+      "claim": "The district\u2019s food services function had program expenses of $1,186,086 and reported charges for services of $753,343 and operating grants/contributions of $236,583 for the year ended June 30, 2025, resulting in a net (expense) of $(196,160) for food services.",
+      "hash_ids": [
+        "#q1e77"
+      ],
+      "verdict": "verified",
+      "confidence": 1,
+      "needs_review": false
+    },
+    {
+      "query_id": "cur08",
+      "answer_model": "gpt-5-mini",
+      "claim": "Historical district reports show food services has operated at a loss in prior years (e.g., FY 2003 net -$19,845; FY 2013 loss -$328,107; FY 2023 loss reported with revenues $707,182 and expenses $1,035,289).",
+      "hash_ids": [
+        "#q0961"
+      ],
+      "verdict": "verified",
+      "confidence": 0.73,
+      "needs_review": true
+    },
+    {
+      "query_id": "cur08",
+      "answer_model": "gpt-5-mini",
+      "claim": "The 2023-24 and 2022-23 audited statements previously reported food services expenditures of $1,151,905 (net $5,149) and $1,075,550 (net $203,383), respectively, with varying levels of charges for services and operating grants.",
+      "hash_ids": [
+        "#q1bef"
+      ],
+      "verdict": "verified",
+      "confidence": 0.26,
+      "needs_review": true
+    },
+    {
+      "query_id": "cur08",
+      "answer_model": "gpt-5-mini",
+      "claim": "Federal revenue lines in district budgets and prior-year estimates include specific allocations for School Lunch and Breakfast programs (for example, $180,000 school lunch and $36,000 breakfast in 2019\u20132020; $316,690 school lunch and $101,190 breakfast in 2020\u20132021).",
+      "hash_ids": [
+        "#q12df"
+      ],
+      "verdict": "verified",
+      "confidence": 0.9,
+      "needs_review": false
+    },
+    {
+      "query_id": "cur08",
+      "answer_model": "gpt-5-mini",
+      "claim": "The demographic study also provides detailed line-item revenue/expense breakdowns for school lunch and breakfast programs across multiple years and shows per-student food service cost trends.",
+      "hash_ids": [
+        "#q0961"
+      ],
+      "verdict": "verified",
+      "confidence": 0.86,
+      "needs_review": false
+    },
+    {
+      "query_id": "fin01",
+      "answer_model": "gpt-5-mini",
+      "claim": "For the year ended June 30, 2025 the district reported Instruction expenses of $35,152,855.",
+      "hash_ids": [
+        "#q1e77"
+      ],
+      "verdict": "verified",
+      "confidence": 1,
+      "needs_review": false
+    },
+    {
+      "query_id": "fin01",
+      "answer_model": "gpt-5-mini",
+      "claim": "For the year ended June 30, 2024 the district reported Instruction expenses of $34,378,715.",
+      "hash_ids": [
+        "#q1bef"
+      ],
+      "verdict": "verified",
+      "confidence": 1,
+      "needs_review": false
+    },
+    {
+      "query_id": "fin01",
+      "answer_model": "gpt-5-mini",
+      "claim": "For the year ended June 30, 2023 the district reported Instruction expenses of $30,871,858.",
+      "hash_ids": [
+        "#q1c59"
+      ],
+      "verdict": "verified",
+      "confidence": 1,
+      "needs_review": false
+    },
+    {
+      "query_id": "fin01",
+      "answer_model": "gpt-5-mini",
+      "claim": "The proposed budget for the 2024\u20132025 operating funds shows Total Instruction planned at $37,230,074 across funds.",
+      "hash_ids": [
+        "#q13f7"
+      ],
+      "verdict": "verified",
+      "confidence": 1,
+      "needs_review": false
+    },
+    {
+      "query_id": "fin02",
+      "answer_model": "gpt-5-mini",
+      "claim": "The General Fund total expenditures for fiscal year 2024 (year ended June 30, 2024) are reported as $21,928,620.",
+      "hash_ids": [
+        "#q1bf2"
+      ],
+      "verdict": "verified",
+      "confidence": 1,
+      "needs_review": false
+    },
+    {
+      "query_id": "fin02",
+      "answer_model": "gpt-5-mini",
+      "claim": "The audited financial report shows total governmental fund expenditures broken out by fund, with the General Fund expenditure total matching that amount for the period.",
+      "hash_ids": [
+        "#q1bf2"
+      ],
+      "verdict": "verified",
+      "confidence": 0.7,
+      "needs_review": true
+    },
+    {
+      "query_id": "fin02",
+      "answer_model": "gpt-5-mini",
+      "claim": "The 2023\u201124 budget document describes the overall District expenditure budget for 2023\u201124 as $75.39 million across all funds, which includes the General Fund component above.",
+      "hash_ids": [
+        "#q1426"
+      ],
+      "verdict": "verified",
+      "confidence": 0.92,
+      "needs_review": false
+    },
+    {
+      "query_id": "fin03",
+      "answer_model": "gpt-5-mini",
+      "claim": "The district keeps a reserve (fund balance) to cover expenses from July through December because most tax revenue is received in late December and early January, and experience shows a minimum of 18% of the expenditure budget is needed to avoid borrowing.",
+      "hash_ids": [
+        "#q1276"
+      ],
+      "verdict": "verified",
+      "confidence": 0.99,
+      "needs_review": false
+    },
+    {
+      "query_id": "fin03",
+      "answer_model": "gpt-5-mini",
+      "claim": "The district reported spending down operating reserves in several years (e.g., $175,217 in 2009\u20132010, $820,654 in 2010\u20132011, $2.0 million in 2011\u20132012) and then recorded operating surpluses in subsequent years (for example $560,973 in 2012\u20132013, $1.6 million in 2013\u20132014, $2.6 million in 2014\u20132015).",
+      "hash_ids": [
+        "#q1276"
+      ],
+      "verdict": "verified",
+      "confidence": 1,
+      "needs_review": false
+    },
+    {
+      "query_id": "fin03",
+      "answer_model": "gpt-5-mini",
+      "claim": "Passage of Proposition E is repeatedly cited as reversing the drawdown trend and producing projected operating surpluses that increase fund balance (projected ~$2.8\u2013$2.9 million surplus and growth to roughly 20%\u201340% of expenditures in various documents).",
+      "hash_ids": [
+        "#q12d3"
+      ],
+      "verdict": "verified",
+      "confidence": 0.98,
+      "needs_review": false
+    },
+    {
+      "query_id": "fin03",
+      "answer_model": "gpt-5-mini",
+      "claim": "Recent financial reports describe fund balances as \u201cin a strong position,\u201d show the Capital Projects and Debt Service fund balance movements (Capital Projects down ~$0.3 million before transfers; Debt Service up ~$0.6 million), and note overall reporting and budgeting on a cash basis with audited statements prepared under GAAP.",
+      "hash_ids": [
+        "#q1e69"
+      ],
+      "verdict": "verified",
+      "confidence": 0.8,
+      "needs_review": false
+    },
+    {
+      "query_id": "fin04",
+      "answer_model": "gpt-5-mini",
+      "claim": "As of the District\u2019s 2024\u20132025 audited financials, annual debt service (principal and interest) scheduled for 2026 is $7,615,939 and the total remaining principal on general obligation bonds was $28,642,000 as of June 30, 2025.",
+      "hash_ids": [
+        "#q1e9f"
+      ],
+      "verdict": "verified",
+      "confidence": 1,
+      "needs_review": false
+    },
+    {
+      "query_id": "fin04",
+      "answer_model": "gpt-5-mini",
+      "claim": "The 2023\u20132024 and 2024\u20132025 schedules show the District\u2019s near-term annual debt service totals decline from $7,387,339 in 2025 to $7,615,939 in 2026 and then rise in later years as remaining principal is amortized through 2029.",
+      "hash_ids": [
+        "#q1c17",
+        "#q1e9f"
+      ],
+      "verdict": "verified",
+      "confidence": 0.48,
+      "needs_review": true
+    },
+    {
+      "query_id": "fin04",
+      "answer_model": "gpt-5-mini",
+      "claim": "Earlier reports show higher historical totals: the District reported $8.54 million in principal and interest for 2021\u20132022 and $6.72 million for 2022\u20132023 in its budget and audited schedules for those years.",
+      "hash_ids": [
+        "#q1344",
+        "#q1cf2"
+      ],
+      "verdict": "verified",
+      "confidence": 0.32,
+      "needs_review": true
+    },
+    {
+      "query_id": "fin04",
+      "answer_model": "gpt-5-mini",
+      "claim": "Detailed multi-year amortization tables in the audits list the year-by-year principal and interest amounts through final maturities in 2029, with total interest for the remaining bond issues of $2,548,628 reported as part of the 2024\u20132025 amortization totals.",
+      "hash_ids": [
+        "#q1e9f"
+      ],
+      "verdict": "verified",
+      "confidence": 0.77,
+      "needs_review": true
+    },
+    {
+      "query_id": "fin05",
+      "answer_model": "gpt-5-mini",
+      "claim": "The provided quotes show capital improvement or facility cost estimates and planned capital/CIP expenditures listed by building and totals, not per-pupil spending figures.",
+      "hash_ids": [
+        "#q12f3",
+        "#q1296",
+        "#q140e",
+        "#q1368"
+      ],
+      "verdict": "verified",
+      "confidence": 0.99,
+      "needs_review": false
+    },
+    {
+      "query_id": "fin06",
+      "answer_model": "gpt-5-mini",
+      "claim": "The Board held a public tax rate hearing before adopting tax rates for each year, with the hearing and presentation by the CFO noted at the September meetings.",
+      "hash_ids": [
+        "#q010e",
+        "#q0579"
+      ],
+      "verdict": "missing_passage",
+      "confidence": null,
+      "needs_review": true
+    },
+    {
+      "query_id": "fin06",
+      "answer_model": "gpt-5-mini",
+      "claim": "The Board approved the 2024 property tax rates at $3.8504 (residential), $4.7764 (commercial, including a $0.1300 recoupment), and $4.4447 (personal property), with the motion passing 6-0.",
+      "hash_ids": [
+        "#q0106"
+      ],
+      "verdict": "verified",
+      "confidence": 0.99,
+      "needs_review": false
+    },
+    {
+      "query_id": "fin06",
+      "answer_model": "gpt-5-mini",
+      "claim": "The Board approved 2023 rates of $3.8772 (residential), $4.6025 (commercial), and $4.4447 (personal property).",
+      "hash_ids": [
+        "#q011e"
+      ],
+      "verdict": "verified",
+      "confidence": 1,
+      "needs_review": false
+    },
+    {
+      "query_id": "fin06",
+      "answer_model": "gpt-5-mini",
+      "claim": "At a September 7, 2022 meeting the Board approved 2022 rates of $4.0326 (residential), $4.8014 (commercial), and $4.5567 (personal property) and then adjourned the tax rate hearing at 7:07 p.m.",
+      "hash_ids": [
+        "#q0e72"
+      ],
+      "verdict": "contradicted",
+      "confidence": 0.34,
+      "needs_review": true
+    },
+    {
+      "query_id": "fin06",
+      "answer_model": "gpt-5-mini",
+      "claim": "The district\u2019s audited financial reports show the district\u2019s blended total levies and fund allocations for recent years and provide historical levy and collection data through fiscal 2025.",
+      "hash_ids": [
+        "#q1ec4"
+      ],
+      "verdict": "contradicted",
+      "confidence": 0.71,
+      "needs_review": true
+    },
+    {
+      "query_id": "fin07",
+      "answer_model": "gpt-5-mini",
+      "claim": "The District\u2019s Capital Projects Fund had $5.3 million in revenues and $5.6 million in expenditures for the year ended June 30, 2025, resulting in a $0.3 million decrease in the fund balance before transfers.",
+      "hash_ids": [
+        "#q1e69"
+      ],
+      "verdict": "verified",
+      "confidence": 1,
+      "needs_review": false
+    },
+    {
+      "query_id": "fin07",
+      "answer_model": "gpt-5-mini",
+      "claim": "Expenditures in the Capital Projects Fund increased by approximately $1.6 million in 2025 in accordance with planned capital expenditures.",
+      "hash_ids": [
+        "#q1e71"
+      ],
+      "verdict": "verified",
+      "confidence": 0.96,
+      "needs_review": false
+    },
+    {
+      "query_id": "fin07",
+      "answer_model": "gpt-5-mini",
+      "claim": "In prior years, the fund had $6.2 million in revenues and $7.0 million in expenditures (2023, decrease of $0.8 million before transfers) and $4.4 million in revenues and $4.7 million in expenditures (2022, decrease of $0.3 million before transfers), reflecting planned project spending over multiple years.",
+      "hash_ids": [
+        "#q1c4c"
+      ],
+      "verdict": "unsupported",
+      "confidence": 0.39,
+      "needs_review": true
+    },
+    {
+      "query_id": "fin07",
+      "answer_model": "gpt-5-mini",
+      "claim": "The 2019\u20132020 period showed $2.8 million in revenues and $9.1 million in expenditures, with a $6.4 million decrease before transfers primarily due to spending proceeds of a prior year\u2019s capital lease.",
+      "hash_ids": [
+        "#q1d92"
+      ],
+      "verdict": "verified",
+      "confidence": 0.64,
+      "needs_review": true
+    },
+    {
+      "query_id": "fin07",
+      "answer_model": "gpt-5-mini",
+      "claim": "The district\u2019s budgets and capital outlay category define capital projects as expenditures for acquisition or additions to fixed assets such as land, buildings, improvements, remodeling, and equipment.",
+      "hash_ids": [
+        "#q126c"
+      ],
+      "verdict": "verified",
+      "confidence": 0.99,
+      "needs_review": false
+    },
+    {
+      "query_id": "fin08",
+      "answer_model": "gpt-5-mini",
+      "claim": "The district\u2019s budget groups building- and grounds-related maintenance under several function codes, including Operation and Maintenance of Plant Services, Care and Upkeep of Building Services, Care and Upkeep of Grounds Services, Care and Upkeep of Equipment Services, and Vehicle Servicing and Maintenance.",
+      "hash_ids": [
+        "#q1307"
+      ],
+      "verdict": "verified",
+      "confidence": 0.98,
+      "needs_review": false
+    },
+    {
+      "query_id": "fin08",
+      "answer_model": "gpt-5-mini",
+      "claim": "The most recent budgeted totals for 2021\u201322 show Care and Upkeep of Building Services at $8,072,610 and Operation and Maintenance of Plant Services at $56,100, with Grounds, Equipment, and Vehicle maintenance budgeted at $527,000, $61,100, and $105,150 respectively.",
+      "hash_ids": [
+        "#q1374"
+      ],
+      "verdict": "verified",
+      "confidence": 0.98,
+      "needs_review": false
+    },
+    {
+      "query_id": "fin08",
+      "answer_model": "gpt-5-mini",
+      "claim": "In the 2021\u201322 location-level detail, the Maintenance location is budgeted $3,172,380 total (including $249,580 in capital/equipment), and capital/outlay for facilities appears across locations (for example Center of Clayton $533,440; Central Office $508,730).",
+      "hash_ids": [
+        "#q1361"
+      ],
+      "verdict": "verified",
+      "confidence": 0.99,
+      "needs_review": false
+    },
+    {
+      "query_id": "fin08",
+      "answer_model": "gpt-5-mini",
+      "claim": "Year\u2011to\u2011year comparisons show increases from the 2020\u201321 proposed totals (e.g., total operating expenditures rising from $57,075,620 to $58,560,400), indicating higher overall allocations that include plant and maintenance functions.",
+      "hash_ids": [
+        "#q1374"
+      ],
+      "verdict": "verified",
+      "confidence": 0.99,
+      "needs_review": false
+    },
+    {
+      "query_id": "gov01",
+      "answer_model": "gpt-5-mini",
+      "claim": "The superintendent is explicitly identified as the chief executive officer of the District and is employed by the Board in multiple recent budget documents.",
+      "hash_ids": [
+        "#q125a",
+        "#q12b2",
+        "#q13e1",
+        "#q1417",
+        "#q1320"
+      ],
+      "verdict": "verified",
+      "confidence": 1,
+      "needs_review": false
+    },
+    {
+      "query_id": "gov01",
+      "answer_model": "gpt-5-mini",
+      "claim": "The superintendent and members of the executive administrative team meet with the Board to make recommendations and answer questions.",
+      "hash_ids": [
+        "#q125a",
+        "#q12b2"
+      ],
+      "verdict": "verified",
+      "confidence": 1,
+      "needs_review": false
+    },
+    {
+      "query_id": "gov01",
+      "answer_model": "gpt-5-mini",
+      "claim": "The Board votes on each action item after Board discussion.",
+      "hash_ids": [
+        "#q125a",
+        "#q12b2"
+      ],
+      "verdict": "verified",
+      "confidence": 1,
+      "needs_review": false
+    },
+    {
+      "query_id": "gov01",
+      "answer_model": "gpt-5-mini",
+      "claim": "The district agenda/minutes show the Board handles personnel actions (including approvals of certificated and classified staff retirements, resignations, and employment) as consent agenda items.",
+      "hash_ids": [
+        "#q1f00"
+      ],
+      "verdict": "verified",
+      "confidence": 0.19,
+      "needs_review": true
+    },
+    {
+      "query_id": "gov01",
+      "answer_model": "gpt-5-mini",
+      "claim": "Earlier minutes record a superintendent search in late 2020 with 22 applicants and planned interviews in January 2021, indicating a formal hiring/search process managed by the Board.",
+      "hash_ids": [
+        "#q100d"
+      ],
+      "verdict": "verified",
+      "confidence": 0.98,
+      "needs_review": false
+    },
+    {
+      "query_id": "gov02",
+      "answer_model": "gpt-5-mini",
+      "claim": "The board approved the district\u2019s annual general budget for 2022\u20132023 at the June 1, 2022 meeting.",
+      "hash_ids": [
+        "#q0e47"
+      ],
+      "verdict": "verified",
+      "confidence": 0.47,
+      "needs_review": true
+    },
+    {
+      "query_id": "gov02",
+      "answer_model": "gpt-5-mini",
+      "claim": "The board approved the 2021\u20132022 budget at the June 2, 2021 meeting.",
+      "hash_ids": [
+        "#q107d"
+      ],
+      "verdict": "verified",
+      "confidence": 0.51,
+      "needs_review": true
+    },
+    {
+      "query_id": "gov02",
+      "answer_model": "gpt-5-mini",
+      "claim": "The board approved budget revisions for 2021\u20132022 on February 9, 2022.",
+      "hash_ids": [
+        "#q0de1"
+      ],
+      "verdict": "verified",
+      "confidence": 1,
+      "needs_review": false
+    },
+    {
+      "query_id": "gov02",
+      "answer_model": "gpt-5-mini",
+      "claim": "For the Clayton Recreation, Sports and Wellness Commission (CRSWC) budgets, the board approved the FY2024 (2023\u20132024) CRSWC budget on September 27, 2023, and approved the FY2023 (2022\u20132023) CRSWC budget as submitted on September 28, 2022.",
+      "hash_ids": [
+        "#q0120",
+        "#q0e8e"
+      ],
+      "verdict": "verified",
+      "confidence": 0.3,
+      "needs_review": true
+    },
+    {
+      "query_id": "gov03",
+      "answer_model": "gpt-5-mini",
+      "claim": "At the April 15, 2026 meeting the Board elected Jason Growe as Board President; the nomination was unopposed and the votes were \u201call aye.\u201d",
+      "hash_ids": [
+        "#q1ee2"
+      ],
+      "verdict": "verified",
+      "confidence": 0.85,
+      "needs_review": false
+    },
+    {
+      "query_id": "gov03",
+      "answer_model": "gpt-5-mini",
+      "claim": "At that same 2026 meeting the Board also elected Chris Win as Vice President, Pamela Lyss-Lerman as Secretary, and Leo Human as Treasurer, each nominated with no other nominations and approved unanimously.",
+      "hash_ids": [
+        "#q1ee2"
+      ],
+      "verdict": "verified",
+      "confidence": 0.99,
+      "needs_review": false
+    },
+    {
+      "query_id": "gov03",
+      "answer_model": "gpt-5-mini",
+      "claim": "Earlier records show Stacy Siwak was elected President at the April 10, 2024 meeting after an uncontested nomination and vote.",
+      "hash_ids": [
+        "#q000b"
+      ],
+      "verdict": "verified",
+      "confidence": 0.79,
+      "needs_review": true
+    },
+    {
+      "query_id": "gov03",
+      "answer_model": "gpt-5-mini",
+      "claim": "The minutes from September 4, 2024 list the Board members at that time with Stacy Siwak identified as President and Kim Hurst as Vice President.",
+      "hash_ids": [
+        "#q0124"
+      ],
+      "verdict": "verified",
+      "confidence": 1,
+      "needs_review": false
+    },
+    {
+      "query_id": "gov03",
+      "answer_model": "gpt-5-mini",
+      "claim": "Previous years\u2019 minutes show prior presidents: Amy Rubin was elected President for the 2023\u20132024 term (elected April 12, 2023), and Amy Rubin was elected President in April 2021.",
+      "hash_ids": [
+        "#q0f4d"
+      ],
+      "verdict": "verified",
+      "confidence": 0.35,
+      "needs_review": true
+    },
+    {
+      "query_id": "gov04",
+      "answer_model": "gpt-5-mini",
+      "claim": "Recent Clayton Board minutes show the board routinely approves meeting minutes as part of the consent agenda; April 15, 2026 minutes include an \u201cApproval of Minutes\u201d consent item for the March 11, 2026 business meeting and a motion to \u201capprove the minutes as presented.\u201d",
+      "hash_ids": [
+        "#q1ee6"
+      ],
+      "verdict": "verified",
+      "confidence": 0.99,
+      "needs_review": false
+    },
+    {
+      "query_id": "gov04",
+      "answer_model": "gpt-5-mini",
+      "claim": "The board\u2019s standard practice is to bundle approval of minutes with other consent items (personnel, financial reports, etc.) and approve them by a single motion covering multiple items.",
+      "hash_ids": [
+        "#q1ee6"
+      ],
+      "verdict": "verified",
+      "confidence": 0.99,
+      "needs_review": false
+    },
+    {
+      "query_id": "gov04",
+      "answer_model": "gpt-5-mini",
+      "claim": "Earlier minutes show the same pattern: consent motions approving minutes appear repeatedly (for example, February 1, 2023; May 15, 2024; April 10, 2024; March 27, 2024; February 21, 2024; December 13, 2023; August 16, 2023; April 21, 2021), with motions carried.",
+      "hash_ids": [
+        "#q0f12",
+        "#q00a2",
+        "#q0012",
+        "#q0091",
+        "#q006b",
+        "#q0057",
+        "#q003c",
+        "#q1060"
+      ],
+      "verdict": "verified",
+      "confidence": 0.84,
+      "needs_review": false
+    },
+    {
+      "query_id": "gov05",
+      "answer_model": "gpt-5-mini",
+      "claim": "The Sunshine Law permits public bodies to close meetings only for specific reasons listed in Section 610.021, RSMo., and allows closing meetings, records, and votes to the extent they relate to matters such as legal actions, causes of action, litigation, and confidential attorney communications.",
+      "hash_ids": [
+        "#q11cb"
+      ],
+      "verdict": "verified",
+      "confidence": 0.76,
+      "needs_review": true
+    },
+    {
+      "query_id": "gov05",
+      "answer_model": "gpt-5-mini",
+      "claim": "The law requires that closed meetings be limited \u201conly to the extent necessary for the specific reason announced\u201d and that no business unrelated to that stated reason be discussed, with roll call votes required to close and recorded for all votes taken in closed session.",
+      "hash_ids": [
+        "#q11d5"
+      ],
+      "verdict": "verified",
+      "confidence": 0.34,
+      "needs_review": true
+    },
+    {
+      "query_id": "gov05",
+      "answer_model": "gpt-5-mini",
+      "claim": "Notices for closed meetings must state the specific statutory reason under Section 610.021 that justifies closure and include the date, time, and place of the meeting.",
+      "hash_ids": [
+        "#q11a0"
+      ],
+      "verdict": "verified",
+      "confidence": 1,
+      "needs_review": false
+    },
+    {
+      "query_id": "gov05",
+      "answer_model": "gpt-5-mini",
+      "claim": "Minutes or a journal of closed meetings must be kept, including date, time, place, members present and absent, and records of votes; some closed-record items (for example, minutes or settlement agreements tied to litigation) must be made public upon final disposition, though certain materials like legal work product remain closed.",
+      "hash_ids": [
+        "#q11cb"
+      ],
+      "verdict": "verified",
+      "confidence": 0.46,
+      "needs_review": true
+    },
+    {
+      "query_id": "gov05",
+      "answer_model": "gpt-5-mini",
+      "claim": "The Sunshine Law also notes that attendees may not record closed meetings without permission.",
+      "hash_ids": [
+        "#q119b"
+      ],
+      "verdict": "verified",
+      "confidence": 1,
+      "needs_review": false
+    },
+    {
+      "query_id": "gov05",
+      "answer_model": "gpt-5-mini",
+      "claim": "Finally, district records show examples of board adjournments into closed/executive session on specific meeting dates (e.g., September 23, 2020 and May 8, 2024).",
+      "hash_ids": [
+        "#q0fb1",
+        "#q1141"
+      ],
+      "verdict": "verified",
+      "confidence": 0.74,
+      "needs_review": true
+    },
+    {
+      "query_id": "gov06",
+      "answer_model": "gpt-5-mini",
+      "claim": "The board has already taken the action to place a bond measure on the ballot and is in the campaign\u2019s \u201csolution phase,\u201d focused now on informing voters about what is on the ballot and the specific needs the measure addresses leading up to the April 7 date.",
+      "hash_ids": [
+        "#q03e8"
+      ],
+      "verdict": "missing_passage",
+      "confidence": null,
+      "needs_review": true
+    },
+    {
+      "query_id": "gov06",
+      "answer_model": "gpt-5-mini",
+      "claim": "The speaker emphasized building trust and deeper community engagement during the period before the vote, saying the board should lead with integrity and provide accessible information to all voters.",
+      "hash_ids": [
+        "#q03e8"
+      ],
+      "verdict": "missing_passage",
+      "confidence": null,
+      "needs_review": true
+    },
+    {
+      "query_id": "gov06",
+      "answer_model": "gpt-5-mini",
+      "claim": "The remaining quotes are routine meeting adjournment and agenda approval records from 2020\u20132024 and do not document additional board actions specifically about the bond ballot measure.",
+      "hash_ids": [
+        "#q1145",
+        "#q0022",
+        "#q00d9",
+        "#q0117",
+        "#q0de9",
+        "#q0dd2",
+        "#q106f",
+        "#q0fd4",
+        "#q0f9a"
+      ],
+      "verdict": "verified",
+      "confidence": 0.96,
+      "needs_review": false
+    },
+    {
+      "query_id": "gov07",
+      "answer_model": "gpt-5-mini",
+      "claim": "The Board retreats in Dec 2024 and Jan 2025 focused on reviewing and refining Long-Range Facility Master Plan design options while incorporating cost estimates so the Board could weigh financial feasibility alongside design goals.",
+      "hash_ids": [
+        "#q079e",
+        "#q079f"
+      ],
+      "verdict": "missing_passage",
+      "confidence": null,
+      "needs_review": true
+    },
+    {
+      "query_id": "gov07",
+      "answer_model": "gpt-5-mini",
+      "claim": "The retreats emphasized balancing facility improvements with fiscal responsibility and potential tax impacts, and they included presentations on funding strategies by the Chief Financial Officer.",
+      "hash_ids": [
+        "#q079e",
+        "#q079d"
+      ],
+      "verdict": "missing_passage",
+      "confidence": null,
+      "needs_review": true
+    },
+    {
+      "query_id": "gov07",
+      "answer_model": "gpt-5-mini",
+      "claim": "A top district priority identified through the planning process and community input was increasing and updating specialized learning spaces for real\u2011world and future\u2011focused learning.",
+      "hash_ids": [
+        "#q079d"
+      ],
+      "verdict": "missing_passage",
+      "confidence": null,
+      "needs_review": true
+    },
+    {
+      "query_id": "gov07",
+      "answer_model": "gpt-5-mini",
+      "claim": "The retreats and related meetings used community engagement (forums, steering committees, subcommittees) to refine priorities and ensure community feedback informed final design options.",
+      "hash_ids": [
+        "#q079f",
+        "#q0781"
+      ],
+      "verdict": "missing_passage",
+      "confidence": null,
+      "needs_review": true
+    },
+    {
+      "query_id": "gov08",
+      "answer_model": "gpt-5-mini",
+      "claim": "The Board has a written process for public comment during electronic meetings that requires speakers to submit a form by 5 p.m. on the day of the meeting that includes name, address, email and comments.",
+      "hash_ids": [
+        "#q1452"
+      ],
+      "verdict": "verified",
+      "confidence": 1,
+      "needs_review": false
+    },
+    {
+      "query_id": "gov08",
+      "answer_model": "gpt-5-mini",
+      "claim": "Each submitted comment is allotted up to three minutes, though the Board president may change the time limit before the meeting to accommodate the number of comments.",
+      "hash_ids": [
+        "#q1452"
+      ],
+      "verdict": "verified",
+      "confidence": 1,
+      "needs_review": false
+    },
+    {
+      "query_id": "gov08",
+      "answer_model": "gpt-5-mini",
+      "claim": "Comments addressing specific personnel matters will not be read and such concerns must be handled through the District\u2019s established personnel procedures or brought to the Board privately.",
+      "hash_ids": [
+        "#q1452"
+      ],
+      "verdict": "verified",
+      "confidence": 1,
+      "needs_review": false
+    },
+    {
+      "query_id": "gov08",
+      "answer_model": "gpt-5-mini",
+      "claim": "The Board generally does not directly respond during the meeting, but the Board President may make clarifying remarks at the end of the public comment session and the Administration will send a written response to the speaker.",
+      "hash_ids": [
+        "#q1455"
+      ],
+      "verdict": "verified",
+      "confidence": 1,
+      "needs_review": false
+    },
+    {
+      "query_id": "gov08",
+      "answer_model": "gpt-5-mini",
+      "claim": "Recent minutes show occasions when no public comments were submitted or presented at meetings.",
+      "hash_ids": [
+        "#q1f05"
+      ],
+      "verdict": "verified",
+      "confidence": 0.99,
+      "needs_review": false
+    }
+  ]
+}

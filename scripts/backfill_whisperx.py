@@ -31,7 +31,7 @@ A later step runs ``scripts/ingest.py --manifest`` then
 
 Run (DB creds from Doppler mac; Modal/HF tokens from actalux):
   MODAL_TOKEN_ID=... MODAL_TOKEN_SECRET=... HF_TOKEN=... \
-  doppler run --project mac --config dev -- \
+  doppler run --project actalux --config dev -- \
     uv run --group diarization python scripts/backfill_whisperx.py \
       --body council --workers 4
 """

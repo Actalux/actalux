@@ -12,9 +12,9 @@ present (ACTALUX_SUPABASE_SERVICE_KEY); the script refuses to fall back to the
 publishable key, which RLS would block.
 
 Usage (always under doppler for the Supabase credentials):
-    doppler run --project mac --config dev -- \\
+    doppler run --project actalux --config dev -- \\
         uv run python scripts/issue_api_key.py --label "Acme newsletter" --tier developer
-    doppler run --project mac --config dev -- \\
+    doppler run --project actalux --config dev -- \\
         uv run python scripts/issue_api_key.py --label x --tier pro \\
             --expires 2027-01-01 --monthly-quota 1000000
 
@@ -87,7 +87,7 @@ def main(argv: list[str] | None = None) -> int:
     if not cfg.supabase_service_key:
         raise SystemExit(
             "ACTALUX_SUPABASE_SERVICE_KEY is required to write api_keys (RLS blocks the "
-            "publishable key). Run under: doppler run --project mac --config dev -- ..."
+            "publishable key). Run under: doppler run --project actalux --config dev -- ..."
         )
 
     raw_key = _generate_key()

@@ -39,10 +39,10 @@ replicable form of the island-rescue + minutes-trick analyses first run on
 mo/clayton/schools.
 
 Usage:
-    doppler run --project mac --config dev -- uv run python scripts/linking/identify_nodes.py \
+    doppler run --project actalux --config dev -- uv run python scripts/linking/identify_nodes.py \
         --state mo --place clayton --body schools \
         --nodes nodes.json --out identified.json
-    doppler run --project mac --config dev -- uv run python scripts/linking/identify_nodes.py \
+    doppler run --project actalux --config dev -- uv run python scripts/linking/identify_nodes.py \
         --state mo --place clayton --body council \
         --audit-anchors --out anchor_audit.json
 """

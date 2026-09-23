@@ -17,7 +17,7 @@ Applies the write policy in docs/architecture/zoom-name-extraction.md (Z2):
 
 Dry-run by default — prints the full plan; --apply executes the inserts and verifies.
 
-    doppler run --project mac --config dev -- uv run python scripts/apply_zoom_verdicts.py \\
+    doppler run --project actalux --config dev -- uv run python scripts/apply_zoom_verdicts.py \\
       data/zoom_receipts/mo_clayton_plan-commission/evidence_20260711T031509Z.json
     ... --apply   # after reviewing the plan
 """

@@ -22,7 +22,7 @@ is read straight off ``documents``. Both are metadata for the evaluator's second
 split; the primary go/no-go metric (across-*meeting* F1) does not depend on the condition label.
 
 Run (detached, WARP proxy for YouTube bot-checks):
-    doppler run --project mac --config dev -- \\
+    doppler run --project actalux --config dev -- \\
       uv run --group diarization python scripts/linking/build_embedding_cache.py \\
       --state mo --place clayton --body schools --proxy --out-dir data/linking_cache
 """

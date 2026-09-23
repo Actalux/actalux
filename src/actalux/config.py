@@ -69,17 +69,19 @@ class Config:
     buttondown_api_key: str = field(
         default_factory=lambda: os.environ.get("BUTTONDOWN_API_KEY", "")
     )
-    anthropic_api_key: str = field(default_factory=lambda: os.environ.get("ANTHROPIC_API_KEY", ""))
     # OpenRouter is the single gateway for every chat/completion LLM call (search
     # summaries, the ask chatbot, follow-up condense, query expansion, the digest):
     # the OpenAI SDK targets ``openrouter_base_url`` with this key and reaches the
     # same models by provider-prefixed id (``openai/gpt-5-mini``, ...). One key,
     # one place for all LLMs. New actalux-scoped name, old name kept as a fallback
     # so moving the secret is non-breaking.
+    # Actalux's own OpenRouter key ONLY. There is deliberately no fallback to the
+    # generic OPENROUTER_API_KEY: on a machine that also runs other projects, that
+    # name belongs to a different account, and a silent fallback billed Actalux
+    # work to it (and inherited its privacy settings) until 2026-09-23. Every
+    # third-party key below follows the same rule: Actalux-named, or nothing.
     openrouter_api_key: str = field(
-        default_factory=lambda: (
-            os.environ.get("OPENROUTER_ACTALUX_KEY") or os.environ.get("OPENROUTER_API_KEY", "")
-        )
+        default_factory=lambda: os.environ.get("OPENROUTER_ACTALUX_KEY", "")
     )
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     # The public answer model (/ask, search summaries). Changing it changes what
@@ -129,11 +131,7 @@ class Config:
     expansion_count: int = 3
     # ZeroEntropy hosted reranker. Key gates the API call; zerank-1-small is the
     # Apache-2.0 model that won the retrieval eval (+24% nDCG@10; see eval/README.md).
-    zeroentropy_api_key: str = field(
-        default_factory=lambda: (
-            os.environ.get("ACTALUX_ZE") or os.environ.get("ZEROENTROPY_API_KEY", "")
-        )
-    )
+    zeroentropy_api_key: str = field(default_factory=lambda: os.environ.get("ACTALUX_ZE", ""))
     rerank_model: str = "zerank-1-small"
     # Candidate replacements for the ZeroEntropy sunset (2026-09-04). Keys are
     # read here so the eval can run a provider arm; production still selects
@@ -143,14 +141,10 @@ class Config:
     # shared Doppler project cannot collide with another consumer's key. The bare
     # names are accepted as a fallback, matching how the ZeroEntropy key resolves.
     cohere_api_key: str = field(
-        default_factory=lambda: (
-            os.environ.get("ACTALUX_COHERE_API_KEY") or os.environ.get("COHERE_API_KEY", "")
-        )
+        default_factory=lambda: os.environ.get("ACTALUX_COHERE_API_KEY", "")
     )
     voyage_api_key: str = field(
-        default_factory=lambda: (
-            os.environ.get("ACTALUX_VOYAGE_API_KEY") or os.environ.get("VOYAGE_API_KEY", "")
-        )
+        default_factory=lambda: os.environ.get("ACTALUX_VOYAGE_API_KEY", "")
     )
     # Which hosted reranker production calls. See search/rerank.py PROVIDERS.
     rerank_provider: str = field(
@@ -168,15 +162,12 @@ class Config:
     # vector space it does not share — silently wrong results, not an error.
     # Changing it means re-embedding the whole corpus in one planned migration.
     embedding_model: str = "BAAI/bge-small-en-v1.5"
-    # TypeSafe (System One judgments — currently the citation-support audit).
-    # Pinned to a versioned model, not the jev-latest alias, so an audit rerun is
+    # Jev (TypeSafe's decision model), reached through OpenRouter's Decisions
+    # API on the Actalux OpenRouter key — no separate TypeSafe account. Pinned to a
+    # versioned model rather than the jev-latest alias so an audit rerun stays
     # comparable to the last one until the pin is moved deliberately.
-    typesafe_api_key: str = field(
-        default_factory=lambda: os.environ.get("ACTALUX_TYPESAFE_API_KEY", "")
-    )
-    typesafe_model: str = field(
-        default_factory=lambda: _model("ACTALUX_TYPESAFE_MODEL", "jev-1.13.0")
-    )
+    decisions_url: str = "https://openrouter.ai/api/alpha/decisions"
+    jev_model: str = field(default_factory=lambda: _model("ACTALUX_JEV_MODEL", "typesafe/jev-1.13"))
     embedding_dim: int = 384
     # Board-meeting transcription (Whisper). Audio is transcribed via Groq's
     # OpenAI-compatible API (free tier, whisper-large-v3 — better than whisper-1

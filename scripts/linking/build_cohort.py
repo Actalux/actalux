@@ -8,7 +8,7 @@ wespeaker model. The vectors are UNLABELED — a background yardstick, not a gal
 responsible for supplying sources that are target-disjoint from the bodies the cohort will score.
 
 Run (dry-run — report count + condition balance, no writes):
-    doppler run --project mac --config dev -- \\
+    doppler run --project actalux --config dev -- \\
       uv run python scripts/linking/build_cohort.py \\
       --slug mo-clayton-external-v1 --source clayton-council-pc \\
       --state mo --place clayton --activate --dry-run \\

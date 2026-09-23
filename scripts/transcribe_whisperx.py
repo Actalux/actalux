@@ -24,7 +24,7 @@ Prereq: the Modal apps must already be deployed
 
 Run (DB creds from Doppler mac; Modal/HF tokens from actalux):
   MODAL_TOKEN_ID=... MODAL_TOKEN_SECRET=... HF_TOKEN=... \
-  doppler run --project mac --config dev -- \
+  doppler run --project actalux --config dev -- \
     uv run --group diarization python scripts/transcribe_whisperx.py \
       --discover --body council --limit 3
 """

@@ -17,7 +17,7 @@ citation's "open original" lands somewhere a reader can use.
 
 Run (no secrets needed to crawl; ingest needs the usual doppler prefix):
   uv run python scripts/crawl_diligent_meetings.py --days-back 90 --days-ahead 30
-  doppler run --project mac --config dev -- uv run python scripts/ingest.py \\
+  doppler run --project actalux --config dev -- uv run python scripts/ingest.py \\
       --manifest data/documents/diligent_meetings_manifest.json
 """
 

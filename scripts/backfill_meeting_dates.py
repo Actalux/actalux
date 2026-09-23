@@ -32,7 +32,7 @@ It is skipped when the download directory is absent.
 Anything still unresolved after both strategies keeps its current value and is
 reported, not guessed.
 
-Run (prefix with `doppler run --project mac --config dev --`):
+Run (prefix with `doppler run --project actalux --config dev --`):
   uv run python scripts/backfill_meeting_dates.py                # dry run
   uv run python scripts/backfill_meeting_dates.py --entity 1     # one body
   uv run python scripts/backfill_meeting_dates.py --apply        # write

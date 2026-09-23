@@ -20,7 +20,7 @@ relative frequencies of the top-K corpus-frequent words (function-word dominated
 topic-resistant); distance = mean |dz|. Deterministic, no LLM.
 
 Usage:
-    doppler run --project mac --config dev -- \\
+    doppler run --project actalux --config dev -- \\
       uv run python scripts/analyze_stylometry.py --state mo --place clayton
 """
 
