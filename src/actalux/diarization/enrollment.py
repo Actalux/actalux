@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from actalux.config import MODEL_SETTINGS
 from actalux.diarization.pooling import Pooled, pool_turn_embeddings
 
 # The embedding model, frozen by the Phase-0 spike (migrate_040). Every stored vector — gallery
@@ -18,10 +19,10 @@ from actalux.diarization.pooling import Pooled, pool_turn_embeddings
 # geometry does not line up. This is the APP-side home: the linking tools that read/write those
 # vectors need the string but must not pull in `modal`, so they import it from here.
 #
-# It deliberately MIRRORS ``modal_runner.EMBED_MODEL`` instead of importing it: the GPU container
-# loads modal_runner to find its remote functions and must never import ``actalux``, so that module
-# cannot depend on this one. test_enrollment pins the two equal so the mirror cannot drift.
-EMBED_MODEL = "pyannote/wespeaker-voxceleb-resnet34-LM"
+# Read from model_settings.toml [pinned] — the one configuration for every model. The GPU
+# container's copy (``modal_runner.EMBED_MODEL``) cannot import actalux; tests pin it to the same
+# file entry so the two cannot drift.
+EMBED_MODEL = MODEL_SETTINGS["pinned"]["voice_embedding"]
 
 # Acoustic condition: the axis that splits an official's gallery into dual per-condition prototypes
 # (a Zoom centroid and a room-mic centroid) instead of one blurred average. A meeting is 'zoom' iff

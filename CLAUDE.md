@@ -85,6 +85,8 @@ City government (mo/clayton/council, mo/clayton/plan-commission, …):
 - Supabase (PostgreSQL + pgvector) — project "Actalux Clayton"
 - bge-small-en-v1.5 (384-dim embeddings, local inference)
 - Claude Sonnet for citation-backed summaries (anthropic SDK pinned to 0.93.0)
+- **Models are configuration:** every model (LLMs, rerankers, speech, embeddings) is set in
+  `src/actalux/model_settings.toml` — never write a model name in code (a test enforces it).
 - Secrets in Doppler (project: **actalux**, config: dev). Actalux uses ONLY its own keys — never the
   generic names (`OPENROUTER_API_KEY` etc.) from shared projects, which belong to other accounts.
 

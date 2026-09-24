@@ -3,19 +3,33 @@
 from __future__ import annotations
 
 import os
+import tomllib
 from dataclasses import dataclass, field
+from pathlib import Path
 from types import MappingProxyType
 
+MODEL_SETTINGS_PATH = Path(__file__).with_name("model_settings.toml")
 
-def _model(env_var: str, default: str) -> str:
-    """A model ID from the environment, falling back to the default in code.
 
-    Every model the app calls is configuration: swap one by setting its variable
-    (Doppler for local and CI runs, Fly secrets for the web host) — no code
-    change or release. The default is the model the corresponding eval last
-    validated, so an unset variable means "the measured choice".
+def _load_model_settings() -> dict[str, dict[str, str]]:
+    """Read model_settings.toml — the single configuration for every model."""
+    with MODEL_SETTINGS_PATH.open("rb") as f:
+        return tomllib.load(f)
+
+
+MODEL_SETTINGS = MappingProxyType(_load_model_settings())
+
+
+def _model(section: str, key: str, env_var: str | None = None) -> str:
+    """A model ID from model_settings.toml, optionally overridden for one run.
+
+    ``env_var`` is the per-run override for experiments; pinned models pass none,
+    so they can only change by editing the file. An empty variable is ignored
+    rather than blanking the model.
     """
-    return os.environ.get(env_var) or default
+    if env_var and os.environ.get(env_var):
+        return os.environ[env_var]
+    return MODEL_SETTINGS[section][key]
 
 
 @dataclass(frozen=True)
@@ -87,32 +101,26 @@ class Config:
     # The public answer model (/ask, search summaries). Changing it changes what
     # citizens read, so validate first with scripts/eval_answers.py.
     summary_model: str = field(
-        default_factory=lambda: _model("ACTALUX_SUMMARY_MODEL", "openai/gpt-5-mini")
+        default_factory=lambda: _model("llm", "summary", "ACTALUX_SUMMARY_MODEL")
     )
     # Offline jobs get their own settings so one can move without moving the
     # public answer model. Each falls back to the summary model's variable, then
     # to the same default, so an unconfigured deploy behaves exactly as before.
     doc_summary_model: str = field(
-        default_factory=lambda: _model(
-            "ACTALUX_DOC_SUMMARY_MODEL", _model("ACTALUX_SUMMARY_MODEL", "openai/gpt-5-mini")
-        )
+        default_factory=lambda: _model("llm", "doc_summary", "ACTALUX_DOC_SUMMARY_MODEL")
     )
     landuse_model: str = field(
-        default_factory=lambda: _model(
-            "ACTALUX_LANDUSE_MODEL", _model("ACTALUX_SUMMARY_MODEL", "openai/gpt-5-mini")
-        )
+        default_factory=lambda: _model("llm", "landuse", "ACTALUX_LANDUSE_MODEL")
     )
     discourse_model: str = field(
-        default_factory=lambda: _model(
-            "ACTALUX_DISCOURSE_MODEL", _model("ACTALUX_SUMMARY_MODEL", "openai/gpt-5-mini")
-        )
+        default_factory=lambda: _model("llm", "discourse", "ACTALUX_DISCOURSE_MODEL")
     )
     # Follow-ups are condensed into a standalone retrieval query — a mechanical
     # rewrite, not a reasoning task — so a fast non-reasoning model keeps that
     # extra LLM hop off the answer's critical path (the reasoning summary model
     # added ~1.4s per follow-up; see task #19 latency measurement).
     condense_model: str = field(
-        default_factory=lambda: _model("ACTALUX_CONDENSE_MODEL", "openai/gpt-4o-mini")
+        default_factory=lambda: _model("llm", "condense", "ACTALUX_CONDENSE_MODEL")
     )
     # Query expansion: also retrieve LLM-generated alternate phrasings of the
     # query and fuse the candidate pools, so a question whose wording differs
@@ -125,14 +133,22 @@ class Config:
     )
     # Cheap non-reasoning model for the expansion hop (same class as condense).
     expansion_model: str = field(
-        default_factory=lambda: _model("ACTALUX_EXPANSION_MODEL", "openai/gpt-4o-mini")
+        default_factory=lambda: _model("llm", "expansion", "ACTALUX_EXPANSION_MODEL")
     )
     # Number of alternate phrasings retrieved alongside the original query.
     expansion_count: int = 3
     # ZeroEntropy hosted reranker. Key gates the API call; zerank-1-small is the
     # Apache-2.0 model that won the retrieval eval (+24% nDCG@10; see eval/README.md).
     zeroentropy_api_key: str = field(default_factory=lambda: os.environ.get("ACTALUX_ZE", ""))
-    rerank_model: str = "zerank-1-small"
+    # Model per reranker provider, from model_settings.toml [rerank].
+    rerank_models: MappingProxyType = field(
+        default_factory=lambda: MappingProxyType(
+            {
+                provider: _model("rerank", provider, f"ACTALUX_RERANK_{provider.upper()}_MODEL")
+                for provider in MODEL_SETTINGS["rerank"]
+            }
+        )
+    )
     # Candidate replacements for the ZeroEntropy sunset (2026-09-04). Keys are
     # read here so the eval can run a provider arm; production still selects
     # zeroentropy until the eval says which one earns the swap. An unset key
@@ -157,17 +173,18 @@ class Config:
     # RRF candidates reranked before truncating to search_max_results. Reranking
     # a deeper pool is what lets the cross-encoder lift a buried-but-relevant hit.
     rerank_pool_size: int = 50
-    # Deliberately NOT an environment setting: every stored chunk vector was
-    # produced by this model, so a different query-time model would search a
-    # vector space it does not share — silently wrong results, not an error.
-    # Changing it means re-embedding the whole corpus in one planned migration.
-    embedding_model: str = "BAAI/bge-small-en-v1.5"
+    # Pinned (model_settings.toml [pinned]): every stored chunk vector came from this
+    # model, so a different query-time model would search a space it does not share —
+    # silently wrong results. No run-time override; changing it means re-embedding.
+    embedding_model: str = field(default_factory=lambda: _model("pinned", "embedding"))
     # Jev (TypeSafe's decision model), reached through OpenRouter's Decisions
     # API on the Actalux OpenRouter key — no separate TypeSafe account. Pinned to a
     # versioned model rather than the jev-latest alias so an audit rerun stays
     # comparable to the last one until the pin is moved deliberately.
     decisions_url: str = "https://openrouter.ai/api/alpha/decisions"
-    jev_model: str = field(default_factory=lambda: _model("ACTALUX_JEV_MODEL", "typesafe/jev-1.13"))
+    jev_model: str = field(
+        default_factory=lambda: _model("llm", "citation_judge", "ACTALUX_JEV_MODEL")
+    )
     embedding_dim: int = 384
     # Board-meeting transcription (Whisper). Audio is transcribed via Groq's
     # OpenAI-compatible API (free tier, whisper-large-v3 — better than whisper-1
@@ -180,7 +197,7 @@ class Config:
         )
     )
     transcribe_model: str = field(
-        default_factory=lambda: _model("ACTALUX_TRANSCRIBE_MODEL", "whisper-large-v3")
+        default_factory=lambda: _model("speech", "transcribe_groq", "ACTALUX_TRANSCRIBE_MODEL")
     )
     transcribe_base_url: str = "https://api.groq.com/openai/v1"
     chunk_target_words: int = 200

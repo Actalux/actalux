@@ -11,6 +11,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from actalux.config import MODEL_SETTINGS
 from actalux.web import retrieval
 
 
@@ -160,6 +161,7 @@ class TestBuildRerankerProvider:
             "ACTALUX_COHERE_API_KEY",
             "COHERE_API_KEY",
             "ACTALUX_VOYAGE_API_KEY",
+            "ACTALUX_RERANK_VOYAGE_MODEL",
             "VOYAGE_API_KEY",
         ):
             monkeypatch.delenv(key, raising=False)
@@ -199,9 +201,21 @@ class TestBuildRerankerProvider:
         retrieval.build_reranker()("q", [])
         assert seen["provider"] == "voyage"
         assert seen["key"] == "voyage-key"  # not the ZeroEntropy key
-        # Empty model lets the provider table supply rerank-2.5-lite, so a vendor
-        # switch does not also require remembering to change the model name.
-        assert seen["model"] == ""
+        # The provider's model comes from model_settings.toml, so a vendor switch
+        # does not also require remembering to change a model name in code.
+        assert seen["model"] == MODEL_SETTINGS["rerank"]["voyage"]
+
+    def test_rerank_model_override_reaches_the_client(self, monkeypatch) -> None:
+        self._cfg(
+            monkeypatch,
+            ACTALUX_RERANK="api",
+            ACTALUX_RERANK_PROVIDER="voyage",
+            ACTALUX_VOYAGE_API_KEY="voyage-key",
+            ACTALUX_RERANK_VOYAGE_MODEL="rerank-2.5",
+        )
+        seen = self._provider_used(monkeypatch)
+        retrieval.build_reranker()("q", [])
+        assert seen["model"] == "rerank-2.5"
 
     def test_works_without_a_zeroentropy_key_at_all(self, monkeypatch) -> None:
         # The end state after the sunset: ZE key deleted, Voyage serving. The old

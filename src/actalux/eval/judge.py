@@ -23,13 +23,15 @@ from typing import Any
 
 from openai import OpenAI
 
+from actalux.config import MODEL_SETTINGS
+
 logger = logging.getLogger(__name__)
 
 # Provider-prefixed so the OpenAI SDK reaches Claude through OpenRouter. Configurable
 # via ACTALUX_JUDGE_MODEL, but note that grades from different judges are not
 # comparable: the cached judgments in eval/ are keyed by this model, and a new
 # judge regrades from scratch rather than extending the old baseline.
-JUDGE_MODEL = os.environ.get("ACTALUX_JUDGE_MODEL") or "anthropic/claude-sonnet-4-6"
+JUDGE_MODEL = os.environ.get("ACTALUX_JUDGE_MODEL") or MODEL_SETTINGS["llm"]["eval_judge"]
 DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 MAX_PASSAGE_CHARS = 4000
 

@@ -28,6 +28,7 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from actalux.config import MODEL_SETTINGS
 from actalux.errors import RerankError
 
 if TYPE_CHECKING:
@@ -56,7 +57,6 @@ class RerankProvider:
 
     name: str
     url: str
-    default_model: str
     # Provider-specific payload fields merged into every request.
     extra: dict[str, object] = field(default_factory=dict)
     # Top-level key holding the ranked list. Voyage answers `data` where the other
@@ -70,7 +70,6 @@ PROVIDERS: dict[str, RerankProvider] = {
     "zeroentropy": RerankProvider(
         name="zeroentropy",
         url=ZE_RERANK_URL,
-        default_model="zerank-1-small",
         extra={"latency": LATENCY_MODE},
     ),
     # max_tokens_per_doc defaults to 4096 upstream; our chunks are ~1200 chars, so
@@ -79,7 +78,6 @@ PROVIDERS: dict[str, RerankProvider] = {
     "cohere": RerankProvider(
         name="cohere",
         url="https://api.cohere.com/v2/rerank",
-        default_model="rerank-v3.5",
         extra={"max_tokens_per_doc": 1024},
     ),
     # truncation=True lets the API clip an over-long pair instead of erroring the
@@ -87,7 +85,6 @@ PROVIDERS: dict[str, RerankProvider] = {
     "voyage": RerankProvider(
         name="voyage",
         url="https://api.voyageai.com/v1/rerank",
-        default_model="rerank-2.5-lite",
         extra={"truncation": True},
         results_key="data",
     ),
@@ -137,7 +134,8 @@ def _request_rerank_order(
     import httpx
 
     payload: dict[str, object] = {
-        "model": model or provider.default_model,
+        # An empty model means "the provider's configured model" (model_settings.toml).
+        "model": model or MODEL_SETTINGS["rerank"][provider.name],
         "query": query,
         "documents": documents,
         **provider.extra,

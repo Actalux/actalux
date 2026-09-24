@@ -156,7 +156,7 @@ def main() -> None:
     if args.api_rerank:
         if not cfg.zeroentropy_api_key:
             parser.error("ACTALUX_ZE not set; needed for --api-rerank.")
-        ze_key, ze_model = cfg.zeroentropy_api_key, cfg.rerank_model
+        ze_key, ze_model = cfg.zeroentropy_api_key, cfg.rerank_models["zeroentropy"]
         arms[rerank.API_ARM_NAME] = lambda query, pool, k=ze_key, m=ze_model: (
             rerank.rerank_pool_api(query, pool, k, m)
         )
@@ -167,7 +167,7 @@ def main() -> None:
     # (and therefore recall@K) comparable across arms in one pass.
     for name in (p.strip() for p in args.api_providers.split(",") if p.strip()):
         try:
-            spec = search_rerank.get_provider(name)
+            search_rerank.get_provider(name)  # validates the name
         except ValueError as exc:
             parser.error(str(exc))
         key = {"cohere": cfg.cohere_api_key, "voyage": cfg.voyage_api_key}.get(
@@ -180,8 +180,8 @@ def main() -> None:
             )
         if args.rerank_interval is not None:
             rerank.set_request_interval(name, args.rerank_interval)
-        arms[f"{spec.default_model}-{name}"] = (
-            lambda query, pool, k=key, m=spec.default_model, p=name: rerank.rerank_pool_api(
+        arms[f"{cfg.rerank_models[name]}-{name}"] = (
+            lambda query, pool, k=key, m=cfg.rerank_models[name], p=name: rerank.rerank_pool_api(
                 query, pool, k, m, p
             )
         )
