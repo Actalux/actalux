@@ -10,6 +10,7 @@ import logging
 import threading
 from typing import TYPE_CHECKING
 
+from actalux.config import MODEL_SETTINGS
 from actalux.errors import EmbeddingError
 
 if TYPE_CHECKING:
@@ -26,7 +27,11 @@ _model: SentenceTransformer | None = None
 _model_lock = threading.Lock()
 
 
-def load_model(model_name: str = "BAAI/bge-small-en-v1.5") -> SentenceTransformer:
+# Pinned in model_settings.toml: every stored vector came from this model.
+_EMBEDDING_MODEL = MODEL_SETTINGS["pinned"]["embedding"]
+
+
+def load_model(model_name: str = _EMBEDDING_MODEL) -> SentenceTransformer:
     """Load the embedding model. Caches globally after first call (thread-safe)."""
     global _model
     if _model is not None:
@@ -48,7 +53,7 @@ def load_model(model_name: str = "BAAI/bge-small-en-v1.5") -> SentenceTransforme
             raise EmbeddingError(f"Failed to load embedding model {model_name}: {exc}") from exc
 
 
-def embed_chunks(chunks: list[Chunk], model_name: str = "BAAI/bge-small-en-v1.5") -> list[Chunk]:
+def embed_chunks(chunks: list[Chunk], model_name: str = _EMBEDDING_MODEL) -> list[Chunk]:
     """Add embedding vectors to a list of chunks.
 
     Returns new Chunk objects with the embedding field populated.

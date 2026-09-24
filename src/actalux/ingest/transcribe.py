@@ -21,11 +21,12 @@ from pathlib import Path
 
 from openai import OpenAI
 
+from actalux.config import MODEL_SETTINGS
 from actalux.errors import TranscriptionError
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "whisper-1"  # the model that returns segment timestamps (verbose_json)
+DEFAULT_MODEL = MODEL_SETTINGS["speech"]["transcribe_groq"]
 # OpenAI caps a single upload at 25 MB. 20-min windows at 16 kHz mono / 64 kbps are
 # ~10 MB — well under the cap — and short windows keep segment timestamps accurate.
 WINDOW_SECONDS = 20 * 60

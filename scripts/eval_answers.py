@@ -84,7 +84,7 @@ def main() -> None:
     # locally, but the deployed app reranks -- the eval should reflect that).
     reranker = None
     if cfg.zeroentropy_api_key:
-        key, rmodel = cfg.zeroentropy_api_key, cfg.rerank_model
+        key, rmodel = cfg.zeroentropy_api_key, cfg.rerank_models["zeroentropy"]
         reranker = lambda query, results: rerank_results(query, results, key, rmodel)  # noqa: E731
 
     client = get_client(cfg.supabase_url, cfg.supabase_key)

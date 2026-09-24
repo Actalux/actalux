@@ -1,0 +1,44 @@
+# Every model Actalux calls, in one place.
+#
+# This file is the configuration. Changing a model is a one-line edit here, reviewed
+# in a PR and deployed like any other change; web, nightly jobs and local scripts all
+# read it (actalux.config). For a one-off experiment, a [llm] or [rerank] entry can be
+# overridden for a single run by its environment variable (named beside each entry)
+# without editing this file.
+#
+# [pinned] models cannot be overridden at run time. Stored data was produced by them:
+# every chunk vector (embedding), every voiceprint and calibration (voice_embedding,
+# diarization), every transcript (transcription). Changing one is a planned migration,
+# not a setting — re-embed, recalibrate, or re-transcribe — so it only happens here,
+# in a PR, where tests also force the GPU containers' copies to match.
+
+[llm]
+# Public answers: /ask and search summaries. Changing this changes what citizens
+# read — validate with scripts/eval_answers.py first.
+summary = "openai/gpt-5-mini"          # ACTALUX_SUMMARY_MODEL
+doc_summary = "openai/gpt-5-mini"      # ACTALUX_DOC_SUMMARY_MODEL
+landuse = "openai/gpt-5-mini"          # ACTALUX_LANDUSE_MODEL
+discourse = "openai/gpt-5-mini"        # ACTALUX_DISCOURSE_MODEL
+condense = "openai/gpt-4o-mini"        # ACTALUX_CONDENSE_MODEL
+expansion = "openai/gpt-4o-mini"       # ACTALUX_EXPANSION_MODEL
+# Grades the answer eval. Grades from different judges are not comparable.
+eval_judge = "anthropic/claude-sonnet-4-6"   # ACTALUX_JUDGE_MODEL
+# Citation-support checks (OpenRouter Decisions API).
+citation_judge = "typesafe/jev-1.13"   # ACTALUX_JEV_MODEL
+
+[rerank]
+# Model used for each reranker provider; which provider is live is chosen by
+# ACTALUX_RERANK_PROVIDER.
+zeroentropy = "zerank-1-small"         # ACTALUX_RERANK_ZEROENTROPY_MODEL
+cohere = "rerank-v3.5"                 # ACTALUX_RERANK_COHERE_MODEL
+voyage = "rerank-2.5-lite"             # ACTALUX_RERANK_VOYAGE_MODEL
+
+[speech]
+# Groq-hosted Whisper, the dispatch-only fallback transcriber.
+transcribe_groq = "whisper-large-v3"   # ACTALUX_TRANSCRIBE_MODEL
+
+[pinned]
+embedding = "BAAI/bge-small-en-v1.5"
+transcription = "large-v3"
+diarization = "pyannote/speaker-diarization-3.1"
+voice_embedding = "pyannote/wespeaker-voxceleb-resnet34-LM"

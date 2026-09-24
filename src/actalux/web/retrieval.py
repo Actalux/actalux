@@ -189,7 +189,7 @@ def build_reranker() -> Reranker | None:
     if not key:
         logger.warning("rerank_mode=api but no key for provider %r; serving RRF order", provider)
         return None
-    # An empty model string lets the provider table supply its own default, so a
-    # vendor switch does not also require remembering to change the model name.
-    model = cfg.rerank_model if provider == "zeroentropy" else ""
+    # Each provider's model comes from model_settings.toml, so a vendor switch
+    # never also requires remembering to change a model name in code.
+    model = cfg.rerank_models.get(provider, "")
     return lambda query, results: rerank_results(query, results, key, model, provider)

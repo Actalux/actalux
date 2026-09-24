@@ -16,6 +16,7 @@ from typing import Any
 
 from openai import OpenAI
 
+from actalux.config import MODEL_SETTINGS
 from actalux.errors import SummaryError
 
 logger = logging.getLogger(__name__)
@@ -41,7 +42,9 @@ _LEVY_FRAMING_RE = re.compile(
     re.I,
 )
 
-DEFAULT_MODEL = "gpt-5-mini"
+# Defaults for callers that do not pass a model come from model_settings.toml,
+# never from a literal here.
+DEFAULT_MODEL = MODEL_SETTINGS["llm"]["summary"]
 MAX_TOKENS = 1024  # results summary budget
 DOC_SUMMARY_MAX_TOKENS = 256  # short (2-4 sentence) per-document content summary
 
@@ -511,7 +514,7 @@ numbering, quotes, or commentary. Output nothing if you cannot improve recall.\
 def generate_query_variants(
     query: str,
     api_key: str,
-    model: str = "gpt-4o-mini",
+    model: str = MODEL_SETTINGS["llm"]["expansion"],
     *,
     n: int = 3,
     base_url: str | None = None,
