@@ -1,0 +1,80 @@
+name: crawl-comms
+
+# Nightly crawl of the district's two post streams (scripts/crawl_comms.py).
+# Facilities posts (board construction updates, schematic designs) are the
+# construction program's record and are ingested automatically. District news
+# mixes governance posts with recognition and PR the content filter excludes, so
+# new posts are NOT ingested here: they are listed in one standing GitHub issue
+# for an include/exclude decision. Posts already reviewed live in
+# scripts/comms/mo_clayton_reviewed.json.
+#
+# Required repository secrets: SUPABASE_URL / SUPABASE_KEY / SUPABASE_SERVICE_KEY,
+# OPENROUTER_ACTALUX_KEY (document summaries during ingest).
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "10 9 * * *" # ~4:10 AM US Central, after the other nightly crawls
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: crawl-comms
+  cancel-in-progress: false
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ACTALUX_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      ACTALUX_SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      ACTALUX_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      OPENROUTER_ACTALUX_KEY: ${{ secrets.OPENROUTER_ACTALUX_KEY }}
+      GH_TOKEN: ${{ github.token }}
+      ISSUE_TITLE: "District news posts awaiting review"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up uv + Python 3.11
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+          enable-cache: true
+      - name: Install dependencies
+        run: uv sync --no-dev
+
+      # bge-small-en-v1.5 is immutable; shared key with the other ingest workflows.
+      - name: Cache embedding model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-bge-small-en-v1-5
+
+      - name: Crawl district posts
+        run: uv run python scripts/crawl_comms.py
+
+      - name: Ingest facilities posts
+        run: uv run python scripts/ingest.py --manifest data/documents/comms_facility_manifest.json
+
+      - name: List district news awaiting review
+        run: uv run python scripts/list_unreviewed_comms.py --place mo/clayton --out awaiting.md
+
+      # One standing issue: updated while posts are waiting, closed when none are.
+      - name: Update the review issue
+        run: |
+          NUM=$(gh issue list --state open --search "in:title \"$ISSUE_TITLE\"" \
+            --json number,title --jq ".[] | select(.title == \"$ISSUE_TITLE\") | .number" | head -1)
+          if [ -s awaiting.md ]; then
+            if [ -n "$NUM" ]; then
+              gh issue edit "$NUM" --body-file awaiting.md
+            else
+              gh issue create --title "$ISSUE_TITLE" --body-file awaiting.md
+            fi
+          elif [ -n "$NUM" ]; then
+            gh issue close "$NUM" --comment "No district-news posts are waiting for review."
+          fi
+
+      - name: Check meeting dates
+        run: uv run python scripts/check_meeting_dates.py
