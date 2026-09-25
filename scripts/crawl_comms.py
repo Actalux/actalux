@@ -57,6 +57,19 @@ LISTING_URLS = (
 )
 OUTPUT_DIR = Path("data/documents")
 MANIFEST_PATH = OUTPUT_DIR / "comms_manifest.json"
+# The facilities stream is construction-program record (board updates, schematic
+# designs) and is ingested automatically; district news mixes governance posts
+# with recognition/PR the content filter excludes, so it is held for review.
+FACILITY_MANIFEST_PATH = OUTPUT_DIR / "comms_facility_manifest.json"
+NEWS_MANIFEST_PATH = OUTPUT_DIR / "comms_news_manifest.json"
+FACILITY_URL_MARKER = "facility-improvements"
+
+
+def is_facility_post(url: str) -> bool:
+    """True for posts from the facility-improvements news stream."""
+    return FACILITY_URL_MARKER in url
+
+
 SOURCE_PORTAL = "claytonschools"
 # robots.txt sets Crawl-delay: 5 for this host; honored between every request.
 CRAWL_DELAY_SECONDS = 5.0
@@ -156,7 +169,7 @@ def main() -> int:
         post_urls = discover_post_urls(client)
         if args.limit:
             post_urls = post_urls[: args.limit]
-        logger.info("Discovered %d post(s) on the district-news listing.", len(post_urls))
+        logger.info("Discovered %d post(s) across the news listings.", len(post_urls))
 
         for url in post_urls:
             resp = _fetch(client, url, delay=True)
@@ -184,7 +197,17 @@ def main() -> int:
             logger.info("Saved %s — %s (%s)", filename, title, date)
 
     MANIFEST_PATH.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    logger.info("Crawl complete: %d post(s); manifest at %s", len(manifest), MANIFEST_PATH)
+    facility = [m for m in manifest if is_facility_post(m["source_url"])]
+    news = [m for m in manifest if not is_facility_post(m["source_url"])]
+    FACILITY_MANIFEST_PATH.write_text(json.dumps(facility, indent=2), encoding="utf-8")
+    NEWS_MANIFEST_PATH.write_text(json.dumps(news, indent=2), encoding="utf-8")
+    logger.info(
+        "Crawl complete: %d post(s) (%d facilities, %d district news); manifests in %s",
+        len(manifest),
+        len(facility),
+        len(news),
+        OUTPUT_DIR,
+    )
     logger.info("Review the manifest + content policy before ingesting with ingest.py --manifest.")
     return 0
 

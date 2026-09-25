@@ -1,0 +1,32 @@
+{
+  "_README": "District-news posts already reviewed and EXCLUDED by the content filter (recognition, PR, event invitations, enrollment marketing). The nightly comms crawl lists any post that is neither ingested nor in this list as awaiting review. Add a post's URL slug here to exclude it; ingest it to include it.",
+  "place": "mo/clayton",
+  "excluded_slugs": [
+    "celebrating-school-social-work-week-march-1-7",
+    "celebration-of-black-achievement",
+    "chs-celebrates-15-national-merit-semifinalists",
+    "chs-students-achieve-top-honors-in-national-merit-scholarship-program",
+    "class-of-2026-clayton-alumni-hall-of-fame-and-distinguished-educators",
+    "clayton-high-school-ranks-among-the-best-high-schools",
+    "clayton-recognizes-school-counselors",
+    "clayton-schools-earn-top-ratings-from-niche",
+    "enroll-for-the-202627-school-year",
+    "from-community-engagement-forums-to-school-tours-youre-invited",
+    "inside-clayton-fall-2026",
+    "jeanne-mcqueen-named-emerson-teacher-of-the-year",
+    "join-us-at-mayfair-2026",
+    "mcqueen-named-st-louis-regional-teacher-of-the-year-honoree",
+    "meet-claytons-newest-educators",
+    "new-director-of-summer-academy",
+    "school-district-of-clayton-celebrates-black-excellence-at-annual-celebration-of-black-achievement",
+    "school-district-of-clayton-earns-top-workplaces-awards",
+    "summer-camp-resource-fair",
+    "summer-kindergarten-connections",
+    "support-families-in-need",
+    "support-for-families-in-need",
+    "welcome-to-clayton-enroll-for-the-upcoming-school-year",
+    "world-languages-wins-national-award",
+    "youre-invited-clayton-cares-community-speaker-series",
+    "youre-invited-taste-of-asia"
+  ]
+}

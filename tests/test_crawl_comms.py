@@ -73,3 +73,12 @@ class TestHelpers:
         assert "<p>Second.</p>" in out
         # no raw injected markup survived
         assert "<script>" not in out
+
+
+def test_facility_posts_split_from_district_news() -> None:
+    assert comms.is_facility_post(
+        "https://www.claytonschools.net/post-details-2/~board/general-facility-improvements-news/post/board-update-sept2"
+    )
+    assert not comms.is_facility_post(
+        "https://www.claytonschools.net/post-details/~board/district-news/post/inside-clayton-fall-2026"
+    )
