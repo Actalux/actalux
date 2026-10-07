@@ -123,3 +123,92 @@ class TestUnsupportedFormat:
         doc.write_bytes(b"not a real xlsx")
         with pytest.raises(ParseError, match="Unsupported"):
             parse_file(doc)
+
+
+class TestParseDocx:
+    def test_paragraphs_and_table_cells_in_document_order(self, tmp_path: Path) -> None:
+        from docx import Document
+
+        doc = Document()
+        doc.add_paragraph("Board of Education Meeting - Oct 29 2025")
+        table = doc.add_table(rows=1, cols=2)
+        table.rows[0].cells[0].text = "1.1"
+        table.rows[0].cells[1].text = "Call to Order"
+        doc.add_paragraph("Moved by: Ms. Chris Win")
+        path = tmp_path / "minutes.docx"
+        doc.save(path)
+
+        text = parse_file(path)
+        assert text.splitlines() == [
+            "Board of Education Meeting - Oct 29 2025",
+            "1.1",
+            "Call to Order",
+            "Moved by: Ms. Chris Win",
+        ]
+
+    def test_merged_cells_are_not_repeated(self, tmp_path: Path) -> None:
+        from docx import Document
+
+        doc = Document()
+        table = doc.add_table(rows=1, cols=3)
+        merged = table.rows[0].cells[0].merge(table.rows[0].cells[1])
+        merged.text = "Roll call"
+        table.rows[0].cells[2].text = "Aye"
+        path = tmp_path / "t.docx"
+        doc.save(path)
+        assert parse_file(path) == "Roll call\nAye"
+
+
+class TestParsePptx:
+    def test_slides_text_tables_and_notes(self, tmp_path: Path) -> None:
+        from pptx import Presentation
+        from pptx.util import Inches
+
+        prs = Presentation()
+        s1 = prs.slides.add_slide(prs.slide_layouts[1])
+        s1.shapes.title.text = "Cognia Presentation"
+        s1.notes_slide.notes_text_frame.text = "Speaker note"
+        s2 = prs.slides.add_slide(prs.slide_layouts[6])  # blank layout
+        tbl = s2.shapes.add_table(1, 2, Inches(1), Inches(1), Inches(4), Inches(1)).table
+        tbl.cell(0, 0).text = "Standard"
+        tbl.cell(0, 1).text = "Met"
+        prs.slides.add_slide(prs.slide_layouts[6])  # image-only / empty slide
+        path = tmp_path / "deck.pptx"
+        prs.save(path)
+
+        text = parse_file(path)
+        assert "Slide 1\nCognia Presentation" in text
+        assert "Speaker note" in text
+        assert "Slide 2\nStandard | Met" in text
+        assert "Slide 3" not in text
+
+
+class TestScannedPdf:
+    def test_image_only_pdf_is_ocrd_when_tesseract_returns_text(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import fitz
+
+        from actalux.ingest import parser
+
+        doc = fitz.open()
+        doc.new_page()  # a page with no text layer, like a scan
+        path = tmp_path / "scan.pdf"
+        doc.save(path)
+        monkeypatch.setattr(parser, "_ocr_page", lambda page: "This Agreement is made")
+        assert parse_file(path) == "This Agreement is made"
+
+    def test_image_only_pdf_still_fails_without_ocr(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import fitz
+
+        from actalux.ingest import parser
+
+        doc = fitz.open()
+        doc.new_page()
+        path = tmp_path / "scan.pdf"
+        doc.save(path)
+        monkeypatch.setattr(parser, "_ocr_page", lambda page: "")
+        with pytest.raises(ParseError, match="no extractable text"):
+            parse_file(path)

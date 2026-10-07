@@ -366,7 +366,15 @@ def _find_motion(stripped: list[str], moved_idx: int) -> tuple[int, str] | None:
     if not run:
         return None
 
-    for pos, (idx, line) in enumerate(run):
+    # A line that BEGINS with a motion cue ("Move that ...") is the motion; a
+    # mid-line cue is only the fallback for a motion merged onto its title line.
+    # Taking the first mid-line cue in the run let an item's description ("...to
+    # adopt a customized written investment policy...") be recorded as the motion
+    # when the real "Move that the Board adopt Policy DFA ..." sat below it.
+    starts = [pos for pos, (_, line) in enumerate(run) if _MOTION_CUE_RE.match(line)]
+    order = starts + [pos for pos in range(len(run)) if pos not in starts]
+    for pos in order:
+        idx, line = run[pos]
         off = _cue_offset(line)
         if off is not None:
             text = _norm(" ".join([line[off:], *(b[1] for b in run[pos + 1 :])]))

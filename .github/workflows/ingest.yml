@@ -69,6 +69,11 @@ jobs:
       - name: Install dependencies
         run: uv sync --no-dev
 
+      # Scanned PDFs with no text layer (signed contracts, agreements) are OCR'd
+      # at parse time; without Tesseract they fail to parse and are skipped.
+      - name: Install Tesseract (OCR for scanned PDFs)
+        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr
+
       # bge-small-en-v1.5 is immutable, so a static key restores forever.
       - name: Cache embedding model
         uses: actions/cache@v4

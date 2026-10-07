@@ -97,6 +97,8 @@ def parse_file(path: Path) -> str:
         ".md": parse_markdown,
         ".markdown": parse_markdown,
         ".txt": parse_text,
+        ".docx": parse_docx,
+        ".pptx": parse_pptx,
     }
     parser_fn = parsers.get(suffix)
     if parser_fn is None:
@@ -140,6 +142,15 @@ def parse_pdf(path: Path) -> str:
         else:
             logger.debug("Page %d of %s has no extractable text", page_num + 1, path.name)
 
+    if not pages:
+        # A scanned document with no text layer at all (signed contracts, faxed
+        # agreements): OCR every page rather than dropping the record. Only the
+        # all-image case — a PDF with any native text keeps it, unchanged.
+        ocr_pages = [t for t in (_ocr_page(page) for page in doc) if t.strip()]
+        if ocr_pages:
+            logger.info("OCR-recovered scanned PDF %s (%d pages)", path.name, len(ocr_pages))
+            pages = ocr_pages
+
     doc.close()
 
     if not pages:
@@ -162,6 +173,73 @@ def parse_html(path: Path) -> str:
 
     text = soup.get_text(separator="\n", strip=True)
     return text
+
+
+def parse_docx(path: Path) -> str:
+    """Extract text from a Word document: body paragraphs and tables, in order.
+
+    Diligent exports approved minutes as .docx with each agenda item as a table
+    row: the item number in one cell, its title, text and vote block in the next.
+    Each cell goes on its own line, in its place in the body, so the text has the
+    same shape as the PDF export of the same minutes ("7.7" alone on a line, then
+    the item) — the shape the vote parsers read. Joining cells on one line made
+    the parser read past the item number into the previous item's result line.
+    """
+    from docx import Document
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
+
+    doc = Document(str(path))
+    blocks: list[str] = []
+    for child in doc.element.body.iterchildren():
+        tag = child.tag.rsplit("}", 1)[-1]
+        if tag == "p":
+            text = Paragraph(child, doc).text.strip()
+            if text:
+                blocks.append(text)
+        elif tag == "tbl":
+            for row in Table(child, doc).rows:
+                cells = [c.text.strip() for c in row.cells]
+                # Merged cells repeat their text across the row; keep it once.
+                cells = [c for i, c in enumerate(cells) if c and c not in cells[:i]]
+                blocks.extend(cells)
+    return "\n".join(blocks)
+
+
+def parse_pptx(path: Path) -> str:
+    """Extract text from a PowerPoint deck, one block per slide.
+
+    Reads text frames and tables from every shape (including grouped shapes)
+    plus speaker notes, in slide order. Slides that are only images yield no
+    text; a deck with no text at all fails as empty, like an image-only PDF.
+    """
+    from pptx import Presentation
+    from pptx.enum.shapes import MSO_SHAPE_TYPE
+
+    def shape_text(shape) -> list[str]:  # noqa: ANN001 - pptx shape types vary
+        out: list[str] = []
+        if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+            for inner in shape.shapes:
+                out += shape_text(inner)
+        elif getattr(shape, "has_text_frame", False) and shape.text_frame.text.strip():
+            out.append(shape.text_frame.text.strip())
+        elif getattr(shape, "has_table", False):
+            for row in shape.table.rows:
+                cells = [c.text.strip() for c in row.cells if c.text.strip()]
+                if cells:
+                    out.append(" | ".join(cells))
+        return out
+
+    slides: list[str] = []
+    for number, slide in enumerate(Presentation(str(path)).slides, start=1):
+        parts: list[str] = []
+        for shape in slide.shapes:
+            parts += shape_text(shape)
+        if slide.has_notes_slide and slide.notes_slide.notes_text_frame.text.strip():
+            parts.append(slide.notes_slide.notes_text_frame.text.strip())
+        if parts:
+            slides.append(f"Slide {number}\n" + "\n".join(parts))
+    return "\n\n".join(slides)
 
 
 def parse_markdown(path: Path) -> str:
