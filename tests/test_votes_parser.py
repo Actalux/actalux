@@ -359,3 +359,27 @@ class TestCitationAnchoring:
         )
         # the motion anchor alone is enough to find the chunk
         assert find_citing_chunk(v.anchors, chunks)["id"] == 12
+
+
+def test_a_move_line_beats_a_motion_verb_in_the_item_description() -> None:
+    # Oct 29, 2025 minutes (Word export): the item's description contains "to adopt
+    # a customized written investment policy", which the district says it has no
+    # plan to do. The motion actually voted is the "Move that ..." line below it.
+    text = "\n".join(
+        [
+            "7.6",
+            "2nd Reading - Policy DFA Revenues from Investments/Use of Surplus Funds",
+            "MSBA has proposed adding language that provides a process for the District to "
+            "adopt a customized written investment policy to be used instead of the model policy.",
+            "20251029PolicyDFA-2ndRead-agenda.pdf",
+            "Move that the Board adopt Policy DFA Revenues from Investments/Use of Surplus "
+            "Funds as presented.",
+            "",
+            "Moved by: Ms. Chris Win",
+            "Seconded by: Mr. Jason Growe",
+            "",
+            "Motion Carries 6-0",
+        ]
+    )
+    (vote,) = parse_votes(text)
+    assert vote.motion.startswith("Move that the Board adopt Policy DFA")
