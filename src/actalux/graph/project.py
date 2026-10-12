@@ -37,8 +37,13 @@ def _as_date(value: str | date) -> date:
     return value if isinstance(value, date) else date.fromisoformat(value)
 
 
-def _edge_row(subject_id: int, edge_type: str, vote: dict, qhash: str) -> dict:
-    """An edges-table row for one resolved (member, vote, edge_type)."""
+def edge_row(subject_id: int, edge_type: str, vote: dict, qhash: str) -> dict:
+    """An edges-table row for one resolved (subject, vote, edge_type).
+
+    Shared with :func:`actalux.graph.matters.derive_matter_edges`, which asserts the
+    same vote-carried edge shape (``considered``) for a matter subject rather than a
+    voting member.
+    """
     return {
         "from_subject": subject_id,
         "vote_document_id": vote["document_id"],
@@ -118,7 +123,7 @@ def derive_document_edges(votes: list[dict], roster: Roster) -> tuple[list[dict]
         for name, edge_type in _vote_targets(vote):
             res = roster.resolve(name, vote["entity_id"], meeting_date)
             if res.status == "resolved":
-                edge = _edge_row(res.subject_id, edge_type, vote, qhash)
+                edge = edge_row(res.subject_id, edge_type, vote, qhash)
                 key = _edge_key(edge)
                 if key not in seen_edges:
                     seen_edges.add(key)
