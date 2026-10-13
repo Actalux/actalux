@@ -16,6 +16,7 @@ from typing import Any
 from postgrest.exceptions import APIError
 from supabase import Client, create_client
 
+from actalux.ingest.hashing import _normalize_for_citation
 from actalux.models import BudgetLineItem, Chunk, Correction, Document, IngestRun, Vote
 
 logger = logging.getLogger(__name__)
@@ -792,16 +793,6 @@ class CanonicalChunk:
     superseded: bool
 
 
-def _normalize_chunk_text(text: str) -> str:
-    """Whitespace-normalised, case-folded chunk text for content matching.
-
-    Two chunks are "the same passage" when their verbatim content matches after
-    collapsing whitespace and case — robust to the cosmetic reflow differences
-    between a PDF twin and an HTML twin without changing any words.
-    """
-    return " ".join((text or "").split()).casefold()
-
-
 def resolve_canonical_chunk(
     client: Client, chunk: dict[str, Any], canonical_doc_id: int
 ) -> dict[str, Any] | None:
@@ -830,7 +821,7 @@ def resolve_canonical_chunk(
         The matching chunk row in the canonical document, or None when no
         confident match exists.
     """
-    target_text = _normalize_chunk_text(chunk.get("content") or "")
+    target_text = _normalize_for_citation(chunk.get("content") or "")
     if not target_text:
         return None
 
@@ -843,7 +834,7 @@ def resolve_canonical_chunk(
     ).data or []
 
     # 1. Unique exact content match.
-    matches = [r for r in rows if _normalize_chunk_text(r.get("content") or "") == target_text]
+    matches = [r for r in rows if _normalize_for_citation(r.get("content") or "") == target_text]
     if len(matches) == 1:
         return matches[0]
     if len(matches) > 1:
@@ -859,7 +850,7 @@ def resolve_canonical_chunk(
     if idx is not None:
         for r in rows:
             if r.get("chunk_index") == idx and (
-                _normalize_chunk_text(r.get("content") or "") == target_text
+                _normalize_for_citation(r.get("content") or "") == target_text
             ):
                 return r
 
@@ -1168,16 +1159,6 @@ def get_chunk_with_context(client: Client, chunk_id: int, context_count: int = 2
     return {"chunk": chunk_data, "context": context.data}
 
 
-def _normalize_anchor_text(text: str) -> str:
-    """Whitespace-collapsed, case-folded text for anchor containment matching.
-
-    The same normalisation is applied to both the anchor and each chunk's content
-    so a verbatim anchor matches its passage regardless of how line wraps, double
-    spaces, or casing differ between the curated string and the stored chunk.
-    """
-    return " ".join((text or "").split()).casefold()
-
-
 def resolve_source_anchor(
     client: Client,
     doc_id: int,
@@ -1220,7 +1201,7 @@ def resolve_source_anchor(
         The unique chunk id that contains the anchor, or ``None`` on a logged
         failure (empty anchor, no match, or an ambiguous multi-chunk match).
     """
-    target = _normalize_anchor_text(anchor)
+    target = _normalize_for_citation(anchor)
     if not target:
         logger.warning("Empty source anchor for document %d; no citation link.", doc_id)
         return None
@@ -1237,7 +1218,7 @@ def resolve_source_anchor(
         .execute()
     ).data or []
 
-    matches = [r["id"] for r in rows if target in _normalize_anchor_text(r.get("content") or "")]
+    matches = [r["id"] for r in rows if target in _normalize_for_citation(r.get("content") or "")]
 
     resolved: int | None
     if len(matches) == 1:

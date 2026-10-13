@@ -28,9 +28,10 @@ def content_hash(text: str) -> str:
 def _normalize_for_citation(text: str) -> str:
     """Whitespace-collapsed, case-folded text for content-addressed hashing.
 
-    Matches ``db._normalize_chunk_text`` so the citation id absorbs the cosmetic
-    reflow differences between a PDF twin and an HTML twin without changing which
-    passage it identifies.
+    Shared with ``db.resolve_canonical_chunk`` and ``db.resolve_source_anchor``, so
+    the citation id, chunk-content matching, and anchor matching all absorb the same
+    cosmetic reflow differences between a PDF twin and an HTML twin without changing
+    which passage they identify.
     """
     return " ".join((text or "").split()).casefold()
 
