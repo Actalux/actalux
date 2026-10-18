@@ -52,7 +52,7 @@ from supabase import Client
 from actalux.db import get_diarization_turns
 from actalux.graph.resolve import normalize_name
 from actalux.identity.name_extraction import evidence_sentence, roster_keys, turn_hits
-from actalux.identity.resolve import RosterMember, members_for_entity
+from actalux.identity.resolve import RosterMember, _norm_text, members_for_entity
 
 # --- universal minor suppression --------------------------------------------------
 # A self-identified minor/student is NEVER named, on any body, above the per-body flag
@@ -133,23 +133,15 @@ class _ClusterHit:
     order: int  # turn index; the earliest self-introduction on a cluster wins
 
 
-def _normalize_for_cue(text: str) -> str:
-    """Lowercase, fold apostrophes, drop other punctuation, collapse whitespace.
-
-    Mirrors the resolver's ``_norm_text`` so a self-ID cue matches the same way names do
-    ("I'm" -> "im"). Digits are kept so grade-level cues ("9th grade") still match.
-    """
-    folded = text.lower().replace("'", "").replace("’", "")
-    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", " ", folded)).strip()
-
-
 def is_minor_selfid(text: str) -> bool:
     """True if ``text`` (an evidence sentence) reads as a minor/student self-identification.
 
     Conservative, err-toward-suppression: any :data:`MINOR_CUES` pattern matching the
     normalized text suppresses the name. See the module + :data:`MINOR_CUES` docstrings.
+    Uses the resolver's ``_norm_text`` so a self-ID cue matches the same way names do
+    ("I'm" -> "im"); digits are kept so grade-level cues ("9th grade") still match.
     """
-    norm = _normalize_for_cue(text)
+    norm = _norm_text(text)
     return any(rx.search(norm) for rx in _MINOR_RE)
 
 
