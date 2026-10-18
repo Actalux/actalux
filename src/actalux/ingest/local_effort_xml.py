@@ -23,6 +23,8 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from actalux.errors import ParseError
+from actalux.ingest.money import format_money
+from actalux.ingest.money import parse_money as _parse_money
 
 NS = "Local_Effort"
 
@@ -38,12 +40,7 @@ def _q(tag: str) -> str:
 
 def parse_money(raw: str | None) -> Decimal:
     """Parse a Local Effort money/number cell ($-formatted or bare) into a Decimal."""
-    if raw is None or raw.strip() in ("", "-"):
-        return Decimal(0)
-    try:
-        return Decimal(raw.replace("$", "").replace(",", "").strip())
-    except (ArithmeticError, ValueError) as exc:
-        raise ParseError(f"Unparseable Local Effort cell {raw!r}: {exc}") from exc
+    return _parse_money(raw, label="Local Effort")
 
 
 @dataclass(frozen=True)
@@ -122,8 +119,7 @@ def parse_local_effort(path: Path, fiscal_year: str) -> LocalEffortReport:
     return report
 
 
-def _fmt(amount: Decimal) -> str:
-    return f"${amount:,.2f}"
+_fmt = format_money
 
 
 def line_md_row(line: LocalEffortLine) -> str:
