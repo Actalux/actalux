@@ -35,6 +35,8 @@ import hmac
 import time
 from collections import Counter
 from datetime import date
+from ipaddress import IPv4Network, IPv6Network, ip_address, ip_network
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
@@ -416,10 +418,38 @@ _RATE_WINDOW_SECONDS = 60.0
 _rate_buckets: dict[str, tuple[float, int]] = {}
 
 
+CLOUDFLARE_RANGES_PATH = Path(__file__).with_name("cloudflare_ips.txt")
+
+
+def _load_cloudflare_ranges() -> tuple[IPv4Network | IPv6Network, ...]:
+    lines = CLOUDFLARE_RANGES_PATH.read_text().splitlines()
+    return tuple(ip_network(s) for line in lines if (s := line.strip()) and not s.startswith("#"))
+
+
+_CLOUDFLARE_RANGES = _load_cloudflare_ranges()
+
+
+def _from_cloudflare(addr: str) -> bool:
+    try:
+        ip = ip_address(addr)
+    except ValueError:
+        return False
+    return any(ip in net for net in _CLOUDFLARE_RANGES)
+
+
 def _client_ip(request: Request) -> str:
-    """Best-effort client IP, trusting Fly's edge header ahead of the socket."""
+    """Best-effort client IP, trusting Fly's edge header ahead of the socket.
+
+    Behind the Cloudflare proxy, Fly-Client-IP is a Cloudflare edge address shared
+    by many visitors, so the visitor is read from CF-Connecting-IP instead. That
+    header is honored only when the connection really came from Cloudflare: the
+    origin is also reachable directly, and anyone can send the header.
+    """
     fly = request.headers.get("fly-client-ip")
     if fly:
+        visitor = request.headers.get("cf-connecting-ip")
+        if visitor and _from_cloudflare(fly):
+            return visitor
         return fly
     forwarded = request.headers.get("x-forwarded-for", "")
     if forwarded:
