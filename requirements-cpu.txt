@@ -296,8 +296,10 @@ typing-inspection==0.4.2
     # via
     #   fastapi
     #   pydantic
-urllib3==2.7.0
-    # via requests
+urllib3==2.8.0
+    # via
+    #   actalux (pyproject.toml)
+    #   requests
 uvicorn==0.48.0
     # via actalux (pyproject.toml)
 websockets==15.0.1

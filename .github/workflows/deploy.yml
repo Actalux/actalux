@@ -15,6 +15,8 @@ name: deploy
 on:
   push:
     branches: [master]
+  pull_request:
+    branches: [master]
   workflow_dispatch:
 
 permissions:
@@ -23,7 +25,7 @@ permissions:
 # Never let two deploys race for the same machine, and never cancel one partway —
 # a half-applied release is worse than a queued one.
 concurrency:
-  group: deploy
+  group: deploy-${{ github.event_name == 'pull_request' && github.event.pull_request.number || 'production' }}
   cancel-in-progress: false
 
 jobs:
@@ -31,9 +33,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Set up uv + Python 3.11
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
         with:
           python-version: "3.11"
           enable-cache: true
@@ -56,12 +58,15 @@ jobs:
         run: uv run python -m pytest tests/ -q
 
   deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
     needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
+        with:
+          version: "0.4.122"
       - name: Deploy
         run: flyctl deploy --remote-only --app actalux
         env:
@@ -83,3 +88,30 @@ jobs:
             fi
             sleep 2
           done
+
+  image:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Add synthetic excluded files
+        run: |
+          mkdir -p ci-context-probe/.aws
+          printf 'SYNTHETIC_TEST_ONLY' > ci-context-probe/.env
+          printf 'SYNTHETIC_TEST_ONLY' > ci-context-probe/.aws/credentials
+          printf 'SYNTHETIC_TEST_ONLY' > .env.ci-context-probe
+      - name: Build production CPU image
+        run: docker build --tag actalux-ci .
+      - name: Verify fixed dependency and excluded context
+        run: |
+          docker run --rm --network none --entrypoint python actalux-ci -c '
+          import pathlib
+          import urllib3
+          assert urllib3.__version__ == "2.8.0", urllib3.__version__
+          assert not pathlib.Path("/app/ci-context-probe/.env").exists()
+          assert not pathlib.Path("/app/ci-context-probe/.aws/credentials").exists()
+          assert not pathlib.Path("/app/.env.ci-context-probe").exists()
+          assert not pathlib.Path("/app/.git").exists()
+          print("CPU image: fixed urllib3; synthetic credential files excluded")
+          '

@@ -32,25 +32,6 @@ jobs:
   ingest:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    env:
-      # Repo secrets stay named SUPABASE_* (unambiguous within this repo);
-      # the app/scripts read ACTALUX_-prefixed env vars, so map them here.
-      ACTALUX_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      ACTALUX_SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-      # Ingest writes through the service (secret) key, which bypasses RLS.
-      ACTALUX_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-      ACTALUX_SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
-      # The change-digest drafter needs OpenRouter for cited summaries; without it
-      # the draft still lists documents, just without per-topic cited paragraphs.
-      OPENROUTER_ACTALUX_KEY: ${{ secrets.OPENROUTER_ACTALUX_KEY }}
-      # SMTP delivery for the draft email. All optional: unset secrets render as
-      # empty strings, and the drafter then writes the file but skips the email.
-      ACTALUX_SMTP_HOST: ${{ secrets.ACTALUX_SMTP_HOST }}
-      ACTALUX_SMTP_PORT: ${{ secrets.ACTALUX_SMTP_PORT }}
-      ACTALUX_SMTP_USER: ${{ secrets.ACTALUX_SMTP_USER }}
-      ACTALUX_SMTP_PASSWORD: ${{ secrets.ACTALUX_SMTP_PASSWORD }}
-      ACTALUX_DRAFT_EMAIL_FROM: ${{ secrets.ACTALUX_DRAFT_EMAIL_FROM }}
-      ACTALUX_DRAFT_EMAIL_TO: ${{ secrets.ACTALUX_DRAFT_EMAIL_TO }}
     steps:
       - uses: actions/checkout@v4
 
@@ -83,6 +64,9 @@ jobs:
 
       # Hard gate: pending or drifted migrations stop the pipeline here.
       - name: Verify schema is up to date
+        env:
+          ACTALUX_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          ACTALUX_SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
         run: uv run python scripts/apply_migrations.py --check
 
       - name: Crawl Diligent portal
@@ -101,6 +85,10 @@ jobs:
       # warning (that crawler found nothing or failed above); an ingest
       # crash is a hard failure. Dedup by content_hash makes re-runs safe.
       - name: Ingest manifests
+        env:
+          ACTALUX_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          ACTALUX_SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          ACTALUX_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: |
           ran=0
           for m in \
@@ -127,6 +115,10 @@ jobs:
       # filters replaces_id IS NULL) until extraction is re-run by hand. Idempotent
       # (insert-before-delete per document); scoped to the school board.
       - name: Re-extract votes
+        env:
+          ACTALUX_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          ACTALUX_SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          ACTALUX_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: uv run python scripts/extract_votes.py --apply --entity-path mo/clayton/schools
 
       # The roster (source of truth: scripts/roster/mo_clayton.json) drives the
@@ -135,6 +127,10 @@ jobs:
       # stale-edge prune) so a re-versioned doc's member votes never drop from the
       # dossiers/API. See connections-graph §4.
       - name: Sync roster + project member votes
+        env:
+          ACTALUX_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          ACTALUX_SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          ACTALUX_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: |
           uv run python scripts/seed_roster.py --apply
           uv run python scripts/project_member_votes.py --apply
@@ -146,12 +142,27 @@ jobs:
       # Hard-fails on purpose — the check ignores non-meeting types precisely so it
       # stays quiet enough to be worth failing on.
       - name: Check meeting dates
+        env:
+          ACTALUX_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          ACTALUX_SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          ACTALUX_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: uv run python scripts/check_meeting_dates.py
 
       # Draft a cited "what changed this run" post and (if SMTP is configured)
       # email it for human review. Soft-fails: a drafting/email hiccup must not
       # fail the run or undo the ingest above. Never publishes.
       - name: Draft change digest
+        env:
+          ACTALUX_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          ACTALUX_SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          ACTALUX_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          OPENROUTER_ACTALUX_KEY: ${{ secrets.OPENROUTER_ACTALUX_KEY }}
+          ACTALUX_SMTP_HOST: ${{ secrets.ACTALUX_SMTP_HOST }}
+          ACTALUX_SMTP_PORT: ${{ secrets.ACTALUX_SMTP_PORT }}
+          ACTALUX_SMTP_USER: ${{ secrets.ACTALUX_SMTP_USER }}
+          ACTALUX_SMTP_PASSWORD: ${{ secrets.ACTALUX_SMTP_PASSWORD }}
+          ACTALUX_DRAFT_EMAIL_FROM: ${{ secrets.ACTALUX_DRAFT_EMAIL_FROM }}
+          ACTALUX_DRAFT_EMAIL_TO: ${{ secrets.ACTALUX_DRAFT_EMAIL_TO }}
         continue-on-error: true
         run: |
           uv run python scripts/draft_substack.py \

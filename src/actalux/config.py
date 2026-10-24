@@ -217,6 +217,9 @@ class Config:
     # while throttling a rogue crawler to a trickle (robots.txt disallows /chunk/).
     rate_limit_chunk_per_minute: int = 60
     rate_limit_corrections_per_hour: int = 5
+    # Correction reports are short explanations, not document uploads.
+    correction_description_max_chars: int = 4000
+    correction_email_max_chars: int = 254
     # JSON API (v1). The key is optional: unset -> the API is open (read-only,
     # rate-limited); set -> a valid X-API-Key header is required. Lets the API
     # be locked down at deploy time with no code change.
@@ -233,7 +236,7 @@ class Config:
     # When the keyed path IS enabled, a cheap per-IP minute cap on key-auth attempts
     # gates the api_key_authorize RPC, so a flood of bogus keys can't hammer the DB.
     rate_limit_auth_attempts_per_minute: int = 20
-    # Ask page (the cited chatbot). It is the most expensive public endpoint
+    # Ask and search summaries share these paid-work limits. Ask is the most expensive endpoint
     # (condense + retrieve + rerank + generate per turn) and has no API key, so
     # it carries both a per-IP minute limit and a global per-day message cap to
     # bound LLM spend. The caps are in-process (single-instance deploy); a

@@ -23,3 +23,28 @@ __pycache__/
 # Local-only docs and scratch (governance/spec docs aren't needed at runtime).
 HANDOFF.md
 design-preview.html
+
+# Never include local credentials, private keys or credential backups.
+.env
+.env.*
+**/.env
+**/.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+.aws/
+.ssh/
+.doppler/
+.private-*/
+**/.aws/
+**/.ssh/
+**/.doppler/
+.codex/
+.claude/
+.mcp.json
+.netrc
+.npmrc
+.pypirc
