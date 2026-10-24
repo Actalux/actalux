@@ -2040,7 +2040,7 @@ async def terms_scoped() -> RedirectResponse:
 @app.post("/report-error", response_class=HTMLResponse)
 def report_error(
     request: Request,
-    chunk_id: int = Form(...),
+    chunk_id: int = Form(..., gt=0),
     description: str = Form(...),
     email: str = Form(""),
 ) -> HTMLResponse:
@@ -2048,6 +2048,12 @@ def report_error(
     if not description.strip():
         raise HTTPException(status_code=400, detail="Description is required")
 
+    cfg = _get_config()
+    if len(description) > cfg.correction_description_max_chars:
+        raise HTTPException(status_code=400, detail="Description is too long")
+    if len(email) > cfg.correction_email_max_chars:
+        raise HTTPException(status_code=400, detail="Email is too long")
+    _enforce_rate(request, "corrections", cfg.rate_limit_corrections_per_hour, window_seconds=3600)
     client = _get_db()
     correction = Correction(
         chunk_id=chunk_id,
@@ -2074,20 +2080,32 @@ def summarize(
     with the summary text and inline citation links.
     """
     cfg = _get_config()
-    if not q.strip() or not cfg.openrouter_api_key:
+    if len(q) > cfg.ask_question_max_chars:
+        raise HTTPException(status_code=400, detail="Query is too long")
+    q = q.strip()
+    if not q or not cfg.openrouter_api_key:
         return templates.TemplateResponse(
             request,
             "partials/summary.html",
             {"summary": None},
         )
 
+    try:
+        start = date.fromisoformat(date_from) if date_from else None
+        end = date.fromisoformat(date_to) if date_to else None
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid date filter") from exc
     filters = SearchFilters(
-        date_from=date.fromisoformat(date_from) if date_from else None,
-        date_to=date.fromisoformat(date_to) if date_to else None,
+        date_from=start,
+        date_to=end,
         document_type=doc_type or None,
         entity_id=view.entity["id"],
     )
 
+    # Share both budgets with Ask so switching routes cannot double paid work.
+    _enforce_rate(request, "ask", cfg.rate_limit_ask_per_minute)
+    if not _register_ask_within_daily_cap(cfg.ask_daily_message_cap):
+        raise HTTPException(status_code=429, detail="Daily question limit reached")
     client = _get_db()
     try:
         query_embedding = _embed_query(q)
@@ -2188,7 +2206,7 @@ def _parse_ask_history(raw: str, cfg: Config) -> list[dict[str, str]]:
 
 
 def _register_ask_within_daily_cap(cap: int) -> bool:
-    """Count one Ask turn against the global per-day cap; False when over.
+    """Count one Ask turn or summary against the shared daily cap; False when over.
 
     Keyed by calendar date so the budget resets at midnight. In-process, like the
     per-IP limiter -- adequate for the single-instance deploy. The lock makes the

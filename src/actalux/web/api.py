@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import threading
 import time
 from collections import Counter
 from datetime import date
@@ -409,14 +410,13 @@ def require_api_key(request: Request) -> None:
 
 
 # --- Rate limiting -----------------------------------------------------------
-# In-process fixed-window counter, per (client IP, scope). Adequate for the
-# single-instance deploy; a multi-instance deploy would need a shared store
-# (the limit then applies per instance). The bucket map is bounded only by the
-# number of distinct IPs seen within a window, which is fine at this scale.
-
+# Per-process fixed windows. Multiple workers/instances need a shared store.
+# Keep at most 4096 active identity/scope pairs; fail closed for new identities
+# when full rather than evicting active counters and allowing a limit bypass.
 _RATE_WINDOW_SECONDS = 60.0
+_RATE_MAX_BUCKETS = 4096
 _rate_buckets: dict[str, tuple[float, int]] = {}
-
+_rate_lock = threading.Lock()
 
 CLOUDFLARE_RANGES_PATH = Path(__file__).with_name("cloudflare_ips.txt")
 
@@ -457,21 +457,36 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-def _enforce_rate(request: Request, scope: str, limit_per_minute: int) -> None:
+def _enforce_rate(
+    request: Request,
+    scope: str,
+    limit_per_minute: int,
+    *,
+    window_seconds: float = _RATE_WINDOW_SECONDS,
+) -> None:
     key = f"{_client_ip(request)}:{scope}"
-    now = time.monotonic()
-    start, count = _rate_buckets.get(key, (now, 0))
-    if now - start >= _RATE_WINDOW_SECONDS:
-        start, count = now, 0
-    count += 1
-    _rate_buckets[key] = (start, count)
-    if count > limit_per_minute:
-        retry_after = int(_RATE_WINDOW_SECONDS - (now - start)) + 1
-        raise HTTPException(
-            status_code=429,
-            detail="Rate limit exceeded",
-            headers={"Retry-After": str(retry_after)},
-        )
+    with _rate_lock:
+        now = time.monotonic()
+        expires, count = _rate_buckets.get(key, (now + window_seconds, 0))
+        if now >= expires:
+            expires, count = now + window_seconds, 0
+        if key not in _rate_buckets and len(_rate_buckets) >= _RATE_MAX_BUCKETS:
+            for stale in [k for k, (end, _) in _rate_buckets.items() if now >= end]:
+                del _rate_buckets[stale]
+            if len(_rate_buckets) >= _RATE_MAX_BUCKETS:
+                retry_after = max(1, int(min(end for end, _ in _rate_buckets.values()) - now) + 1)
+                raise HTTPException(
+                    status_code=429,
+                    detail="Rate limiter at capacity",
+                    headers={"Retry-After": str(retry_after)},
+                )
+        if count >= limit_per_minute:
+            raise HTTPException(
+                status_code=429,
+                detail="Rate limit exceeded",
+                headers={"Retry-After": str(max(1, int(expires - now) + 1))},
+            )
+        _rate_buckets[key] = (expires, count + 1)
 
 
 def _request_tier(request: Request) -> str:
@@ -503,7 +518,8 @@ def rate_limit_general(request: Request) -> None:
 
 def _reset_rate_limits() -> None:
     """Clear all rate-limit state. For tests only."""
-    _rate_buckets.clear()
+    with _rate_lock:
+        _rate_buckets.clear()
 
 
 # --- Entity resolution -------------------------------------------------------
