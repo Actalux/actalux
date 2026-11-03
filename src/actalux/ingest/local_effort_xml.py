@@ -19,10 +19,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
+from functools import partial
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from actalux.errors import ParseError
+from actalux.ingest.ssrs_xml import clean_label, format_money_cell, parse_money_cell, qualify_tag
 
 NS = "Local_Effort"
 
@@ -31,19 +33,12 @@ NS = "Local_Effort"
 # real parse/mapping error (which is dollars, not cents).
 _TOL = Decimal("0.01")
 
-
-def _q(tag: str) -> str:
-    return f"{{{NS}}}{tag}"
+_q = partial(qualify_tag, NS)
 
 
 def parse_money(raw: str | None) -> Decimal:
     """Parse a Local Effort money/number cell ($-formatted or bare) into a Decimal."""
-    if raw is None or raw.strip() in ("", "-"):
-        return Decimal(0)
-    try:
-        return Decimal(raw.replace("$", "").replace(",", "").strip())
-    except (ArithmeticError, ValueError) as exc:
-        raise ParseError(f"Unparseable Local Effort cell {raw!r}: {exc}") from exc
+    return parse_money_cell(raw, label="Local Effort")
 
 
 @dataclass(frozen=True)
@@ -71,9 +66,7 @@ class LocalEffortReport:
         return sum((line.amount for line in self.lines), Decimal(0))
 
 
-def _clean(raw: str | None) -> str:
-    """Collapse a label cell's CR/LF + surrounding whitespace into one clean line."""
-    return " ".join((raw or "").split())
+_clean = clean_label
 
 
 def _parse_lines(root: ET.Element) -> list[LocalEffortLine]:
@@ -122,8 +115,7 @@ def parse_local_effort(path: Path, fiscal_year: str) -> LocalEffortReport:
     return report
 
 
-def _fmt(amount: Decimal) -> str:
-    return f"${amount:,.2f}"
+_fmt = format_money_cell
 
 
 def line_md_row(line: LocalEffortLine) -> str:

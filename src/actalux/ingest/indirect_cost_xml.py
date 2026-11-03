@@ -29,6 +29,7 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from actalux.errors import ParseError
+from actalux.ingest.ssrs_xml import clean_label, format_money_cell, parse_money_cell
 
 NS_PRIOR2018 = "Indirect_Cost_CalculationPrior2018"
 NS_2019 = "Indirect_Cost_Calculation2019"
@@ -80,12 +81,7 @@ _LINE_LABELS = {
 
 def parse_money(raw: str | None) -> Decimal:
     """Parse a money cell ('$75,837,799.36' or bare '59125445.29') into a Decimal."""
-    if raw is None or raw.strip() in ("", "-"):
-        return Decimal(0)
-    try:
-        return Decimal(raw.replace("$", "").replace(",", "").strip())
-    except (ArithmeticError, ValueError) as exc:
-        raise ParseError(f"Unparseable Indirect Cost money cell {raw!r}: {exc}") from exc
+    return parse_money_cell(raw, label="Indirect Cost money")
 
 
 def parse_rate(raw: str | None) -> Decimal:
@@ -99,11 +95,6 @@ def parse_rate(raw: str | None) -> Decimal:
         return Decimal(s)
     except (ArithmeticError, ValueError) as exc:
         raise ParseError(f"Unparseable Indirect Cost rate {raw!r}: {exc}") from exc
-
-
-def _clean(raw: str | None) -> str:
-    """Collapse a label's CR/LF + surrounding whitespace into one clean line."""
-    return " ".join((raw or "").split())
 
 
 @dataclass(frozen=True)
@@ -197,7 +188,7 @@ def parse_indirect_cost(path: Path, fiscal_year: str) -> IndirectCostReport:
     ns = _detect_namespace(root)
     raw = _read_prior2018(root) if ns == NS_PRIOR2018 else _read_tablix(root, ns)
 
-    term = _term_from_label(_clean(raw["rate_unrestricted_label"]))
+    term = _term_from_label(clean_label(raw["rate_unrestricted_label"]))
     labels = {ln: text.format(term=term) for ln, text in _LINE_LABELS.items()}
     line_for = {
         1: "grand_total",
@@ -217,15 +208,11 @@ def parse_indirect_cost(path: Path, fiscal_year: str) -> IndirectCostReport:
         lines=lines,
         rate_unrestricted=parse_rate(raw["rate_unrestricted"]),
         rate_restricted=parse_rate(raw["rate_restricted"]),
-        rate_unrestricted_label=_clean(raw["rate_unrestricted_label"]),
-        rate_restricted_label=_clean(raw["rate_restricted_label"]),
+        rate_unrestricted_label=clean_label(raw["rate_unrestricted_label"]),
+        rate_restricted_label=clean_label(raw["rate_restricted_label"]),
     )
     reconcile(report)
     return report
-
-
-def _fmt(amount: Decimal) -> str:
-    return f"${amount:,.2f}"
 
 
 def _fmt_rate(rate: Decimal) -> str:
@@ -234,7 +221,7 @@ def _fmt_rate(rate: Decimal) -> str:
 
 def line_md_row(line: IndirectCostLine) -> str:
     """The dollar-figure markdown row a structured figure cites."""
-    return f"| {line.line_number} | {line.description} | {_fmt(line.amount)} |"
+    return f"| {line.line_number} | {line.description} | {format_money_cell(line.amount)} |"
 
 
 def render_markdown(report: IndirectCostReport) -> str:
