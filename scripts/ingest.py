@@ -54,7 +54,11 @@ from actalux.errors import ActaluxError, ParseError
 from actalux.ingest import pii_guard
 from actalux.ingest.bodies import get_body
 from actalux.ingest.chunker import chunk_document, validate_chunks
-from actalux.ingest.classify import classify_document_type, parse_meeting_date
+from actalux.ingest.classify import (
+    classify_document_type,
+    is_future_meeting_record,
+    parse_meeting_date,
+)
 from actalux.ingest.embedder import embed_chunks
 from actalux.ingest.hashing import assign_citation_ids, content_hash, doc_stable_key
 from actalux.ingest.parser import parse_file
@@ -490,7 +494,7 @@ def _ingest_link_only(
 def _ingest_with_dedup(
     client: Any,
     path: Path,
-    meeting_date: date,
+    meeting_date: date | None,
     meeting_title: str,
     config: Any,
     source_url: str = "",
@@ -510,6 +514,19 @@ def _ingest_with_dedup(
     ``date_source`` records how ``meeting_date`` was derived; passed through to
     ``ingest_single_file`` so the provenance lands on every inserted row.
     """
+    if is_future_meeting_record(
+        document_type or infer_document_type(path.name), meeting_date, date.today()
+    ):
+        # Filed undated rather than under the impossible date: a NULL date is kept
+        # out of the meetings views, a wrong one manufactures a meeting. The
+        # 'undetermined' provenance makes check_meeting_dates fail until someone
+        # supplies the real date.
+        logger.warning(
+            "  QUARANTINE date %s (meeting record dated after today; filed undated): %s",
+            meeting_date,
+            path.name,
+        )
+        meeting_date, date_source = None, "undetermined"
     text = parse_file(path)
     # Restore the subject into Canva curriculum-map content (no-op for everything
     # else). Done before hashing so an existing map re-ingests as a new version,

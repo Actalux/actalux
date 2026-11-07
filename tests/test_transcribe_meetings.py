@@ -119,3 +119,11 @@ class TestSelectMeetings:
             exclude_filter=COUNCIL.exclude_filter,
             proxy=None,
         )
+
+    def test_discover_skips_video_already_ingested_under_a_corrected_date(self, tmp_path) -> None:
+        # The title still parses to the typo'd 2027 date after the stored date was
+        # corrected to 2026; the video id must keep it from being re-transcribed.
+        typo = _meeting("B6H0NLpuq-Y", "2027-10-27", title="10-27-2027 City Council Meeting")
+        with patch("scripts.transcribe_meetings.list_board_meetings", return_value=[typo]):
+            out = select_meetings(_args(), tmp_path, {"2026-10-27", "B6H0NLpuq-Y"}, COUNCIL)
+        assert out == []
