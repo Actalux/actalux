@@ -53,7 +53,7 @@ from actalux.transcription.pipeline import SpeakerLayer, assemble_speaker_layer
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from transcribe_meetings import (  # noqa: E402
     WARP_DOWNLOAD_RETRIES,
-    existing_transcript_dates,
+    existing_transcript_keys,
     manifest_entry,
     reconnect_warp,
     safe_stem,
@@ -199,7 +199,7 @@ def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     AUDIO_DIR.mkdir(parents=True, exist_ok=True)
     existing = (
-        existing_transcript_dates(client, entity["id"])
+        existing_transcript_keys(client, entity["id"])
         if args.discover and not args.force
         else set()
     )

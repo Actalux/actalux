@@ -73,6 +73,20 @@ def _safe_date(year: int, month: int, day: int) -> date | None:
         return None
 
 
+# Records of a meeting that has already happened. An agenda or public notice is
+# posted before its meeting, so a date after the ingest day is normal on one; on a
+# record it is impossible, and the cause is a typo upstream (the city titled its
+# October 27, 2026 council video "10-27-2027").
+MEETING_RECORD_TYPES = frozenset({"transcript", "minutes"})
+
+
+def is_future_meeting_record(document_type: str, meeting_date: date | None, today: date) -> bool:
+    """True when a meeting record is dated after the day it is being ingested."""
+    if document_type not in MEETING_RECORD_TYPES or meeting_date is None:
+        return False
+    return meeting_date > today
+
+
 def is_annual_schedule(text: str) -> bool:
     """An annual board-meeting schedule/calendar (a span of years), not one meeting."""
     s = (text or "").replace("-", " ")

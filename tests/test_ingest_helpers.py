@@ -1,11 +1,12 @@
 """Tests for ingest orchestration helpers."""
 
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
 
 import scripts.ingest as ingest
+from actalux.ingest.classify import is_future_meeting_record
 from actalux.models import Chunk
 from scripts.ingest import (
     _find_existing_document,
@@ -836,3 +837,66 @@ class TestDiligentMeetingRef:
     def test_other_query_params_still_dropped(self) -> None:
         got = normalize_source_ref("https://example.test/some/page?utm_source=x")
         assert got == "https://example.test/some/page"
+
+
+class TestFutureMeetingRecordQuarantine:
+    """A transcript or minutes dated after the ingest day is filed undated.
+
+    The city titled its October 27, 2026 council video "10-27-2027"; the parsed
+    title date put the transcript under a meeting a year away.
+    """
+
+    def _captured_new_doc(self, monkeypatch) -> dict:
+        captured: dict = {}
+        monkeypatch.setattr(ingest, "parse_file", lambda _p: "body text")
+        monkeypatch.setattr(ingest, "_find_existing_document", lambda *_a, **_k: None)
+        monkeypatch.setattr(ingest, "_pii_gate", lambda *_a, **_k: False)
+
+        def fake_ingest(**kw):
+            captured.update(kw)
+            return {"doc_id": 1, "chunks": 0}
+
+        monkeypatch.setattr(ingest, "ingest_single_file", fake_ingest)
+        return captured
+
+    def _ingest(self, document_type: str, meeting_date: date) -> None:
+        _ingest_with_dedup(
+            client=object(),
+            path=Path("10-27-2027 City Council Meeting_B6H0NLpuq-Y.txt"),
+            meeting_date=meeting_date,
+            meeting_title="10-27-2027 City Council Meeting",
+            config=object(),
+            source_url="https://www.youtube.com/watch?v=B6H0NLpuq-Y",
+            source_portal="youtube",
+            document_type=document_type,
+            date_source="filename",
+        )
+
+    def test_future_transcript_is_filed_undated(self, monkeypatch) -> None:
+        captured = self._captured_new_doc(monkeypatch)
+        self._ingest("transcript", date.today() + timedelta(days=363))
+        assert captured["meeting_date"] is None
+        assert captured["date_source"] == "undetermined"
+
+    def test_past_transcript_keeps_its_date(self, monkeypatch) -> None:
+        captured = self._captured_new_doc(monkeypatch)
+        self._ingest("transcript", date(2026, 10, 27))
+        assert captured["meeting_date"] == date(2026, 10, 27)
+        assert captured["date_source"] == "filename"
+
+    def test_future_agenda_keeps_its_date(self, monkeypatch) -> None:
+        # Agendas are posted before the meeting; a future date is normal.
+        captured = self._captured_new_doc(monkeypatch)
+        upcoming = date.today() + timedelta(days=3)
+        self._ingest("agenda", upcoming)
+        assert captured["meeting_date"] == upcoming
+
+
+class TestIsFutureMeetingRecord:
+    def test_record_types_only(self) -> None:
+        today = date(2026, 10, 29)
+        assert is_future_meeting_record("transcript", date(2027, 10, 27), today)
+        assert is_future_meeting_record("minutes", date(2026, 10, 30), today)
+        assert not is_future_meeting_record("agenda", date(2026, 11, 10), today)
+        assert not is_future_meeting_record("transcript", today, today)
+        assert not is_future_meeting_record("transcript", None, today)

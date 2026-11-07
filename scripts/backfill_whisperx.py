@@ -65,7 +65,7 @@ from actalux.transcription.pipeline import assemble_speaker_layer
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from transcribe_meetings import (  # noqa: E402
     WARP_DOWNLOAD_RETRIES,
-    existing_transcript_dates,
+    existing_transcript_keys,
     reconnect_warp,
     select_meetings,
 )
@@ -289,7 +289,7 @@ def main() -> None:
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     AUDIO_DIR.mkdir(parents=True, exist_ok=True)
-    existing = set() if force else existing_transcript_dates(client, entity["id"])
+    existing = set() if force else existing_transcript_keys(client, entity["id"])
     # select_meetings reads a fixed arg shape; the backfill always discovers (no single
     # --video-id), so the video_id/title/date fields are absent.
     sel_args = SimpleNamespace(

@@ -35,7 +35,7 @@ from pathlib import Path
 from supabase import Client
 
 from actalux.config import load_config
-from actalux.db import get_client, get_entity_by_path
+from actalux.db import fetch_all_rows, get_client, get_entity_by_path
 from actalux.errors import ActaluxError
 from actalux.ingest.bodies import TranscriptionBody, get_body
 from actalux.ingest.transcribe import Transcript, transcribe_audio
@@ -131,14 +131,15 @@ def process_meeting(
 
 
 def select_meetings(
-    args: argparse.Namespace, out_dir: Path, existing_dates: set[str], body: TranscriptionBody
+    args: argparse.Namespace, out_dir: Path, existing: set[str], body: TranscriptionBody
 ) -> list[BoardMeeting]:
     """Resolve the meetings to process from --discover or explicit --video-id.
 
-    ``existing_dates`` are meeting dates already ingested as this body's transcripts
-    (from the DB — the source of truth, since ``data/`` is ephemeral in CI). A
-    discovered meeting is skipped when its date is already ingested or a local
-    transcript file already exists, unless ``--force``.
+    ``existing`` holds the meeting dates and video ids already ingested as this
+    body's transcripts (from the DB — the source of truth, since ``data/`` is
+    ephemeral in CI). A discovered meeting is skipped when its date or its video
+    is already ingested, or a local transcript file already exists, unless
+    ``--force``.
     """
     if args.video_id:
         return [
@@ -172,7 +173,8 @@ def select_meetings(
         meetings = [
             m
             for m in meetings
-            if m.meeting_date not in existing_dates
+            if m.meeting_date not in existing
+            and m.video_id not in existing
             and not (out_dir / f"{safe_stem(m.title)}.txt").exists()
         ]
     if args.limit:
@@ -180,23 +182,30 @@ def select_meetings(
     return meetings
 
 
-def existing_transcript_dates(client: Client, entity_id: int) -> set[str]:
-    """Meeting dates already ingested as this body's YouTube transcripts.
+def existing_transcript_keys(client: Client, entity_id: int) -> set[str]:
+    """Meeting dates and video ids already ingested as this body's YouTube transcripts.
 
     Scoped to ``entity_id`` — the city channel feeds several bodies, so dedup must
     be per body or a council meeting sharing a date with another body's meeting
     would be wrongly skipped.
+
+    Video ids are included because a stored date can legitimately differ from the
+    one the title parses to: when a title carries a typo (the city posted its
+    2026-10-27 council meeting as "10-27-2027") and the date is corrected, the
+    title no longer matches any stored date, and date-only dedup would transcribe
+    the video again as a new version with new citation ids. The two kinds of key
+    cannot collide (YYYY-MM-DD vs an 11-character id).
     """
-    rows = (
-        client.table("documents")
-        .select("meeting_date")
-        .eq("source_portal", "youtube")
-        .eq("document_type", "transcript")
-        .eq("entity_id", entity_id)
-        .execute()
-        .data
+    rows = fetch_all_rows(
+        lambda: (
+            client.table("documents")
+            .select("meeting_date,video_id")
+            .eq("source_portal", "youtube")
+            .eq("document_type", "transcript")
+            .eq("entity_id", entity_id)
+        )
     )
-    return {r["meeting_date"] for r in rows if r.get("meeting_date")}
+    return {r[k] for r in rows for k in ("meeting_date", "video_id") if r.get(k)}
 
 
 def main() -> None:
@@ -230,7 +239,7 @@ def main() -> None:
         entity = get_entity_by_path(client, *body.entity_path.split("/"))
         if not entity:
             raise SystemExit(f"Unknown entity {body.entity_path!r}; seed it first.")
-        existing = existing_transcript_dates(client, entity["id"])
+        existing = existing_transcript_keys(client, entity["id"])
     meetings = select_meetings(args, OUTPUT_DIR, existing, body)
     logger.info("meetings to transcribe: %d", len(meetings))
 
