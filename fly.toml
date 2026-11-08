@@ -29,4 +29,4 @@ primary_region = "ord"  # Chicago — closest Fly region to St. Louis
   size = "shared-cpu-1x"
   # 1 GB to start. If torch + bge run tight under load, bump to "2gb"
   # (`fly scale memory 2048`) — see DEPLOY.md.
-  memory = "1gb"
+  memory = "2gb"
