@@ -20,7 +20,7 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from actalux.graph.project import quote_hash
+from actalux.graph.project import edge_row, quote_hash
 
 # Clayton bills are 4-digit (~6400-7200); resolutions are "YYYY-NN" or "YY-NN" or a
 # bare number. Both require the keyword, so a stray number elsewhere is not a matter.
@@ -174,23 +174,7 @@ def derive_matter_edges(votes: list[dict], matter_ids: dict[str, int]) -> list[d
             if key in seen:
                 continue
             seen.add(key)
-            edges.append(
-                {
-                    "from_subject": subject_id,
-                    "vote_document_id": vote["document_id"],
-                    "vote_ref": vote["vote_ref"],
-                    "source_document_id": vote["document_id"],
-                    "type": "considered",
-                    "status": "cited",
-                    "chunk_id": vote.get("chunk_id"),
-                    "citation_id": vote.get("citation_id"),
-                    "source_quote": vote.get("source_quote"),
-                    "quote_hash": qhash,
-                    "as_of_date": vote.get("meeting_date"),
-                    "as_of_date_source": "vote",
-                    "projection_complete": True,
-                }
-            )
+            edges.append(edge_row(subject_id, "considered", vote, qhash))
     return edges
 
 
