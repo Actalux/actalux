@@ -25,10 +25,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
+from functools import partial
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from actalux.errors import ParseError
+from actalux.ingest.money import parse_money_cell
 
 NS_PRIOR2018 = "Indirect_Cost_CalculationPrior2018"
 NS_2019 = "Indirect_Cost_Calculation2019"
@@ -78,14 +80,7 @@ _LINE_LABELS = {
 }
 
 
-def parse_money(raw: str | None) -> Decimal:
-    """Parse a money cell ('$75,837,799.36' or bare '59125445.29') into a Decimal."""
-    if raw is None or raw.strip() in ("", "-"):
-        return Decimal(0)
-    try:
-        return Decimal(raw.replace("$", "").replace(",", "").strip())
-    except (ArithmeticError, ValueError) as exc:
-        raise ParseError(f"Unparseable Indirect Cost money cell {raw!r}: {exc}") from exc
+parse_money = partial(parse_money_cell, context="Indirect Cost money cell")
 
 
 def parse_rate(raw: str | None) -> Decimal:

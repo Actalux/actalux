@@ -23,10 +23,12 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from decimal import Decimal
+from functools import partial
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from actalux.errors import ParseError
+from actalux.ingest.money import parse_money_cell
 
 NS = "PerPupilBuildingLevelExpendituresSummary"
 
@@ -46,14 +48,7 @@ def _q(tag: str) -> str:
     return f"{{{NS}}}{tag}"
 
 
-def parse_money(raw: str | None) -> Decimal:
-    """Parse a Per-Pupil money/number cell ($-formatted or bare) into a Decimal."""
-    if raw is None or raw.strip() in ("", "-"):
-        return Decimal(0)
-    try:
-        return Decimal(raw.replace("$", "").replace(",", "").strip())
-    except (ArithmeticError, ValueError) as exc:
-        raise ParseError(f"Unparseable Per-Pupil cell {raw!r}: {exc}") from exc
+parse_money = partial(parse_money_cell, context="Per-Pupil cell")
 
 
 def _split_building(raw: str) -> tuple[str, str]:

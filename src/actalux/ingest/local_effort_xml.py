@@ -19,12 +19,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
+from functools import partial
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from actalux.errors import ParseError
+from actalux.ingest.money import parse_money_cell
 
 NS = "Local_Effort"
+
+parse_money = partial(parse_money_cell, context="Local Effort cell")
 
 # The line amounts are filed to the cent and sum to the stated grand total
 # exactly; a $0.01 tolerance absorbs any source rounding while still catching a
@@ -34,16 +38,6 @@ _TOL = Decimal("0.01")
 
 def _q(tag: str) -> str:
     return f"{{{NS}}}{tag}"
-
-
-def parse_money(raw: str | None) -> Decimal:
-    """Parse a Local Effort money/number cell ($-formatted or bare) into a Decimal."""
-    if raw is None or raw.strip() in ("", "-"):
-        return Decimal(0)
-    try:
-        return Decimal(raw.replace("$", "").replace(",", "").strip())
-    except (ArithmeticError, ValueError) as exc:
-        raise ParseError(f"Unparseable Local Effort cell {raw!r}: {exc}") from exc
 
 
 @dataclass(frozen=True)
