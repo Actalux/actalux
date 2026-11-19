@@ -1,0 +1,38 @@
+# Documents the abstraction-police routine and runs the PR dedupe preflight on a
+# schedule so a forgotten duplicate is visible in Actions logs. The actual refactor
+# work is done by the Cursor Cloud Agent (see docs/routines/abstraction-police.md);
+# this job does not open PRs.
+name: abstraction-police-preflight
+
+on:
+  schedule:
+    # Mondays 14:00 UTC — align with typical abstraction-police runs.
+    - cron: "0 14 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  dedupe-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Check for open duplicate DESE money-cell PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set +e
+          uv run python scripts/routine/find_open_duplicate_pr.py --fingerprint dese-ssrs-money-cell
+          code=$?
+          set -e
+          if [ "$code" -eq 0 ]; then
+            echo "::notice::An open PR already covers the DESE SSRS money-cell refactor — skip opening another."
+          elif [ "$code" -eq 1 ]; then
+            echo "No duplicate open PR for dese-ssrs-money-cell."
+          else
+            exit "$code"
+          fi

@@ -32,10 +32,12 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from decimal import Decimal
+from functools import partial
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from actalux.errors import ParseError
+from actalux.ingest.ssrs_xml import qualify_tag
 
 NS = "ASBR_x0020_Full_x0020_Report"
 
@@ -89,8 +91,7 @@ T9_TOTAL_ATTR = "TOTAL_UNADJ_RATE2"
 _FISCAL_YEAR_RE = re.compile(r"Fiscal Year\s+(\d{4}-\d{4})")
 
 
-def _q(tag: str) -> str:
-    return f"{{{NS}}}{tag}"
+_q = partial(qualify_tag, NS)
 
 
 def parse_money(raw: str | None) -> Decimal:

@@ -1,0 +1,23 @@
+{
+  "dese-ssrs-money-cell": {
+    "description": "Share parse_money / _fmt / _clean / _q across DESE SSRS financial XML parsers",
+    "paths": [
+      "src/actalux/ingest/indirect_cost_xml.py",
+      "src/actalux/ingest/local_effort_xml.py",
+      "src/actalux/ingest/perpupil_xml.py",
+      "src/actalux/ingest/asbr_xml.py",
+      "src/actalux/ingest/ssrs_xml.py",
+      "src/actalux/ingest/money.py",
+      "src/actalux/ingest/dese_money.py"
+    ],
+    "title_substrings": [
+      "dese",
+      "money",
+      "ssrs",
+      "financial xml",
+      "per-pupil",
+      "local effort",
+      "indirect cost"
+    ]
+  }
+}
