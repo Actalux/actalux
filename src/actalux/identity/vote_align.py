@@ -55,6 +55,7 @@ from actalux.identity.resolve import (
     IdentityProposal,
     ResolverTurn,
     RosterMember,
+    _meeting_date_for_document,
     _name_index,
     _name_only_match,
     _norm_text,
@@ -606,15 +607,8 @@ def motion_votes_for_document(client: Client, document_id: int, entity_id: int) 
     minutes are ingested and parsed — the motion aligner simply contributes nothing on the
     day-one pass and fires on the weekly re-resolve once the written record exists.
     """
-    doc = (
-        client.table("documents")
-        .select("meeting_date")
-        .eq("id", document_id)
-        .limit(1)
-        .execute()
-        .data
-    )
-    if not doc or not doc[0].get("meeting_date"):
+    meeting_date = _meeting_date_for_document(client, document_id)
+    if not meeting_date:
         return []
     body_doc_ids = [
         d["id"]
@@ -625,7 +619,7 @@ def motion_votes_for_document(client: Client, document_id: int, entity_id: int) 
     return (
         client.table("votes")
         .select("document_id,motion,details")
-        .eq("meeting_date", doc[0]["meeting_date"])
+        .eq("meeting_date", meeting_date)
         .in_("document_id", body_doc_ids)
         .execute()
         .data
@@ -647,17 +641,9 @@ def vote_reference_for_document(
     a meeting with no parsed per-member votes, has no reference (the aligner falls back to the
     audible called-surname count).
     """
-    doc = (
-        client.table("documents")
-        .select("meeting_date")
-        .eq("id", document_id)
-        .limit(1)
-        .execute()
-        .data
-    )
-    if not doc or not doc[0].get("meeting_date"):
+    meeting_date = _meeting_date_for_document(client, document_id)
+    if not meeting_date:
         return None
-    meeting_date = doc[0]["meeting_date"]
     rows = fetch_all_rows(
         lambda: (
             client.table("member_vote_records")

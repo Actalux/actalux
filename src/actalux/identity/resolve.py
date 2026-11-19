@@ -993,8 +993,9 @@ def _meeting_date_for_document(client: Client, document_id: int) -> str | None:
 
     A targeted single-column select — deliberately NOT ``db.get_document`` (``select *``,
     which pulls the full ``content`` blob) — so this batch-per-document tenure read never
-    serializes each transcript's body just to gate the roster by one date. Mirrors the
-    lightweight meeting-date read in ``vote_align.vote_reference_for_document``.
+    serializes each transcript's body just to gate the roster by one date. Also used by
+    ``vote_align.vote_reference_for_document`` and ``vote_align.motion_votes_for_document``
+    for the same lightweight read.
     """
     row = (
         client.table("documents")
